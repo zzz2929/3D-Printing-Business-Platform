@@ -52,6 +52,18 @@ export function createAuth(store, envPw){
       if(envPw) return sha256hex("printforge:" + envPw);
       const r = await rec();
       return r ? r.secret : "printforge-insecure";
+    },
+    /* 修改密码（仅在服务端存储密码时允许，环境变量密码不支持） */
+    async changePassword(currentPw, newPw){
+      if(envPw) throw new Error("环境变量密码不支持在线修改");
+      const r = await rec();
+      if(!r) throw new Error("未配置密码");
+      if((await hashPassword(currentPw, r.salt)) !== r.hash) throw new Error("当前密码错误");
+      if(!newPw || String(newPw).length < 4) throw new Error("新密码至少 4 位");
+      const salt = randomHex(16);
+      const newRec = { salt, hash:await hashPassword(newPw, salt), secret:randomHex(32), createdAt:Date.now() };
+      await store.set("auth", newRec);
+      record = newRec;
     }
   };
 }

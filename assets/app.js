@@ -143,10 +143,9 @@
       refreshActive();
       const cur = cats.find(c => c.name === activeCat);
       const subs = cur ? getSubs(cur.name) : [];
-      const note = cur && cur.note ? `<div class="casc-cat-note">${S.esc(cur.note)}</div>` : "";
       pop.innerHTML =
         '<div class="casc-grid">' +
-          '<div class="casc-left">' + note +
+          '<div class="casc-left">' +
             cats.map(c => `<button type="button" class="casc-cat${c.name === activeCat ? " on" : ""}" data-cat="${S.esc(c.name)}">${S.esc(c.name)}</button>`).join("") +
           '</div>' +
           '<div class="casc-right">' +
@@ -221,7 +220,7 @@
 
   /* ---------- 把耗材/打印机表单的字段接入预设 ---------- */
   const MAT_BRANDS  = () => S.presets().matBrands;
-  const MAT_CATS    = () => S.presets().matCategories.map(c => ({ name:c.name, note:c.note }));
+  const MAT_CATS    = () => S.presets().matCategories.map(c => ({ name:c.name }));
   const MAT_SUBS    = n => { const c = S.findCategory(n); return c ? c.subs : []; };
   const COLOR_NAMES = () => S.presets().matColors;
   const PRI_BRANDS  = () => S.presets().priBrands;
@@ -1644,6 +1643,23 @@
   $("loginPw").addEventListener("keydown", e => { if(e.key === "Enter") doLogin(); });
   $("loginPw2").addEventListener("keydown", e => { if(e.key === "Enter") doLogin(); });
   $("logoutBtn").addEventListener("click", () => S.logout());
+  
+  // 账号设置 - 修改密码
+  $("savePwBtn").addEventListener("click", async () => {
+    const cur = $("curPw").value, neu = $("newPw").value, con = $("newPw2").value;
+    if(!cur && !neu){ toast("请填写密码"); return; }
+    if(neu && neu !== con){ toast("两次新密码不一致"); return; }
+    if(neu && neu.length < 4){ toast("新密码至少 4 位"); return; }
+    try{
+      const r = await fetch("/api/auth/password", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ current:cur, next:neu })
+      });
+      const j = await r.json();
+      if(j.ok){ toast("密码已更新"); $("curPw").value = ""; $("newPw").value = ""; $("newPw2").value = ""; }
+      else toast(j.error || "修改失败");
+    }catch(e){ toast("修改失败：" + e.message); }
+  });
 
   Store.ready.then(mode => {
     if(mode === "auth"){ showLoginGate(); return; } // 服务端要求登录，先解锁

@@ -56,6 +56,13 @@ export function createRouter(store, envPw){
       catch(e){ return json({ error:e.message }, 400); }
       return json({ ok:true }, 200, { "set-cookie": tokenCookie(await issueToken(auth)) });
     }
+    if(col === "change-password" && req.method === "POST"){
+      if(await auth.configured() && !(await verifyToken(auth, req))) return json({ error:"未登录" }, 401);
+      const body = await readBody(req);
+      try{ await auth.changePassword(body && body.current, body && body.next); }
+      catch(e){ return json({ error:e.message }, 400); }
+      return json({ ok:true });
+    }
 
     /* ---- 会话守卫：已配置密码时拦截全部数据端点 ---- */
     if((await auth.configured()) && !(await verifyToken(auth, req))){

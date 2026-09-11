@@ -417,6 +417,11 @@
             <div id="changelogList" style="margin-top:8px"></div>
           </details>
         </div>
+        <div class="card">
+          <div class="card-head"><h2>关于</h2></div>
+          <p class="muted" style="margin:0 0 6px">PrintForge · 3D 打印经营台 — 前后端分离、零构建、零 npm 依赖。同一份静态文件配合 Node / Workers / Vercel 宿主，可部署到 Docker（含飞牛OS）、Cloudflare Workers、Vercel 等环境。</p>
+          <p class="muted" style="margin:0">v2.3 · 成本累加模型：报价 =（耗材费 + 电费 + 机器折旧 + 人工 + 额外成本）×（1 + 利润加成%）；机器折旧 =（购入价 + 年维护费 × 年限）÷（年限 × 8760h × 使用率）。</p>
+        </div>
       </div>
 
       <div class="set-pane" id="setp-data" hidden>
@@ -431,14 +436,26 @@
               <button class="btn danger" id="setClr">清空全部数据</button>
             </div>
             <div class="hint" style="margin-top:8px" id="backupInfo">尚未导出过备份。</div>
-            <div class="row" style="margin-top:12px">
-              <button class="btn ghost" id="logoutBtn" style="display:none">退出登录</button>
-            </div>
           </div>
           <div class="card">
-            <div class="card-head"><h2>关于</h2></div>
-            <p class="muted" style="margin:0 0 6px">PrintForge · 3D 打印经营台 — 前后端分离、零构建、零 npm 依赖。同一份静态文件配合 Node / Workers / Vercel 宿主，可部署到 Docker（含飞牛OS）、Cloudflare Workers、Vercel 等环境。</p>
-            <p class="muted" style="margin:0">v2.3 · 成本累加模型：报价 =（耗材费 + 电费 + 机器折旧 + 人工 + 额外成本）×（1 + 利润加成%）；机器折旧 =（购入价 + 年维护费 × 年限）÷（年限 × 8760h × 使用率）。</p>
+            <div class="card-head"><h2>账号设置</h2></div>
+            <p class="muted" style="margin-top:0">管理你的账号密码和安全设置。</p>
+            <div style="margin-top:12px">
+              <label>当前密码</label>
+              <input type="password" id="curPw" placeholder="留空表示不修改" style="width:100%;margin-top:4px" />
+            </div>
+            <div style="margin-top:10px">
+              <label>新密码</label>
+              <input type="password" id="newPw" placeholder="设置新密码" style="width:100%;margin-top:4px" />
+            </div>
+            <div style="margin-top:10px">
+              <label>确认新密码</label>
+              <input type="password" id="newPw2" placeholder="再输入一次" style="width:100%;margin-top:4px" />
+            </div>
+            <div class="row" style="margin-top:12px">
+              <button class="btn" id="savePwBtn">保存密码</button>
+              <button class="btn ghost" id="logoutBtn" style="display:none">退出登录</button>
+            </div>
           </div>
         </div>
       </div>

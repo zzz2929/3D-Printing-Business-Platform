@@ -547,8 +547,9 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 .cat-list-item:hover{border-color:var(--line2)}
 .cat-list-item.selected{background:var(--accent-dim);border-color:var(--accent)}
 .cat-list-item.drag-over{border-color:var(--accent)!important;background:var(--accent-dim)!important}
-.cat-list-item .cat-name{flex:1;font-size:13px;font-weight:600;min-width:0;outline:none;border-bottom:1px solid transparent;padding:1px 0;transition:border-color .12s}
-.cat-list-item .cat-name[contenteditable="true"]:focus{border-bottom-color:var(--accent);background:var(--bg);border-radius:3px 3px 0 0;padding:1px 4px}
+.cat-list-item .cat-name{flex:1;font-size:13px;font-weight:600;min-width:40px;max-width:120px;outline:none;border-bottom:1px solid transparent;padding:1px 4px;transition:border-color .12s,background .12s;cursor:text}
+.cat-list-item .cat-name[contenteditable="true"]:focus{max-width:none;border-bottom-color:var(--accent);background:var(--bg);border-radius:3px 3px 0 0;padding:1px 6px}
+.cat-list-item .cat-name::after{content:none}
 .cat-list-item .cat-count{font-size:10px;color:var(--faint);background:var(--bg);padding:1px 5px;border-radius:8px}
 .cat-list-item .del-cat-btn{opacity:0;transition:opacity .12s}
 .cat-list-item:hover .del-cat-btn{opacity:1}
