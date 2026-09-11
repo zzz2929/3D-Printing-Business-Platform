@@ -39,7 +39,7 @@ const Store = (function(){
         { name:"PLA 温变", desc:"遇热变色" },
         { name:"PVA 水溶", desc:"泡温水溶解，精细支撑，常用作精细手办模型的支撑" }
       ]},
-      { name:"ABS&ASA", note:"微毒性 · 需仓温和外排条件", subs:[
+      { name:"ABS&ASA", subs:[
         { name:"ABS", desc:"高韧耐久，高耐温，适合需要强度的零件" },
         { name:"ABS-CF", desc:"含碳纤，高尺寸稳定性，适合哑光质感的高刚度结构件" },
         { name:"ABS-GF", desc:"含玻纤，绝缘，耐腐蚀" },
@@ -60,7 +60,7 @@ const Store = (function(){
         { name:"PETG-GF", desc:"PETG玻纤，绝缘，耐腐蚀，适合打印室外模型，5/10/15不同含量" },
         { name:"PETG-Diffuse", desc:"PETG光扩散，良好透光率与扩散效果，适合灯箱模型" }
       ]},
-      { name:"柔性耗材", note:"硬度从上往下递增", subs:[
+      { name:"柔性耗材", subs:[
         { name:"TPU 85A", desc:"更柔软，适合保护套、缓冲件和鞋子" },
         { name:"TPU 90A", desc:"适合打印鞋底、遥控车轮胎等，柔韧性强硬度并存" },
         { name:"TPU 95A", desc:"柔软高韧，抗冲击，适合需承受冲击、跌落、碰撞的零件" },

@@ -1145,9 +1145,12 @@
     const catListHtml = cats.map((cat, ci) => `
       <div class="cat-list-item${cat.name === selectedCat ? ' selected' : ''}" data-cat="${S.esc(cat.name)}" data-i="${ci}" draggable="true">
         <div class="drag-handle" title="拖拽排序">☰</div>
-        <div class="cat-name" contenteditable="true" spellcheck="false">${S.esc(cat.name)}</div>
+        <div class="cat-name" contenteditable="false" spellcheck="false">${S.esc(cat.name)}</div>
         <span class="cat-count">${cat.subs.length}</span>
-        <button class="btn danger ghost tiny del-cat-btn" data-delcat="${S.esc(cat.name)}" type="button" title="删除该大类（含其下所有小类）">✕</button>
+        <div class="edits">
+          <button class="btn ghost tiny edit-cat-btn" data-editcat="${S.esc(cat.name)}" type="button" title="编辑名称">✎</button>
+          <button class="btn danger ghost tiny del-cat-btn" data-delcat="${S.esc(cat.name)}" type="button" title="删除该大类（含其下所有小类）">✕</button>
+        </div>
       </div>`).join("");
     
     // 新增大类的输入框
@@ -1165,10 +1168,11 @@
         <div class="preset-sub-row" data-cat="${S.esc(selectedCat)}" data-sub="${S.esc(s.name)}" data-sub-i="${si}" draggable="true">
           <div class="sub-drag-handle" title="拖拽排序">☰</div>
           <div class="sub-body">
-            <div class="sub-nm" contenteditable="true" spellcheck="false">${S.esc(s.name)}</div>
-            <div class="sub-ds" contenteditable="true" spellcheck="false" data-placeholder="点此添加说明…">${S.esc(s.desc || "")}</div>
+            <div class="sub-nm" contenteditable="false" spellcheck="false">${S.esc(s.name)}</div>
+            <div class="sub-ds" contenteditable="false" spellcheck="false" data-placeholder="点此添加说明…">${S.esc(s.desc || "")}</div>
           </div>
           <div class="edits">
+            <button class="btn ghost tiny edit-sub-btn" data-sub="${S.esc(s.name)}" type="button" title="编辑">✎</button>
             <button class="btn danger ghost tiny del-sub-btn" data-sub="${S.esc(s.name)}" type="button" title="删除该小类">✕</button>
           </div>
         </div>`).join("");
@@ -1208,9 +1212,45 @@
     // 大类选择
     box.querySelectorAll(".cat-list-item").forEach(item => {
       item.addEventListener("click", e => {
-        if(e.target.closest(".del-cat-btn") || e.target.closest(".drag-handle") || e.target.closest("[contenteditable]")) return;
+        if(e.target.closest(".del-cat-btn") || e.target.closest(".edit-cat-btn") || e.target.closest(".drag-handle")) return;
+        if(e.target.closest(".cat-name")) return; // 点击名称但不编辑时
         selectedCat = item.getAttribute("data-cat");
         renderPresetCategories();
+      });
+    });
+    
+    // 大类编辑按钮
+    catList.querySelectorAll(".edit-cat-btn").forEach(b => {
+      b.addEventListener("click", e => {
+        e.stopPropagation();
+        const item = b.closest(".cat-list-item");
+        const nmEl = item.querySelector(".cat-name");
+        if(nmEl.contentEditable === "true"){
+          // 退出编辑模式
+          nmEl.contentEditable = "false";
+          nmEl.classList.remove("editing");
+          b.textContent = "✎";
+          const oldCat = item.getAttribute("data-cat");
+          const newName = nmEl.textContent.trim();
+          if(!newName){ nmEl.textContent = oldCat; return; }
+          if(newName === oldCat) return;
+          if(S.renameCategory(oldCat, newName)){
+            selectedCat = newName;
+            renderPresetCategories();
+          } else { nmEl.textContent = oldCat; toast("改名失败：已存在同名大类"); }
+        } else {
+          // 进入编辑模式
+          nmEl.contentEditable = "true";
+          nmEl.classList.add("editing");
+          nmEl.focus();
+          // 选中全部文字
+          const range = document.createRange();
+          range.selectNodeContents(nmEl);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+          b.textContent = "✓";
+        }
       });
     });
     
@@ -1241,18 +1281,7 @@
       if(S.moveCategory(fi, ti)) toast("已调整大类顺序");
     });
     
-    // 大类名编辑
-    catList.querySelectorAll(".cat-name").forEach(el => {
-      bindEditable(el, v => {
-        const oldCat = el.closest(".cat-list-item").getAttribute("data-cat");
-        if(!v){ el.textContent = oldCat; return; }
-        if(v === oldCat) return;
-        if(S.renameCategory(oldCat, v)){
-          selectedCat = v;
-          renderPresetCategories();
-        } else { el.textContent = oldCat; toast("改名失败：已存在同名大类"); }
-      });
-    });
+    // 大类名编辑（已由编辑按钮处理，移除了自动编辑功能）
     
     // 删除大类
     catList.querySelectorAll(".del-cat-btn").forEach(b => {
@@ -1312,19 +1341,37 @@
         renderPresetCategories();
       });
       
-      // 小类名/描述编辑
-      subList.querySelectorAll(".preset-sub-row").forEach(row => {
-        const nm = row.querySelector(".sub-nm");
-        const ds = row.querySelector(".sub-ds");
-        const oldSub = row.getAttribute("data-sub");
-        bindEditable(nm, v => {
-          if(!v){ nm.textContent = oldSub; return; }
-          if(v === oldSub) return;
-          if(S.updateSub(selectedCat, oldSub, v, ds.textContent.trim())){
-            renderPresetCategories();
-          }else{ nm.textContent = oldSub; toast("已存在同名小类"); }
+      // 小类编辑按钮
+      subList.querySelectorAll(".edit-sub-btn").forEach(b => {
+        b.addEventListener("click", e => {
+          e.stopPropagation();
+          const row = b.closest(".preset-sub-row");
+          const nm = row.querySelector(".sub-nm");
+          const ds = row.querySelector(".sub-ds");
+          if(nm.contentEditable === "true"){
+            // 退出编辑模式
+            nm.contentEditable = "false";
+            ds.contentEditable = "false";
+            nm.classList.remove("editing");
+            ds.classList.remove("editing");
+            b.textContent = "✎";
+            const oldSub = row.getAttribute("data-sub");
+            const newName = nm.textContent.trim();
+            const newDesc = ds.textContent.trim();
+            if(!newName){ nm.textContent = oldSub; return; }
+            if(S.updateSub(selectedCat, oldSub, newName === oldSub ? null : newName, newDesc)){
+              renderPresetCategories();
+            } else { nm.textContent = oldSub; toast("已存在同名小类"); }
+          } else {
+            // 进入编辑模式
+            nm.contentEditable = "true";
+            ds.contentEditable = "true";
+            nm.classList.add("editing");
+            ds.classList.add("editing");
+            nm.focus();
+            b.textContent = "✓";
+          }
         });
-        bindEditable(ds, v => { S.updateSub(selectedCat, row.getAttribute("data-sub"), null, v); });
       });
       
       // 删除小类

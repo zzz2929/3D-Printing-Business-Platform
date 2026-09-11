@@ -551,8 +551,9 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 .cat-list-item .cat-name[contenteditable="true"]:focus{max-width:none;border-bottom-color:var(--accent);background:var(--bg);border-radius:3px 3px 0 0;padding:1px 6px}
 .cat-list-item .cat-name::after{content:none}
 .cat-list-item .cat-count{font-size:10px;color:var(--faint);background:var(--bg);padding:1px 5px;border-radius:8px}
-.cat-list-item .del-cat-btn{opacity:0;transition:opacity .12s}
-.cat-list-item:hover .del-cat-btn{opacity:1}
+.cat-list-item .edits{display:flex;gap:3px;flex:0 0 auto}
+.cat-list-item .cat-name.editing,
+.cat-list-item .cat-name[contenteditable="true"]{max-width:none;border-bottom-color:var(--accent);background:var(--bg);border-radius:3px 3px 0 0;padding:1px 6px}
 .cat-add-row{margin-top:4px}
 .cat-add-row input{flex:1;font-size:12px;padding:5px 8px}
 .sub-list{display:flex;flex-direction:column;gap:4px;flex:1;overflow-y:auto;max-height:450px}
@@ -566,19 +567,16 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 .preset-sub-row .sub-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .preset-sub-row .sub-nm{font-size:13px;font-weight:600;color:var(--ink)}
 .preset-sub-row .sub-ds{font-size:11.5px;color:var(--faint);line-height:1.5}
+.preset-sub-row .edits{display:flex;gap:3px;flex:0 0 auto}
+.preset-sub-row .sub-nm.editing,
 .preset-sub-row .sub-nm[contenteditable="true"]{
-  outline:none;background:transparent;border-bottom:1px solid var(--line2);border-radius:0;
-  padding:0 0 1px;transition:border-color .12s;
+  outline:none;background:var(--bg);border-bottom:1px solid var(--accent);border-radius:3px 3px 0 0;
+  padding:1px 4px;transition:border-color .12s;
 }
-.preset-sub-row .sub-nm[contenteditable="true"]:focus{
-  border-bottom-color:var(--accent);background:var(--accent-dim);border-radius:3px 3px 0 0;padding:1px 4px;
-}
+.preset-sub-row .sub-ds.editing,
 .preset-sub-row .sub-ds[contenteditable="true"]{
-  outline:none;background:transparent;border-bottom:1px solid var(--line2);border-radius:0;
-  padding:0 0 1px;transition:border-color .12s;
-}
-.preset-sub-row .sub-ds[contenteditable="true"]:focus{
-  border-bottom-color:var(--accent);background:var(--accent-dim);border-radius:3px 3px 0 0;padding:1px 4px;
+  outline:none;background:var(--bg);border-bottom:1px solid var(--accent);border-radius:3px 3px 0 0;
+  padding:1px 4px;transition:border-color .12s;
 }
 .sub-add-row{margin-top:4px}
 .sub-add-row input{flex:1;font-size:12px;padding:5px 8px}
