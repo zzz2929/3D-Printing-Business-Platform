@@ -406,8 +406,7 @@
       <div class="set-pane" id="setp-update" hidden>
         <div class="card">
           <div class="card-head"><h2>版本与更新</h2><span class="pill" id="verCur">…</span></div>
-          <div><label>更新源（远程 version.json 的 URL）</label><input id="setUpdateUrl" placeholder="https://raw.githubusercontent.com/你/printforge/main/version.json" /></div>
-          <div class="row" style="margin-top:10px">
+          <div class="row" style="margin-top:8px">
             <button class="btn" id="checkUpd">检查更新</button>
             <button class="btn ghost" id="getUpd" style="display:none">获取更新</button>
           </div>
@@ -415,6 +414,14 @@
           <details style="margin-top:12px">
             <summary class="muted" style="cursor:pointer">更新日志</summary>
             <div id="changelogList" style="margin-top:8px"></div>
+          </details>
+          <details style="margin-top:10px">
+            <summary class="muted" style="cursor:pointer">高级选项 · 自定义更新源</summary>
+            <div style="margin-top:8px">
+              <label>更新源 URL</label>
+              <input id="setUpdateUrl" placeholder="留空使用默认源" style="margin-top:4px" />
+              <p class="muted" style="margin:6px 0 0;font-size:11px">填写远程 version.json 的 URL，如使用 GitHub Raw：https://raw.githubusercontent.com/你/仓库/main/version.json</p>
+            </div>
           </details>
         </div>
         <div class="card">

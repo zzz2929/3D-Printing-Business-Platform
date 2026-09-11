@@ -123,7 +123,7 @@ const Store = (function(){
   function fmt(n, d){ return Number(n).toLocaleString("zh-CN", { maximumFractionDigits: d == null ? 1 : d }); }
 
   /* ---------- 状态 ---------- */
-  let settings = { currency:"¥", theme:"dark", lowStock:200, laborHourly:65, markupPct:10, onboarded:false, updateUrl:"",
+  let settings = { currency:"¥", theme:"dark", lowStock:200, laborHourly:65, markupPct:10, onboarded:false,
     presets: JSON.parse(JSON.stringify(DEFAULT_PRESETS)) };
   let materials = [], printers = [], records = [], orders = [];
   let achKeys = new Set();

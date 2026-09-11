@@ -1591,12 +1591,14 @@
   function updShow(cls, html){
     const el = $("updResult"); el.className = "upd-result " + cls; el.innerHTML = html; el.hidden = false;
   }
+  // 默认更新源（可被用户自定义 URL 覆盖）
+  const DEFAULT_UPDATE_URL = "https://raw.githubusercontent.com/zzz2929/3D-Printing-Business-Platform/main/version.json";
   $("checkUpd").addEventListener("click", async () => {
-    const url = ($("setUpdateUrl").value || "").trim();
-    if(!url){ updShow("warn", "请先填写更新源地址（指向远程 <b>version.json</b> 的 URL），会自动保存。"); return; }
-    S.setSettings({ updateUrl:url });
+    const customUrl = ($("setUpdateUrl").value || "").trim();
+    const url = customUrl || DEFAULT_UPDATE_URL;
+    if(customUrl) S.setSettings({ updateUrl:customUrl });
     const btn = $("checkUpd"); btn.disabled = true; const old = btn.textContent; btn.textContent = "检查中…";
-    updShow("warn", "正在连接更新源…"); $("updResult").hidden = false; $("getUpd").style.display = "none";
+    updShow("warn", "正在连接更新源…" + (customUrl ? "" : "（使用默认源）")); $("updResult").hidden = false; $("getUpd").style.display = "none";
     try{
       const m = await fetch(url, { cache:"no-store" }).then(r => { if(!r.ok) throw new Error("HTTP " + r.status); return r.json(); });
       if(!m || !m.version) throw new Error("清单格式不正确（需要 version 字段）");
