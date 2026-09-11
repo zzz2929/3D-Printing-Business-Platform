@@ -106,11 +106,25 @@ npm start            # 等价于 node server/index.mjs
 
 ### 方式一：Docker（推荐，含飞牛OS / 群晖 / 绿联等 NAS）
 
+**一键安装**（镜像已发布到 Docker Hub，支持 amd64 / arm64，无需克隆代码）：
+
+```bash
+docker run -d --name 3d-printing-business --restart unless-stopped \
+  -p 8080:8080 -v 3d-printing-business-data:/data \
+  zzz2929/3d-printing-business:latest
+```
+
+或在 NAS 的 Docker 界面中搜索镜像 `zzz2929/3d-printing-business` 创建容器。
+
+**从源码构建运行**：
+
 ```bash
 docker compose up -d   # 数据持久化在 named volume 3d-printing-business-data（容器内 /data）
 ```
 
 访问 `http://<设备IP>:8080`。
+
+**镜像发布**（维护者）：推送 `v*` 标签到 GitHub（如 `git tag v1.0.1 && git push --tags`），GitHub Actions 会自动构建 amd64 + arm64 双架构镜像并推送到 Docker Hub；也可本地构建后手动 `docker push zzz2929/3d-printing-business:latest`。
 
 **飞牛OS（fnOS）操作路径**：
 
