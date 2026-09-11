@@ -1,4 +1,4 @@
-# PrintForge · 3D 打印经营台
+# 适用于个人的 3D 打印经营台
 
 前后端分离的 3D 打印接单经营工具：成本核算（材料/电/机器折旧/人工）、订单利润与欠款、耗材库存、打印记录、客户统计。**数据存服务端**，多设备访问同一地址即可共享。
 
@@ -86,11 +86,11 @@ DATA_DIR=/vol1/printforge-data PORT=8080 node server/index.mjs
 
 ### 启用方式（三选一）
 
-| 平台 | 方式 |
-|---|---|
-| Docker / NAS / 裸跑 Node | 什么都不用配——首次打开页面会引导你「设置管理密码」（PBKDF2 加盐哈希存于 `data/auth.json`）；也可用环境变量 `APP_PASSWORD=你的密码` |
-| Cloudflare Workers | `npx wrangler secret put APP_PASSWORD`（输入密码后重新部署） |
-| Vercel | 项目环境变量添加 `APP_PASSWORD`（建议同时配置 Upstash，否则密码记录无法持久化） |
+| 平台                     | 方式                                                                                                                                    |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Docker / NAS / 裸跑 Node | 什么都不用配——首次打开页面会引导你「设置管理密码」（PBKDF2 加盐哈希存于`data/auth.json`）；也可用环境变量 `APP_PASSWORD=你的密码` |
+| Cloudflare Workers       | `npx wrangler secret put APP_PASSWORD`（输入密码后重新部署）                                                                          |
+| Vercel                   | 项目环境变量添加`APP_PASSWORD`（建议同时配置 Upstash，否则密码记录无法持久化）                                                        |
 
 - 会话凭据为 HMAC 签名的 HttpOnly Cookie，有效期 30 天；「设置 → 数据 → 退出登录」可主动登出
 - 会话过期后保存数据会被拒绝并自动回到登录页，不会丢数据（改动仍在内存中，重新登录后可重新保存）
