@@ -5,6 +5,7 @@
   "laborHourly": 65,
   "markupPct": 10,
   "onboarded": true,
+  "updateUrl": "",
   "presets": {
     "matBrands": [
       "Bambu Lab 拓竹",
@@ -29,16 +30,12 @@
             "desc": "PLA基础款，多彩平滑，适合新手打印"
           },
           {
-            "name": "PLA+",
-            "desc": "PLA增韧款，适合打印道具、护具等耐用物品"
-          },
-          {
             "name": "PLA Matte",
             "desc": "PLA哑光，细腻哑光，适合手办摆件等"
           },
           {
-            "name": "PLA Lite",
-            "desc": "PLA入门款，哑光隐纹，适合新手练手，但强度稍差"
+            "name": "PLA Glow",
+            "desc": "PLA夜光，暗处发光"
           },
           {
             "name": "PLA Silk",
@@ -53,16 +50,20 @@
             "desc": "横向渐变，颜色随角度变化"
           },
           {
+            "name": "PLA Lite",
+            "desc": "PLA入门款，哑光隐纹，适合新手练手，但强度稍差"
+          },
+          {
             "name": "PLA 渐变",
             "desc": "竖向渐变，颜色随高度变化"
           },
           {
-            "name": "PLA Translucent",
-            "desc": "PLA半透明，适合打印灯罩，色彩仿玻璃装饰"
+            "name": "PLA+",
+            "desc": "PLA增韧款，适合打印道具、护具等耐用物品"
           },
           {
-            "name": "PLA Glow",
-            "desc": "PLA夜光，暗处发光"
+            "name": "PLA Translucent",
+            "desc": "PLA半透明，适合打印灯罩，色彩仿玻璃装饰"
           },
           {
             "name": "PLA Wood",

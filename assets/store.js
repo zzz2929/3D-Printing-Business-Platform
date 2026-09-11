@@ -216,7 +216,21 @@ const Store = (function(){
     if(i < 0) return false;
     c.subs.splice(i, 1); push("settings"); return true;
   }
-  /* 列表型预设：删 / 改 */
+  function moveSub(cat, fromIdx, toIdx){
+    const c = findCategory(cat);
+    if(!c || fromIdx < 0 || toIdx < 0 || fromIdx >= c.subs.length || toIdx >= c.subs.length) return false;
+    if(fromIdx === toIdx) return true;
+    const item = c.subs[fromIdx]; c.subs.splice(fromIdx, 1); c.subs.splice(toIdx, 0, item);
+    push("settings"); return true;
+  }
+  function moveCategory(fromIdx, toIdx){
+    const arr = presets().matCategories;
+    if(fromIdx < 0 || toIdx < 0 || fromIdx >= arr.length || toIdx >= arr.length) return false;
+    if(fromIdx === toIdx) return true;
+    const item = arr[fromIdx]; arr.splice(fromIdx, 1); arr.splice(toIdx, 0, item);
+    push("settings"); return true;
+  }
+  /* 列表型预设：删 / 改 / 移动 */
   function removeFromList(listKey, name){
     const arr = presets()[listKey];
     if(!arr) return false;
@@ -232,6 +246,13 @@ const Store = (function(){
     if(i < 0) return false;
     if(oldName !== newName && arr.indexOf(newName) >= 0) return false;
     arr[i] = newName; push("settings"); return true;
+  }
+  function moveInList(listKey, fromIdx, toIdx){
+    const arr = presets()[listKey];
+    if(!arr || fromIdx < 0 || toIdx < 0 || fromIdx >= arr.length || toIdx >= arr.length) return false;
+    if(fromIdx === toIdx) return true;
+    const item = arr[fromIdx]; arr.splice(fromIdx, 1); arr.splice(toIdx, 0, item);
+    push("settings"); return true;
   }
   /* 重置：scope = "all" | "matCategories" | "matBrands" | "matColors" | "priBrands" */
   function resetPresets(scope){
@@ -582,8 +603,8 @@ const Store = (function(){
     /* 预设 API */
     presets, flatMatTypes, findSub, findCategory,
     addMatBrand, addMatColor, addPriBrand,
-    addCategory, renameCategory, setCategoryNote, removeCategory,
-    addSub, updateSub, removeSub,
-    removeFromList, updateInList, resetPresets
+    addCategory, renameCategory, setCategoryNote, removeCategory, moveCategory,
+    addSub, updateSub, removeSub, moveSub,
+    removeFromList, updateInList, moveInList, resetPresets
   };
 })();

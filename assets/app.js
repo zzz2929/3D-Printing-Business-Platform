@@ -1130,165 +1130,226 @@
     activePresetPane = b.getAttribute("data-pane"); renderPresets();
   });
 
-  /* 树形面板：耗材大类 / 小类 */
+  /* 树形面板：耗材大类 / 小类（两列布局） */
+  let selectedCat = null;  // 当前选中的大类名
   function renderPresetCategories(){
     const box = $("pane-matCategories");
     const ps = S.presets();
-    if(!ps.matCategories.length){
-      box.innerHTML = '<div class="preset-empty">还没有大类，点下面新增</div>' +
-        '<div class="preset-add-row"><input id="pcAddCat" placeholder="新增大类名，如「金属线材」" />' +
-        '<button class="btn sm" id="pcAddCatBtn" type="button">新增大类</button></div>';
-      $("pcAddCatBtn").addEventListener("click", addNewCategory);
-      $("pcAddCat").addEventListener("keydown", e => { if(e.key === "Enter") addNewCategory(); });
-      return;
+    const cats = ps.matCategories;
+    
+    // 默认选中第一个大类
+    if(!selectedCat || !cats.find(c => c.name === selectedCat)){
+      selectedCat = cats.length > 0 ? cats[0].name : null;
     }
-    box.innerHTML = '<div class="preset-list" id="catList" data-list-key="matCategories">' + ps.matCategories.map((cat, ci) => {
-      const subs = cat.subs.map(s => `
-        <div class="preset-sub-row" data-cat="${S.esc(cat.name)}" data-sub="${S.esc(s.name)}">
+    
+    // 生成大类列表 HTML
+    const catListHtml = cats.map((cat, ci) => `
+      <div class="cat-list-item${cat.name === selectedCat ? ' selected' : ''}" data-cat="${S.esc(cat.name)}" data-i="${ci}" draggable="true">
+        <div class="drag-handle" title="拖拽排序">☰</div>
+        <div class="cat-name" contenteditable="true" spellcheck="false">${S.esc(cat.name)}</div>
+        <span class="cat-count">${cat.subs.length}</span>
+        <button class="btn danger ghost tiny del-cat-btn" data-delcat="${S.esc(cat.name)}" type="button" title="删除该大类（含其下所有小类）">✕</button>
+      </div>`).join("");
+    
+    // 新增大类的输入框
+    const addCatHtml = `
+      <div class="preset-add-row cat-add-row">
+        <input id="pcAddCat" placeholder="新增大类名" />
+        <button class="btn sm" id="pcAddCatBtn" type="button">+ 大类</button>
+      </div>`;
+    
+    // 生成右侧小类列表
+    const selectedCategory = cats.find(c => c.name === selectedCat);
+    let subListHtml = "";
+    if(selectedCategory){
+      subListHtml = selectedCategory.subs.map((s, si) => `
+        <div class="preset-sub-row" data-cat="${S.esc(selectedCat)}" data-sub="${S.esc(s.name)}" data-sub-i="${si}" draggable="true">
+          <div class="sub-drag-handle" title="拖拽排序">☰</div>
           <div class="sub-body">
             <div class="sub-nm" contenteditable="true" spellcheck="false">${S.esc(s.name)}</div>
             <div class="sub-ds" contenteditable="true" spellcheck="false" data-placeholder="点此添加说明…">${S.esc(s.desc || "")}</div>
           </div>
           <div class="edits">
-            <button class="btn danger ghost tiny" data-delsub="${S.esc(s.name)}" type="button" title="删除该小类">✕</button>
+            <button class="btn danger ghost tiny del-sub-btn" data-sub="${S.esc(s.name)}" type="button" title="删除该小类">✕</button>
           </div>
-        </div>`).join("") +
-        `<div class="preset-add-row">
-           <input placeholder="在「${S.esc(cat.name)}」下新增小类名" data-addsub-in="${S.esc(cat.name)}" />
-           <input placeholder="简短说明（可留空）" data-addsub-ds="${S.esc(cat.name)}" />
-           <button class="btn ghost sm" data-addsub-btn="${S.esc(cat.name)}" type="button">+ 小类</button>
-         </div>`;
-      return `<div class="preset-cat" data-cat="${S.esc(cat.name)}" data-i="${ci}" draggable="true">
-        <div class="preset-cat-head">
-          <div class="drag-handle" title="拖拽排序">☰</div>
-          <div class="nm" contenteditable="true" spellcheck="false">${S.esc(cat.name)}</div>
-          <div class="acts">
-            <button class="btn danger ghost tiny" data-delcat="${S.esc(cat.name)}" type="button" title="删除该大类（含其下所有小类）">✕</button>
+        </div>`).join("");
+      subListHtml += `
+        <div class="preset-add-row sub-add-row">
+          <input id="subNameIn" placeholder="新增小类名" />
+          <input id="subDescIn" placeholder="简短说明（可留空）" />
+          <button class="btn ghost sm" id="addSubBtn" type="button">+ 小类</button>
+        </div>`;
+    } else {
+      subListHtml = '<div class="preset-empty">请先选择一个左侧大类</div>';
+    }
+    
+    // 两列布局
+    box.innerHTML = `
+      <div class="cat-two-col">
+        <div class="cat-left-panel">
+          <div class="cat-list-header">
+            <span class="muted">耗材大类</span>
           </div>
+          <div class="cat-list" id="catList">${catListHtml}</div>
+          ${addCatHtml}
         </div>
-        ${cat.note ? `<div class="preset-cat-note" contenteditable="true" spellcheck="false">${S.esc(cat.note)}</div>` : ""}
-        <div class="preset-subs">${subs}</div>
+        <div class="cat-right-panel">
+          <div class="cat-list-header">
+            <span class="muted">${selectedCat ? '小类（' + selectedCat + '）' : '小类列表'}</span>
+          </div>
+          <div class="sub-list" id="subList">${subListHtml}</div>
+        </div>
       </div>`;
-    }).join("") + `</div>
-      <div class="preset-add-row">
-        <input id="pcAddCat" placeholder="新增大类名，如「金属线材」" />
-        <button class="btn sm" id="pcAddCatBtn" type="button">+ 大类</button>
-      </div>`;
-    /* 大类拖拽排序 */
+    
+    // 绑定事件
+    bindCatEvents(box, cats);
+  }
+  
+  function bindCatEvents(box, cats){
+    // 大类选择
+    box.querySelectorAll(".cat-list-item").forEach(item => {
+      item.addEventListener("click", e => {
+        if(e.target.closest(".del-cat-btn") || e.target.closest(".drag-handle") || e.target.closest("[contenteditable]")) return;
+        selectedCat = item.getAttribute("data-cat");
+        renderPresetCategories();
+      });
+    });
+    
+    // 大类拖拽排序
     const catList = $("catList");
     catList.addEventListener("dragstart", e => {
-      const el = e.target.closest(".preset-cat"); if(!el) return;
+      const el = e.target.closest(".cat-list-item"); if(!el) return;
       el.classList.add("dragging"); e.dataTransfer.setData("text/plain", el.getAttribute("data-i")); e.dataTransfer.effectAllowed = "move";
     });
     catList.addEventListener("dragend", e => {
-      const el = e.target.closest(".preset-cat"); if(el) el.classList.remove("dragging");
+      const el = e.target.closest(".cat-list-item"); if(el) el.classList.remove("dragging");
       catList.querySelectorAll(".drag-over").forEach(x => x.classList.remove("drag-over"));
     });
     catList.addEventListener("dragover", e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; });
     catList.addEventListener("dragenter", e => {
-      const el = e.target.closest(".preset-cat"); if(el && !el.classList.contains("dragging")) el.classList.add("drag-over");
+      const el = e.target.closest(".cat-list-item"); if(el && !el.classList.contains("dragging")) el.classList.add("drag-over");
     });
     catList.addEventListener("dragleave", e => {
-      const el = e.target.closest(".preset-cat");
+      const el = e.target.closest(".cat-list-item");
       if(el && !el.contains(e.relatedTarget)) el.classList.remove("drag-over");
     });
     catList.addEventListener("drop", e => {
       e.preventDefault();
       const from = e.dataTransfer.getData("text/plain");
-      const toEl = e.target.closest(".preset-cat");
+      const toEl = e.target.closest(".cat-list-item");
       if(!toEl || from === toEl.getAttribute("data-i")) return;
-      const arr = S.presets().matCategories;
       const fi = +from, ti = +toEl.getAttribute("data-i");
-      const item = arr[fi]; arr.splice(fi, 1); arr.splice(ti, 0, item);
-      S.setSettings({}); renderPresets();
+      if(S.moveCategory(fi, ti)) toast("已调整大类顺序");
     });
-    $("pcAddCatBtn").addEventListener("click", addNewCategory);
-    $("pcAddCat").addEventListener("keydown", e => { if(e.key === "Enter") addNewCategory(); });
-    bindCategoryEvents();
-  }
-
-  function addNewCategory(){
-    const inp = $("pcAddCat"); if(!inp) return;
-    const v = inp.value.trim();
-    if(!v){ toast("请输入大类名"); return; }
-    if(S.addCategory(v)){ inp.value = ""; renderPresets(); toast("已新增大类：「" + v + "」"); }
-    else toast("已存在同名大类");
-  }
-
-  function bindCategoryEvents(){
-    /* 大类名：失焦改名 */
-    document.querySelectorAll("#pane-matCategories .preset-cat .nm").forEach(el => {
+    
+    // 大类名编辑
+    catList.querySelectorAll(".cat-name").forEach(el => {
       bindEditable(el, v => {
-        const cat = el.closest(".preset-cat").getAttribute("data-cat");
-        if(!v){ el.textContent = cat; return; }
-        if(v === cat) return;
-        if(S.renameCategory(cat, v)) renderPresets();
-        else { el.textContent = cat; toast("改名失败：已存在同名大类"); }
+        const oldCat = el.closest(".cat-list-item").getAttribute("data-cat");
+        if(!v){ el.textContent = oldCat; return; }
+        if(v === oldCat) return;
+        if(S.renameCategory(oldCat, v)){
+          selectedCat = v;
+          renderPresetCategories();
+        } else { el.textContent = oldCat; toast("改名失败：已存在同名大类"); }
       });
     });
-    /* 大类 note */
-    document.querySelectorAll("#pane-matCategories .preset-cat-note").forEach(el => {
-      const cat = el.closest(".preset-cat").getAttribute("data-cat");
-      bindEditable(el, v => { S.setCategoryNote(cat, v); });
-    });
-    /* 删除大类 */
-    document.querySelectorAll("#pane-matCategories [data-delcat]").forEach(b => {
+    
+    // 删除大类
+    catList.querySelectorAll(".del-cat-btn").forEach(b => {
       b.addEventListener("click", async () => {
         const cat = b.getAttribute("data-delcat");
         const c = S.findCategory(cat);
         const n = c ? c.subs.length : 0;
         if(await confirmBox("删除大类「" + cat + "」？" + (n ? "其下 " + n + " 个小类也会一起删除。" : ""))){
-          S.removeCategory(cat); renderPresets();
+          S.removeCategory(cat);
+          if(selectedCat === cat) selectedCat = null;
+          renderPresetCategories();
         }
       });
     });
-    /* 小类名 / 描述：失焦更新 */
-    document.querySelectorAll("#pane-matCategories .preset-sub-row").forEach(row => {
-      const cat = row.getAttribute("data-cat");
-      const oldSub = row.getAttribute("data-sub");
-      const nm = row.querySelector(".sub-nm");
-      const ds = row.querySelector(".sub-ds");
-      bindEditable(nm, v => {
-        if(!v){ nm.textContent = oldSub; return; }
-        if(v === oldSub) return;
-        if(S.updateSub(cat, oldSub, v, ds.textContent.trim())){
-          row.setAttribute("data-sub", v); renderPresets();
-        }else{ nm.textContent = oldSub; toast("已存在同名小类"); }
-      });
-      bindEditable(ds, v => { S.updateSub(cat, row.getAttribute("data-sub"), null, v); });
+    
+    // 新增大类
+    $("pcAddCatBtn").addEventListener("click", () => {
+      const inp = $("pcAddCat"); if(!inp) return;
+      const v = inp.value.trim();
+      if(!v){ toast("请输入大类名"); return; }
+      if(S.addCategory(v)){ inp.value = ""; selectedCat = v; renderPresetCategories(); toast("已新增大类：「" + v + "」"); }
+      else toast("已存在同名大类");
     });
-    /* 删除小类 */
-    document.querySelectorAll("#pane-matCategories [data-delsub]").forEach(b => {
-      b.addEventListener("click", async () => {
-        const row = b.closest(".preset-sub-row");
-        const cat = row.getAttribute("data-cat"), sub = row.getAttribute("data-sub");
-        if(await confirmBox("删除小类「" + cat + " / " + sub + "」？")){
-          S.removeSub(cat, sub); renderPresets();
-        }
+    $("pcAddCat").addEventListener("keydown", e => { if(e.key === "Enter") $("pcAddCatBtn").click(); });
+    
+    // 小类列表事件
+    const subList = $("subList");
+    if(subList && selectedCat){
+      // 小类拖拽排序
+      subList.addEventListener("dragstart", e => {
+        const el = e.target.closest(".preset-sub-row"); if(!el) return;
+        el.classList.add("dragging");
+        e.dataTransfer.setData("text/plain", el.getAttribute("data-sub-i"));
+        e.dataTransfer.effectAllowed = "move";
       });
-    });
-    /* 在某大类下新增小类 */
-    document.querySelectorAll("#pane-matCategories [data-addsub-btn]").forEach(b => {
-      b.addEventListener("click", () => {
-        const cat = b.getAttribute("data-addsub-btn");
-        const inp = document.querySelector('[data-addsub-in="' + CSS.escape(cat) + '"]');
-        const dInp = document.querySelector('[data-addsub-ds="' + CSS.escape(cat) + '"]');
-        const v = inp.value.trim();
-        if(!v){ toast("请填写小类名"); return; }
-        const ok = S.addSub(cat, v, (dInp.value || "").trim());
-        if(ok){ renderPresets(); toast("已新增小类：「" + cat + " / " + v + "」"); }
+      subList.addEventListener("dragend", e => {
+        const el = e.target.closest(".preset-sub-row"); if(el) el.classList.remove("dragging");
+        subList.querySelectorAll(".drag-over").forEach(x => x.classList.remove("drag-over"));
+      });
+      subList.addEventListener("dragover", e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; });
+      subList.addEventListener("dragenter", e => {
+        const el = e.target.closest(".preset-sub-row");
+        if(el && !el.classList.contains("dragging")) el.classList.add("drag-over");
+      });
+      subList.addEventListener("dragleave", e => {
+        const el = e.target.closest(".preset-sub-row");
+        if(el && !el.contains(e.relatedTarget)) el.classList.remove("drag-over");
+      });
+      subList.addEventListener("drop", e => {
+        e.preventDefault();
+        const from = +e.dataTransfer.getData("text/plain");
+        const toEl = e.target.closest(".preset-sub-row");
+        if(!toEl) return;
+        const to = +toEl.getAttribute("data-sub-i");
+        if(from === to) return;
+        S.moveSub(selectedCat, from, to);
+        renderPresetCategories();
+      });
+      
+      // 小类名/描述编辑
+      subList.querySelectorAll(".preset-sub-row").forEach(row => {
+        const nm = row.querySelector(".sub-nm");
+        const ds = row.querySelector(".sub-ds");
+        const oldSub = row.getAttribute("data-sub");
+        bindEditable(nm, v => {
+          if(!v){ nm.textContent = oldSub; return; }
+          if(v === oldSub) return;
+          if(S.updateSub(selectedCat, oldSub, v, ds.textContent.trim())){
+            renderPresetCategories();
+          }else{ nm.textContent = oldSub; toast("已存在同名小类"); }
+        });
+        bindEditable(ds, v => { S.updateSub(selectedCat, row.getAttribute("data-sub"), null, v); });
+      });
+      
+      // 删除小类
+      subList.querySelectorAll(".del-sub-btn").forEach(b => {
+        b.addEventListener("click", async () => {
+          const sub = b.getAttribute("data-sub");
+          if(await confirmBox("删除小类「" + selectedCat + " / " + sub + "」？")){
+            S.removeSub(selectedCat, sub); renderPresetCategories();
+          }
+        });
+      });
+      
+      // 新增小类
+      $("addSubBtn").addEventListener("click", () => {
+        const nameIn = $("subNameIn"), descIn = $("subDescIn");
+        if(!nameIn) return;
+        const v = nameIn.value.trim();
+        if(!v){ toast("请填写小类名"); nameIn.focus(); return; }
+        const ok = S.addSub(selectedCat, v, (descIn.value || "").trim());
+        if(ok){ nameIn.value = ""; descIn.value = ""; renderPresetCategories(); toast("已新增小类：「" + v + "」"); }
         else toast("该大类下已存在同名小类");
       });
-    });
-  }
-  function moveCategory(name, dir){
-    const arr = S.presets().matCategories;
-    const i = arr.findIndex(c => c.name === name); if(i < 0) return;
-    const j = i + dir;
-    if(j < 0 || j >= arr.length) return;
-    const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
-    S.setSettings({});  // 触发 push
-    renderPresets();
+      $("subNameIn").addEventListener("keydown", e => { if(e.key === "Enter") $("addSubBtn").click(); });
+    }
   }
 
   /* 列表式面板：品牌 / 颜色 / 打印机品牌 */
@@ -1337,9 +1398,7 @@
         const to = e.target.closest(".preset-row");
         if(!to || from === to.getAttribute("data-i")) return;
         const fi = +from, ti = +to.getAttribute("data-i");
-        const item = arr[fi];
-        arr.splice(fi, 1); arr.splice(ti, 0, item);
-        S.setSettings({}); renderPresets();
+        if(S.moveInList(key, fi, ti)) renderPresets();
       });
     }
     /* 失焦改名 */
