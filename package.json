@@ -1,0 +1,13 @@
+{
+  "name": "printforge",
+  "version": "2.4.0",
+  "private": true,
+  "type": "module",
+  "description": "3D 打印经营台 · 前后端分离，零 npm 依赖",
+  "scripts": {
+    "start": "node server/index.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

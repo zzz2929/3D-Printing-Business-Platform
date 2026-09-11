@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>PrintForge · 3D 打印经营台</title>
+<meta name="theme-color" content="#0e1218" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icon.svg" />
+<link rel="icon" href="icon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+
+<!-- 图标库 -->
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-dash" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/></symbol>
+  <symbol id="i-calc" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="12" x2="10" y2="12"/><line x1="14" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="10" y2="16"/><line x1="14" y1="16" x2="16" y2="16"/></symbol>
+  <symbol id="i-ord" viewBox="0 0 24 24"><path d="M12 2 21 7v10l-9 5-9-5V7z"/><polyline points="3.3 7.3 12 12 20.7 7.3"/><line x1="12" y1="12" x2="12" y2="21.5"/></symbol>
+  <symbol id="i-spool" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.2"/><path d="M12 3v5.8M12 15.2V21M3 12h5.8M15.2 12H21"/></symbol>
+  <symbol id="i-printer" viewBox="0 0 24 24"><path d="M6 3h12v6H6z"/><path d="M4 9h16v8H4z" fill="none"/><rect x="8" y="13" width="8" height="8" rx="1"/><line x1="12" y1="15" x2="12" y2="18"/></symbol>
+  <symbol id="i-rec" viewBox="0 0 24 24"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/><circle cx="19.5" cy="18" r="1.6"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+</svg>
+
+<div class="shell">
+  <!-- 侧栏 / 移动端顶栏 -->
+  <aside class="side">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name">PrintForge</span>
+    </div>
+    <nav class="nav" id="nav">
+      <button data-tab="dash"><svg class="ic"><use href="#i-dash"/></svg><span>仪表盘</span></button>
+      <button data-tab="calc"><svg class="ic"><use href="#i-calc"/></svg><span>计算器</span></button>
+      <button data-tab="order"><svg class="ic"><use href="#i-ord"/></svg><span>开单</span></button>
+      <button data-tab="olist"><svg class="ic"><use href="#i-rec"/></svg><span>订单列表</span></button>
+      <button data-tab="mats"><svg class="ic"><use href="#i-spool"/></svg><span>耗材</span></button>
+      <button data-tab="printers"><svg class="ic"><use href="#i-printer"/></svg><span>打印机</span></button>
+      <button data-tab="records"><svg class="ic"><use href="#i-rec"/></svg><span>打印记录</span></button>
+      <button data-tab="settings"><svg class="ic"><use href="#i-gear"/></svg><span>设置</span></button>
+    </nav>
+    <div class="side-foot">
+      <span class="led" id="saveLed" title="数据同步状态"></span>
+      <span class="muted" id="modeText">连接服务中…</span>
+    </div>
+  </aside>
+
+  <!-- 主区 -->
+  <main class="main">
+    <header class="topbar">
+      <h1 id="pageTitle">仪表盘</h1>
+      <div class="top-actions">
+        <span class="pill" id="headDate"></span>
+      </div>
+    </header>
+
+    <!-- ============ 仪表盘 ============ -->
+    <section id="page-dash" class="page">
+      <div class="card-head dash-head">
+        <h2 id="dashRangeTitle">本月经营</h2>
+        <div class="seg" id="dashQuick" role="group" aria-label="快捷区间">
+          <button data-q="7d">近7天</button>
+          <button data-q="6m">近6个月</button>
+          <button data-q="5y">近5年</button>
+          <button data-q="month" class="on">本月</button>
+        </div>
+      </div>
+      <div class="filter-bar2" style="margin-bottom:14px">
+        <div><label class="f-label">日期从</label><input id="dashFrom" type="date" /></div>
+        <div><label class="f-label">到</label><input id="dashTo" type="date" /></div>
+        <button class="btn gray sm" id="dashClear" type="button">恢复本月</button>
+      </div>
+      <div class="stats" id="dashStats"></div>
+      <div class="col2">
+        <div class="card">
+          <div class="card-head"><h2 id="trendTitle">近 6 个月利润</h2><span class="muted" id="trendHint"></span></div>
+          <div id="profitChart"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>经营提醒</h2></div>
+          <div id="dashAlerts"></div>
+        </div>
+      </div>
+      <div class="col2">
+        <div class="card">
+          <div class="card-head"><h2>最近订单</h2><button class="btn ghost sm" data-goto="olist">全部订单</button></div>
+          <div id="dashRecent"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>客户排行</h2><button class="btn ghost sm" data-goto="olist">去订单</button></div>
+          <div id="dashCustomers"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>经营成就</h2><span class="muted">做完单自动解锁</span></div>
+        <div id="achList" class="ach-grid"></div>
+      </div>
+    </section>
+
+    <!-- ============ 计算器 ============ -->
+    <section id="page-calc" class="page">
+      <div class="card">
+        <div class="card-head"><h2>本次打印</h2><span class="req-note"><i class="dot"></i>为必填项</span></div>
+        <div class="grid g2">
+          <div><label>耗材<i class="dot"></i></label><select id="selMat"></select><div class="hint" id="matHint">—</div></div>
+          <div><label>打印机</label><select id="selPri"></select><div class="hint" id="priHint">—</div></div>
+          <div><label>耗材用量（g）<i class="dot"></i></label><input id="rGrams" type="number" min="0" step="0.1" placeholder="如 42" /></div>
+          <div>
+            <label>打印时长</label>
+            <div class="alarm">
+              <select id="rHoursH" aria-label="小时"></select><span class="unit">时</span>
+              <select id="rHoursM" aria-label="分钟"></select><span class="unit">分</span>
+            </div>
+          </div>
+          <div><label>处理耗时（分钟）</label><input id="rMin" type="number" min="0" step="1" placeholder="接单沟通+交付" /><div class="hint">按人工时薪折算人工成本</div></div>
+          <div><label>备注</label><input id="rNote" type="text" placeholder="如 黑色支架 / 0.2mm 层高" /></div>
+        </div>
+        <div class="lcd" id="calcLcd">
+          <div class="lcd-label">预计打印成本 · 勾选计入</div>
+          <div class="lcd-big" id="costBig">0.00</div>
+          <div class="lcd-lines">
+            <label class="line cb-line"><input type="checkbox" id="cbFil" checked><span class="cb-txt">耗材费 · 材料单价 ÷ 1000 × 克数</span><span id="costFil">0.00</span></label>
+            <label class="line cb-line"><input type="checkbox" id="cbElec" checked><span class="cb-txt">电费 · 功率 ÷ 1000 × 时长 × 电价</span><span id="costElec">0.00</span></label>
+            <label class="line cb-line"><input type="checkbox" id="cbMach" checked><span class="cb-txt">机器折旧 · 时长 × 每小时机器成本</span><span id="costMach">0.00</span></label>
+            <label class="line cb-line"><input type="checkbox" id="cbLab" checked><span class="cb-txt">人工 · 时薪 × 处理分钟 ÷ 60</span><span id="costLab">0.00</span></label>
+            <div class="line hl"><span>建议报价（计入项成本 + 利润加成）</span><span id="costSug">—</span></div>
+          </div>
+        </div>
+        <div class="row" style="margin-top:14px">
+          <button class="btn" id="saveBtn">保存为打印记录</button>
+          <button class="btn ghost" id="toOrderBtn" data-goto="order">去开订单</button>
+          <span class="muted" id="homeMsg"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 开单 ============ -->
+    <section id="page-order" class="page">
+      <div class="card">
+        <div class="card-head"><h2 id="ordFormTitle">新增订单</h2><span class="req-note"><i class="dot"></i>为必填项</span></div>
+        <div id="ordFormBody">
+          <div class="grid g3">
+            <div><label>订单号</label><input id="oNo" type="text" placeholder="留空自动生成" /></div>
+            <div><label>日期<i class="dot"></i></label><input id="oDate" type="date" /></div>
+            <div><label>状态</label><select id="oStatus"></select></div>
+            <div><label>客户微信 / 联系方式</label><input id="oWx" type="text" placeholder="如 wxid_xxx" /></div>
+            <div><label>客户称呼（可选）</label><input id="oName" type="text" placeholder="如 张老板" /></div>
+            <div><label>报价金额（应收）<i class="dot"></i></label><input id="oQuote" type="number" min="0" step="0.01" placeholder="谈好的总价" /></div>
+          </div>
+          <div class="sect">
+            <div class="sect-label">收款 · 支持定金 + 尾款多笔</div>
+            <div id="oPayments"></div>
+            <button class="btn ghost sm" id="addPay" type="button">加一笔收款</button>
+            <div class="row" style="margin-top:6px">
+              <span class="muted">已收合计 <b class="tot" id="recvTotal">0.00</b></span>
+              <span class="muted">待收 <b class="loss" id="dueTotal">0.00</b></span>
+            </div>
+          </div>
+          <div class="sect">
+            <div class="sect-label">打印成本 · 耗材 + 电 + 机器折旧 + 人工</div>
+            <div class="grid g4">
+              <div><label>耗材</label><select id="oMat"></select></div>
+              <div><label>打印机</label><select id="oPri"></select></div>
+              <div><label>克数（g）</label><input id="oG" type="number" min="0" step="0.1" placeholder="如 42" /></div>
+              <div><label>时长（h）</label><input id="oH" type="number" min="0" step="0.1" placeholder="如 6.5" /></div>
+              <div><label>处理耗时（分钟）</label><input id="oMin" type="number" min="0" step="1" placeholder="接单沟通+交付" /><div class="hint">按人工时薪折算</div></div>
+            </div>
+          </div>
+          <div class="sect">
+            <div class="sect-label">额外成本 · 建模 / 运费 / 包装 / 其他</div>
+            <div id="oExtras"></div>
+            <button class="btn ghost sm" id="addExt" type="button">再加一项成本</button>
+          </div>
+          <div class="sect">
+            <div class="sect-label">模型文件 · 只记信息</div>
+            <div class="grid g3">
+              <div><label>文件名</label><input id="oFName" type="text" placeholder="如 齿轮_v2.stl" /></div>
+              <div><label>大小（可选）</label><input id="oFSize" type="text" placeholder="如 12.3 MB" /></div>
+              <div><label>文件备注（可选）</label><input id="oFNote" type="text" placeholder="如 需要支撑" /></div>
+            </div>
+          </div>
+          <div class="span2" style="margin-top:12px"><label>备注（可选）</label><input id="oNote" type="text" placeholder="其他要记的事" /></div>
+
+          <div class="lcd" id="ordLcd">
+            <div class="lcd-row">
+              <div class="lcd-cell">
+                <div class="lcd-label">预估利润 · 报价−成本</div>
+                <div class="lcd-big sub" id="oEst">0.00</div>
+              </div>
+              <div class="lcd-cell">
+                <div class="lcd-label">实时利润 · 已收−成本</div>
+                <div class="lcd-big" id="oProfit">0.00</div>
+              </div>
+              <div class="lcd-cell">
+                <div class="lcd-label">总成本</div>
+                <div class="lcd-big sub" id="oCt">0.00</div>
+              </div>
+              <div class="lcd-cell">
+                <div class="lcd-label">已收 / 报价</div>
+                <div class="lcd-big sub" id="oRvQ">0.00 / 0.00</div>
+              </div>
+            </div>
+            <div class="lcd-lines">
+              <div class="lcd-label" style="padding:2px 0 4px">计入 · 勾选后计入本单成本</div>
+              <label class="line cb-line"><input type="checkbox" id="ocbFil" checked><span class="cb-txt">耗材费 · 材料单价 ÷ 1000 × 克数</span><span id="oPc">0.00</span></label>
+              <label class="line cb-line"><input type="checkbox" id="ocbElec" checked><span class="cb-txt">电费 · 功率 ÷ 1000 × 时长 × 电价</span><span id="oElec">0.00</span></label>
+              <label class="line cb-line"><input type="checkbox" id="ocbMach" checked><span class="cb-txt">机器折旧 · 时长 × 每小时机器成本</span><span id="oMach">0.00</span></label>
+              <label class="line cb-line"><input type="checkbox" id="ocbLab" checked><span class="cb-txt">人工 · 时薪 × 处理分钟 ÷ 60</span><span id="oLab">0.00</span></label>
+              <div class="line"><span>额外成本合计（始终计入）</span><span id="oEc">0.00</span></div>
+              <div class="line hl"><span>利润率</span><span id="oMargin">—</span></div>
+            </div>
+          </div>
+
+          <div class="row" style="margin-top:14px">
+            <button class="btn" id="saveOrd">保存订单</button>
+            <button class="btn ghost" id="cancelOrd" type="button" style="display:none">取消编辑</button>
+            <button class="btn ghost" id="viewListBtn" type="button" data-goto="olist">查看订单列表</button>
+            <span class="muted" id="ordMsg"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 订单列表 ============ -->
+    <section id="page-olist" class="page">
+      <div class="stats" id="ordStats"></div>
+      <div class="card">
+        <div class="card-head"><h2>订单列表</h2><span class="muted" id="ordCount"></span></div>
+        <div class="filter-bar">
+          <input id="fSearch" type="search" placeholder="搜订单号 / 客户 / 备注…" />
+          <select id="fStatus"><option value="all">全部状态</option></select>
+          <select id="fSort">
+            <option value="date-desc">最新优先</option>
+            <option value="date-asc">最早优先</option>
+            <option value="profit-desc">利润高→低</option>
+            <option value="due-desc">待收多→少</option>
+          </select>
+        </div>
+        <div class="filter-bar2">
+          <div><label class="f-label">日期从</label><input id="fFrom" type="date" /></div>
+          <div><label class="f-label">到</label><input id="fTo" type="date" /></div>
+          <button class="btn gray sm" id="fClear" type="button">清除筛选</button>
+        </div>
+        <div id="ordList"></div>
+      </div>
+    </section>
+
+    <!-- ============ 耗材 ============ -->
+    <section id="page-mats" class="page">
+      <div class="card">
+        <div class="card-head"><h2 id="matFormTitle">添加耗材</h2><span class="req-note"><i class="dot"></i>为必填项</span></div>
+        <div class="grid mat-grid">
+          <div><label>品牌</label><input id="mBrand" placeholder="点击选择，或直接输入" /></div>
+          <div class="span2"><label>类型<i class="dot"></i></label><input id="mType" placeholder="点击选择，或直接输入" /></div>
+          <div><label>颜色</label>
+            <div class="color-row">
+              <input id="mColor" type="color" value="#ffb02e" title="取色器" />
+              <input id="mColorName" placeholder="点击选择，或直接输入" />
+            </div>
+          </div>
+          <div><label>价格（元 / kg）<i class="dot"></i></label><input id="mPrice" type="number" min="0" step="0.01" placeholder="如 45" /></div>
+        </div>
+        <div class="grid g4" style="margin-top:12px">
+          <div><label>整卷克重（g）</label><input id="mSpool" type="number" min="0" step="1" value="1000" /></div>
+          <div><label>当前剩余（g）</label><input id="mRemain" type="number" min="0" step="1" value="1000" /></div>
+        </div>
+        <div class="row" style="margin-top:10px" id="colorPresets"></div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn" id="addMat">添加耗材</button>
+          <button class="btn gray" id="cancelEditMat" type="button" style="display:none">取消编辑</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>我的耗材</h2><span class="muted">打印记录会自动扣减库存</span></div>
+        <div id="matList"></div>
+      </div>
+    </section>
+
+    <!-- ============ 打印机 ============ -->
+    <section id="page-printers" class="page">
+      <div class="card">
+        <div class="card-head"><h2 id="priFormTitle">添加打印机</h2><span class="req-note"><i class="dot"></i>为必填项</span></div>
+        <div class="grid g3">
+          <div><label>品牌</label><select id="pBrand"></select></div>
+          <div><label>型号<i class="dot"></i></label><input id="pModel" type="text" placeholder="如 P1S" /></div>
+          <div><label>打印时平均功率（W）</label><input id="pPow" type="number" min="0" step="1" placeholder="如 130" /></div>
+          <div><label>电价（元 / 度）</label><input id="pElec" type="number" min="0" step="0.01" placeholder="如 0.49" /><div class="hint">不同机器可设不同电价</div></div>
+          <div><label>购入价（元）</label><input id="pPrice" type="number" min="0" step="1" placeholder="如 5000" /></div>
+          <div><label>折旧年限</label><input id="pDep" type="number" min="0.1" step="0.5" value="2" /></div>
+          <div><label>年维护费（元）</label><input id="pMaint" type="number" min="0" step="10" placeholder="如 1000" /></div>
+          <div><label>使用率（%）</label><input id="pUtil" type="number" min="1" max="100" step="1" value="50" /><div class="hint">实际开机占全天时间的比例</div></div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn" id="addPri">添加打印机</button>
+          <button class="btn gray" id="cancelEditPri" type="button" style="display:none">取消编辑</button>
+        </div>
+      </div>
+      <div class="card"><div class="card-head"><h2>我的打印机</h2></div><div id="priList"></div></div>
+    </section>
+
+    <!-- ============ 打印记录 ============ -->
+    <section id="page-records" class="page">
+      <div class="stats" id="stats"></div>
+      <div class="card">
+        <div class="card-head"><h2>月度成本</h2><span class="muted">近 12 个月</span></div>
+        <div id="monthChart"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>打印记录</h2>
+          <div class="row">
+            <button class="btn ghost sm" id="csvBtn">导出 CSV</button>
+            <button class="btn ghost sm" id="expBtn">导出 JSON</button>
+            <button class="btn ghost sm" id="impBtn">导入 JSON</button>
+            <button class="btn danger sm" id="clrBtn">清空记录</button>
+            <input id="impFile" type="file" accept="application/json,.json" style="display:none" />
+          </div>
+        </div>
+        <div class="filter-bar">
+          <input id="frSearch" type="search" placeholder="搜耗材名 / 备注…" />
+          <select id="frMat"><option value="all">全部耗材</option></select>
+          <select id="frPri"><option value="all">全部打印机</option></select>
+        </div>
+        <div class="filter-bar2">
+          <div><label class="f-label">日期从</label><input id="frFrom" type="date" /></div>
+          <div><label class="f-label">到</label><input id="frTo" type="date" /></div>
+          <button class="btn gray sm" id="frClear" type="button">清除筛选</button>
+        </div>
+        <div id="recList"></div>
+      </div>
+    </section>
+
+    <!-- ============ 设置 ============ -->
+    <section id="page-settings" class="page">
+      <div class="set-tabs" id="setTabs" role="tablist">
+        <button data-p="general" class="on" type="button">常规</button>
+        <button data-p="presets" type="button">预设管理</button>
+        <button data-p="update" type="button">版本与更新</button>
+        <button data-p="data" type="button">数据与账号</button>
+      </div>
+      <div class="set-pane" id="setp-general">
+        <div class="col2">
+          <div class="card">
+            <div class="card-head"><h2>成本与价格</h2></div>
+            <div class="grid g2">
+              <div><label>结算货币</label><select id="setCur">
+                <option value="¥">¥ 人民币</option>
+                <option value="$">$ 美元</option>
+                <option value="€">€ 欧元</option>
+                <option value="£">£ 英镑</option>
+                <option value="HK$">HK$ 港币</option>
+                <option value="NT$">NT$ 新台币</option>
+                <option value="₩">₩ 韩元</option>
+                <option value="¥JP">¥ 日元</option>
+              </select></div>
+              <div><label>低库存预警（g）</label><input id="setLow" type="number" min="0" step="10" /><div class="hint">仪表盘会提示低于此值的耗材</div></div>
+              <div><label>人工时薪（元 / 小时）</label><input id="setLabor" type="number" min="0" step="1" /><div class="hint">接单沟通 + 售后交付的综合时薪</div></div>
+              <div><label>利润加成（%）</label><input id="setPct" type="number" min="0" step="1" /><div class="hint">建议报价 = 全部成本 ×（1 + 加成%）</div></div>
+              <div><label>默认处理耗时（分钟）</label><input id="setLeadMin" type="number" min="0" step="1" /><div class="hint">计算器打开时自动带入</div></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>单据与外观</h2></div>
+            <div class="grid g2">
+              <div><label>订单号前缀</label><input id="setOrdPrefix" type="text" maxlength="10" placeholder="ORD" /><div class="hint">自动单号形如 前缀-日期-序号</div></div>
+              <div><label>启动页</label><select id="setStart">
+                <option value="dash">仪表盘</option>
+                <option value="calc">计算器</option>
+                <option value="order">开单</option>
+                <option value="olist">订单列表</option>
+              </select><div class="hint">打开应用时默认显示的页面</div></div>
+              <div><label>外观</label><select id="setTheme"><option value="dark">深色</option><option value="light">浅色</option></select></div>
+            </div>
+            <div class="row" style="margin-top:12px">
+              <button class="btn ghost sm" id="showOnboard">重新显示新手引导</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="set-pane" id="setp-presets" hidden>
+        <div class="card">
+          <div class="card-head">
+            <h2>预设管理</h2>
+            <span class="muted">耗材类型 / 品牌 / 颜色名 / 打印机品牌都从这里统一管理；在耗材或打印机表单里输入新值也会自动加进来。</span>
+          </div>
+          <div class="preset-tabs" id="presetTabs" role="tablist">
+            <button data-pane="matCategories" class="on" type="button">耗材类型</button>
+            <button data-pane="matBrands" type="button">耗材品牌</button>
+            <button data-pane="matColors" type="button">颜色名</button>
+            <button data-pane="priBrands" type="button">打印机品牌</button>
+          </div>
+          <div class="preset-pane" id="pane-matCategories"></div>
+          <div class="preset-pane" id="pane-matBrands" hidden></div>
+          <div class="preset-pane" id="pane-matColors" hidden></div>
+          <div class="preset-pane" id="pane-priBrands" hidden></div>
+          <div class="preset-toolbar">
+            <span class="muted grow">改完会自动保存到服务端；点「重置默认」可把当前面板还原为内置预设。</span>
+            <button class="btn gray sm" id="presetResetBtn" type="button">重置当前面板为默认</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="set-pane" id="setp-update" hidden>
+        <div class="card">
+          <div class="card-head"><h2>版本与更新</h2><span class="pill" id="verCur">…</span></div>
+          <div><label>更新源（远程 version.json 的 URL）</label><input id="setUpdateUrl" placeholder="https://raw.githubusercontent.com/你/printforge/main/version.json" /></div>
+          <div class="row" style="margin-top:10px">
+            <button class="btn" id="checkUpd">检查更新</button>
+            <button class="btn ghost" id="getUpd" style="display:none">获取更新</button>
+          </div>
+          <div id="updResult" class="upd-result" hidden></div>
+          <details style="margin-top:12px">
+            <summary class="muted" style="cursor:pointer">更新日志</summary>
+            <div id="changelogList" style="margin-top:8px"></div>
+          </details>
+        </div>
+      </div>
+
+      <div class="set-pane" id="setp-data" hidden>
+        <div class="col2">
+          <div class="card">
+            <div class="card-head"><h2>数据</h2></div>
+            <p class="muted" style="margin-top:0">数据存储在服务端（部署时的数据目录 / KV / Redis），多设备访问同一地址即可共享数据。可导出 JSON 离线备份。</p>
+            <div class="row" style="margin-top:10px">
+              <button class="btn ghost" id="setExp">导出全部数据</button>
+              <button class="btn ghost" id="setImp">导入备份</button>
+              <button class="btn gray" id="setDemo">载入演示数据</button>
+              <button class="btn danger" id="setClr">清空全部数据</button>
+            </div>
+            <div class="hint" style="margin-top:8px" id="backupInfo">尚未导出过备份。</div>
+            <div class="row" style="margin-top:12px">
+              <button class="btn ghost" id="logoutBtn" style="display:none">退出登录</button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>关于</h2></div>
+            <p class="muted" style="margin:0 0 6px">PrintForge · 3D 打印经营台 — 前后端分离、零构建、零 npm 依赖。同一份静态文件配合 Node / Workers / Vercel 宿主，可部署到 Docker（含飞牛OS）、Cloudflare Workers、Vercel 等环境。</p>
+            <p class="muted" style="margin:0">v2.3 · 成本累加模型：报价 =（耗材费 + 电费 + 机器折旧 + 人工 + 额外成本）×（1 + 利润加成%）；机器折旧 =（购入价 + 年维护费 × 年限）÷（年限 × 8760h × 使用率）。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- 新手引导 -->
+<div class="overlay" id="onboard" hidden role="dialog" aria-modal="true" aria-label="新手引导">
+  <div class="ob-card">
+    <div class="ob-step" id="obStep">1 / 4</div>
+    <div class="ob-icon" id="obIcon">🖨️</div>
+    <h2 id="obTitle"></h2>
+    <p id="obBody"></p>
+    <div class="ob-dots" id="obDots"></div>
+    <div class="row" style="justify-content:center;margin-top:16px">
+      <button class="btn gray" id="obPrev">上一步</button>
+      <button class="btn" id="obNext">下一步</button>
+      <button class="btn ghost sm" id="obSkip">跳过引导</button>
+    </div>
+  </div>
+</div>
+
+<!-- 确认 / 输入弹窗 -->
+<div class="overlay" id="dlg" hidden role="dialog" aria-modal="true">
+  <div class="ob-card dlg-card">
+    <p id="dlgMsg"></p>
+    <input id="dlgInput" class="dlg-input" hidden />
+    <div class="row" style="justify-content:center;margin-top:18px">
+      <button class="btn gray" id="dlgCancel">取消</button>
+      <button class="btn" id="dlgOk">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 登录门：服务端启用密码保护时，验证通过才能加载与操作数据 -->
+<div class="overlay" id="loginGate" hidden role="dialog" aria-modal="true" aria-label="登录">
+  <div class="ob-card">
+    <div class="ob-icon">🔒</div>
+    <h2 id="loginTitle">验证身份</h2>
+    <p id="loginSub">数据受密码保护，验证通过后才能查看与操作。</p>
+    <input type="password" id="loginPw" class="dlg-input" placeholder="管理密码" autocomplete="current-password" />
+    <input type="password" id="loginPw2" class="dlg-input" placeholder="再输入一次确认" autocomplete="new-password" hidden />
+    <div id="loginErr" class="login-err" hidden></div>
+    <div class="row" style="justify-content:center;margin-top:16px">
+      <button class="btn" id="loginBtn">解锁</button>
+    </div>
+  </div>
+</div>
+
+<!-- 获取更新弹窗 -->
+<div class="overlay" id="updModal" hidden role="dialog" aria-modal="true">
+  <div class="ob-card dlg-card">
+    <h2 id="umTitle">获取更新</h2>
+    <div id="umBody"></div>
+    <div class="row" style="justify-content:center;margin-top:14px">
+      <button class="btn gray" id="umClose">关闭</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script src="assets/store.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

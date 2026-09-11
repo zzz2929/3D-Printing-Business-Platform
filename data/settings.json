@@ -1,0 +1,324 @@
+{
+  "currency": "¥",
+  "theme": "light",
+  "lowStock": 200,
+  "laborHourly": 65,
+  "markupPct": 10,
+  "onboarded": true,
+  "presets": {
+    "matBrands": [
+      "Bambu Lab 拓竹",
+      "Polymaker",
+      "eSUN 易生",
+      "SUNLU",
+      "Creality 创想三维",
+      "ELEGOO 爱乐酷",
+      "Anycubic 纵维立方",
+      "Prusament",
+      "HATCHBOX",
+      "Kexcelled",
+      "天瑞 TIANRUI",
+      "其他 / 通用"
+    ],
+    "matCategories": [
+      {
+        "name": "PLA",
+        "subs": [
+          {
+            "name": "PLA Basic",
+            "desc": "PLA基础款，多彩平滑，适合新手打印"
+          },
+          {
+            "name": "PLA+",
+            "desc": "PLA增韧款，适合打印道具、护具等耐用物品"
+          },
+          {
+            "name": "PLA Matte",
+            "desc": "PLA哑光，细腻哑光，适合手办摆件等"
+          },
+          {
+            "name": "PLA Lite",
+            "desc": "PLA入门款，哑光隐纹，适合新手练手，但强度稍差"
+          },
+          {
+            "name": "PLA Silk",
+            "desc": "PLA丝绸，有光泽感，适合需要丝绸质感的模型"
+          },
+          {
+            "name": "PLA Silk+",
+            "desc": "PLA丝绸+，有更强的韧性，适合需要强度的丝绸质感模型"
+          },
+          {
+            "name": "PLA 多色丝绸",
+            "desc": "横向渐变，颜色随角度变化"
+          },
+          {
+            "name": "PLA 渐变",
+            "desc": "竖向渐变，颜色随高度变化"
+          },
+          {
+            "name": "PLA Translucent",
+            "desc": "PLA半透明，适合打印灯罩，色彩仿玻璃装饰"
+          },
+          {
+            "name": "PLA Glow",
+            "desc": "PLA夜光，暗处发光"
+          },
+          {
+            "name": "PLA Wood",
+            "desc": "PLA木质，添加木粉，模仿木头质感，有木香"
+          },
+          {
+            "name": "PLA Metal",
+            "desc": "PLA金属，金属光泽，高端质感，适合需要金属质感的模型"
+          },
+          {
+            "name": "PLA Marble",
+            "desc": "PLA大理石，添加石粉，仿大理石纹路，适合石头、房屋"
+          },
+          {
+            "name": "PLA Sparkle",
+            "desc": "PLA闪耀，添加闪粉，细腻美观，适合摆件挂饰等"
+          },
+          {
+            "name": "PLA Aero",
+            "desc": "PLA发泡，低密度轻量化，适合打印航模"
+          },
+          {
+            "name": "PLA-CF",
+            "desc": "PLA碳纤增强，抗弯折，适合需要强度的零件，5/10/15不同含量"
+          },
+          {
+            "name": "PLA 温变",
+            "desc": "遇热变色"
+          },
+          {
+            "name": "PVA 水溶",
+            "desc": "泡温水溶解，精细支撑，常用作精细手办模型的支撑"
+          }
+        ]
+      },
+      {
+        "name": "ABS&ASA",
+        "note": "微毒性 · 需仓温和外排条件",
+        "subs": [
+          {
+            "name": "ABS",
+            "desc": "高韧耐久，高耐温，适合需要强度的零件"
+          },
+          {
+            "name": "ABS-CF",
+            "desc": "含碳纤，高尺寸稳定性，适合哑光质感的高刚度结构件"
+          },
+          {
+            "name": "ABS-GF",
+            "desc": "含玻纤，绝缘，耐腐蚀"
+          },
+          {
+            "name": "ABS-FR",
+            "desc": "阻燃ABS，防火安全，抗冲击，适合电子配件、汽车配件"
+          },
+          {
+            "name": "ABS Easy",
+            "desc": "ABS易打款，开放式易打印，适合无封箱玩家使用（注意通风）"
+          },
+          {
+            "name": "ASA",
+            "desc": "耐紫外线，耐高温，高韧坚固，适合户外应用和常规工程件"
+          },
+          {
+            "name": "ASA Aero",
+            "desc": "ABS发泡，坚韧抗冲击，低密度，耐水耐紫外线，适合受力件"
+          },
+          {
+            "name": "ASA-CF",
+            "desc": "ABS碳纤维，耐晒耐候，耐高温，高韧坚固，适合高机械强度模型"
+          }
+        ]
+      },
+      {
+        "name": "PETG",
+        "subs": [
+          {
+            "name": "PETG Basic",
+            "desc": "PETG基础，最常见的PETG，适合打印挂钩、支架等"
+          },
+          {
+            "name": "PETG Matte",
+            "desc": "PETG哑光，质感好但打印难度大，新手慎用"
+          },
+          {
+            "name": "PETG Translucent",
+            "desc": "PETG半透明"
+          },
+          {
+            "name": "PETG Metal",
+            "desc": "PETG金属，高端金属质感，适合需要仿金属的模型"
+          },
+          {
+            "name": "PETG Marble",
+            "desc": "PETG大理石，添加石粉，仿大理石纹路，适合石头、房屋"
+          },
+          {
+            "name": "PETG-HF",
+            "desc": "PETG高速，流动性好，可开狂暴模式"
+          },
+          {
+            "name": "PETG-CF",
+            "desc": "PETG碳纤，抗弯折，适合需要强度的零件，5/10/15不同含量"
+          },
+          {
+            "name": "PETG-GF",
+            "desc": "PETG玻纤，绝缘，耐腐蚀，适合打印室外模型，5/10/15不同含量"
+          },
+          {
+            "name": "PETG-Diffuse",
+            "desc": "PETG光扩散，良好透光率与扩散效果，适合灯箱模型"
+          }
+        ]
+      },
+      {
+        "name": "柔性耗材",
+        "note": "硬度从上往下递增",
+        "subs": [
+          {
+            "name": "TPU 85A",
+            "desc": "更柔软，适合保护套、缓冲件和鞋子"
+          },
+          {
+            "name": "TPU 90A",
+            "desc": "适合打印鞋底、遥控车轮胎等，柔韧性强硬度并存"
+          },
+          {
+            "name": "TPU 95A",
+            "desc": "柔软高韧，抗冲击，适合需承受冲击、跌落、碰撞的零件"
+          },
+          {
+            "name": "TPU 98A",
+            "desc": "抗冲击性强，复弯后仍能保持性能，耐用性高"
+          },
+          {
+            "name": "TPU 64D",
+            "desc": "具有较高硬度和一定回弹性，适合打印手提袋一类"
+          },
+          {
+            "name": "TPU 68D",
+            "desc": "具有较高硬度和一定回弹性，适合打印手提袋一类"
+          },
+          {
+            "name": "TPU Aero",
+            "desc": "发泡TPU，布艺质感，柔软舒适，高回弹、减震耐磨、轻量化"
+          },
+          {
+            "name": "PEBA 95A",
+            "desc": "轻量、回弹高、抗冲击优秀、耐磨，适合珠类等高回弹物件"
+          },
+          {
+            "name": "PEBA 90A",
+            "desc": "高弹力、高韧性、耐磨，适合户外场景的物件"
+          }
+        ]
+      },
+      {
+        "name": "工程耗材",
+        "subs": [
+          {
+            "name": "PA6",
+            "desc": "尼龙，耐磨，抗冲击，耐腐蚀，适合打印工程件"
+          },
+          {
+            "name": "PA66",
+            "desc": "相较于PA6更耐温"
+          },
+          {
+            "name": "PA6+",
+            "desc": "强韧耐磨，在PA6基础上增韧"
+          },
+          {
+            "name": "PA6-CF",
+            "desc": "含碳纤，高强高刚，高韧防震，适合自行车部件等，5-20含量"
+          },
+          {
+            "name": "PA6-GF",
+            "desc": "含玻纤，绝缘，耐腐蚀，适合承重件、抗弯抗冲击部件"
+          },
+          {
+            "name": "PC",
+            "desc": "良好性能，透光高亮，超耐高温，汽车/电子/光学医疗领域"
+          },
+          {
+            "name": "PC FR",
+            "desc": "阻燃，工程机械性能，适合电子、汽车和机械工程等关键场景"
+          },
+          {
+            "name": "PAHT-CF",
+            "desc": "更少吸水，耐热，刚强坚韧，能承受巨大力而不变形"
+          },
+          {
+            "name": "POM",
+            "desc": "高强高钢高弹，有自润滑，可用于医疗领域"
+          },
+          {
+            "name": "PET-CF",
+            "desc": "含碳纤，超低吸湿，高强高刚高耐温，适合湿度较高的环境"
+          }
+        ]
+      },
+      {
+        "name": "特种塑料",
+        "subs": [
+          {
+            "name": "PPA",
+            "desc": "耐热、耐磨、高刚性、耐水耐高温，精度和强度要求高的部件"
+          },
+          {
+            "name": "PPA-CF",
+            "desc": "碳纤增强PPA，准金属强度，耐水耐高温，可替换汽车/工业零件"
+          },
+          {
+            "name": "PPS",
+            "desc": "天然阻燃耐腐蚀，适用于电子电器工业设备"
+          },
+          {
+            "name": "PPS-CF",
+            "desc": "高耐温，天然阻燃，强器械性能，适用于电子产品、汽车关键件"
+          },
+          {
+            "name": "PEEK",
+            "desc": "塑料之王，综合性能最强"
+          }
+        ]
+      }
+    ],
+    "matColors": [
+      "曜石黑",
+      "象牙白",
+      "太空灰",
+      "中国红",
+      "火山橙",
+      "柠檬黄",
+      "松涛绿",
+      "克莱因蓝",
+      "罗兰紫",
+      "樱花粉",
+      "咖啡棕",
+      "香槟金",
+      "钛银",
+      "透明",
+      "荧光绿",
+      "渐变色"
+    ],
+    "priBrands": [
+      "拓竹 Bambu Lab",
+      "创想三维 Creality",
+      "Prusa Research",
+      "纵维立方 Anycubic",
+      "爱乐酷 Elegoo",
+      "QIDI 科技",
+      "Snapmaker",
+      "UltiMaker",
+      "拓斯 Tiertime",
+      "其他 / 自制"
+    ]
+  }
+}

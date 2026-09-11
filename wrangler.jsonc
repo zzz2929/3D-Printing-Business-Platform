@@ -1,0 +1,15 @@
+{
+  // Cloudflare Workers 部署：`npx wrangler deploy`
+  // 首次部署前：npx wrangler kv namespace create DATA，把返回的 id 填到下面
+  "name": "printforge",
+  "main": "worker.js",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": ".",
+    "binding": "ASSETS",
+    "exclude": ["node_modules", ".git", "data", "*.md", "Dockerfile", "docker-compose.yml", ".dockerignore", "nginx.conf", "wrangler.jsonc"]
+  },
+  "kv_namespaces": [
+    { "binding": "DATA", "id": "在此填入 wrangler kv namespace create DATA 输出的 id" }
+  ]
+}

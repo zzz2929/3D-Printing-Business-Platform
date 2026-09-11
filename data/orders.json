@@ -1,0 +1,159 @@
+[
+  {
+    "id": "mtuliagfwyxg1",
+    "orderNo": "ORD-20260910-002",
+    "date": "2026-09-10",
+    "status": "done",
+    "wechat": "",
+    "custName": "",
+    "quote": 3,
+    "materialId": "mtukovgntu83t",
+    "matName": "PLA Basic",
+    "matColor": "#ffb02e",
+    "printerId": "mtt14bm8ddi6z",
+    "priName": "拓竹 Bambu Lab X2D",
+    "grams": 4,
+    "hours": 2,
+    "handlingMin": 1,
+    "printCost": 2.584041095890411,
+    "inclFil": false,
+    "inclElec": true,
+    "inclMach": true,
+    "inclLab": true,
+    "extras": [
+      {
+        "label": "建模",
+        "amount": 0
+      },
+      {
+        "label": "运费",
+        "amount": 0
+      },
+      {
+        "label": "包装",
+        "amount": 0
+      },
+      {
+        "label": "其他",
+        "amount": 0
+      }
+    ],
+    "extraCost": 0,
+    "totalCost": 2.584041095890411,
+    "received": 0,
+    "payments": [],
+    "profit": -2.584041095890411,
+    "modelFile": {
+      "name": "",
+      "size": "",
+      "note": ""
+    },
+    "note": "",
+    "updated": 1788988431627,
+    "created": 1788988408431
+  },
+  {
+    "id": "mtula9xgwrht3",
+    "orderNo": "ORD-20260910-001",
+    "date": "2026-09-10",
+    "status": "quote",
+    "wechat": "",
+    "custName": "",
+    "quote": 1,
+    "materialId": "mtukovgntu83t",
+    "matName": "PLA Basic",
+    "matColor": "#ffb02e",
+    "printerId": "mtt14bm8ddi6z",
+    "priName": "拓竹 Bambu Lab X2D",
+    "grams": 54,
+    "hours": 1,
+    "handlingMin": 0,
+    "printCost": 0.8583538812785387,
+    "extras": [
+      {
+        "label": "建模",
+        "amount": 0
+      },
+      {
+        "label": "运费",
+        "amount": 0
+      },
+      {
+        "label": "包装",
+        "amount": 0
+      },
+      {
+        "label": "其他",
+        "amount": 0
+      }
+    ],
+    "extraCost": 0,
+    "totalCost": 0.8583538812785387,
+    "received": 0,
+    "payments": [],
+    "profit": -0.8583538812785387,
+    "modelFile": {
+      "name": "",
+      "size": "",
+      "note": ""
+    },
+    "note": "zzz",
+    "updated": 1788988034500,
+    "created": 1788988034500
+  },
+  {
+    "id": "mtt1as6hki39z",
+    "orderNo": "ORD-20260909-001",
+    "date": "2026-09-09",
+    "status": "done",
+    "wechat": "",
+    "custName": "",
+    "quote": 1,
+    "materialId": "mtt12r1lf48zv",
+    "matName": "Bambu Lab 拓竹 PLA",
+    "matColor": "#876022",
+    "printerId": "mtt0unva76ec4",
+    "priName": "打印机 样例",
+    "grams": 3,
+    "hours": 1,
+    "handlingMin": 0,
+    "printCost": 0.907,
+    "extras": [
+      {
+        "label": "建模",
+        "amount": 0
+      },
+      {
+        "label": "运费",
+        "amount": 0
+      },
+      {
+        "label": "包装",
+        "amount": 0
+      },
+      {
+        "label": "其他",
+        "amount": 0
+      }
+    ],
+    "extraCost": 0,
+    "totalCost": 0.907,
+    "received": 12,
+    "payments": [
+      {
+        "date": "2026-09-09",
+        "note": "",
+        "amount": 12
+      }
+    ],
+    "profit": 11.093,
+    "modelFile": {
+      "name": "",
+      "size": "",
+      "note": ""
+    },
+    "note": "",
+    "updated": 1788894038576,
+    "created": 1788893999658
+  }
+]

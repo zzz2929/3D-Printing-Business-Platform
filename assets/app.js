@@ -1,0 +1,1597 @@
+/* PrintForge · 界面与交互 */
+"use strict";
+
+(function(){
+  const S = Store;
+  const $ = id => document.getElementById(id);
+  const FACES = ["(≧▽≦)","(´▽`ʃ♡ƪ)","(｡•̀ᴗ-)✧","ヾ(•ω•`)o","✧(≖ ‿ ≖)✧","(๑•̀ㅂ•́)و✧"];
+  const randFace = () => FACES[Math.floor(Math.random() * FACES.length)];
+
+  const PAGE_TITLES = { dash:"仪表盘", calc:"成本计算器", order:"开单", olist:"订单列表", mats:"耗材库房", printers:"打印机", records:"打印记录", settings:"设置" };
+  const RENDERERS = {};
+  /* 打印机品牌下拉改为 attachCombo 风格（在下方重新初始化），先清空原 select 内容 */
+  $("pBrand").innerHTML = "";
+
+  /* 常用颜色快选 */
+  const PRESET_COLORS = [
+    ["曜石黑","#1a1a1a"],["象牙白","#f5f2ea"],["太空灰","#9aa3ad"],["中国红","#d03a2b"],
+    ["火山橙","#e8590c"],["柠檬黄","#f5b301"],["松涛绿","#2f9e44"],["克莱因蓝","#1971c2"],
+    ["罗兰紫","#7048e8"],["樱花粉","#f783ac"],["咖啡棕","#8d6e4a"],["香槟金","#c9a86a"]
+  ];
+  $("colorPresets").innerHTML = PRESET_COLORS.map(([n,c],i) =>
+    `<button type="button" class="sw-p" data-c="${c}" data-n="${n}" title="${n}" style="background:${c}"></button>`).join("");
+  $("colorPresets").addEventListener("click", e => {
+    const b = e.target.closest(".sw-p"); if(!b) return;
+    $("mColor").value = b.getAttribute("data-c");
+    $("mColorName").value = b.getAttribute("data-n");
+    document.querySelectorAll(".sw-p").forEach(x => x.classList.toggle("on", x === b));
+  });
+
+  /* ---------- 通用 ---------- */
+  let toastT;
+  function toast(msg){
+    const t = $("toast"); t.textContent = msg; t.classList.add("show");
+    clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 2200);
+  }
+  /* 应用内确认 / 输入弹窗（替代 window.confirm / prompt） */
+  let dlgResolve = null;
+  function showDialog(msg, opts){
+    opts = opts || {};
+    return new Promise(res => {
+      dlgResolve = res;
+      $("dlgMsg").textContent = msg;
+      $("dlgInput").hidden = !opts.input;
+      if(opts.input) $("dlgInput").value = opts.def || "";
+      $("dlgOk").textContent = opts.okText || "确定";
+      $("dlg").hidden = false;
+      (opts.input ? $("dlgInput") : $("dlgOk")).focus();
+    });
+  }
+  function closeDialog(v){
+    if($("dlg").hidden) return;
+    $("dlg").hidden = true;
+    const r = dlgResolve; dlgResolve = null;
+    if(r) r(v);
+  }
+  function confirmBox(msg){ return showDialog(msg); }
+  function promptBox(msg, def){ return showDialog(msg, { input:true, def }); }
+  $("dlgOk").addEventListener("click", () => closeDialog($("dlgInput").hidden ? true : $("dlgInput").value));
+  $("dlgCancel").addEventListener("click", () => closeDialog($("dlgInput").hidden ? false : null));
+  $("dlgInput").addEventListener("keydown", e => { if(e.key === "Enter") $("dlgOk").click(); });
+  document.addEventListener("keydown", e => {
+    if(e.key === "Escape" && !$("dlg").hidden) closeDialog($("dlgInput").hidden ? false : null);
+  });
+
+  /* ---------- 可输可选下拉（combo）：点箭头始终展示全部选项，输入时过滤，支持自由输入 ----------
+     opts.onAdd(v)    当用户输入的内容不在列表里、且触发"保存/失焦"时调用。
+                      返回 true 视为已加入预设并把值显示为已选项；返回 false 视为放弃。
+     opts.onFree(v)   可选：替代 onAdd 的更通用钩子。 */
+  function attachCombo(input, getOptions, opts){
+    opts = opts || {};
+    const wrap = document.createElement("span"); wrap.className = "combo";
+    input.parentNode.insertBefore(wrap, input); wrap.appendChild(input);
+    const btn = document.createElement("button"); btn.type = "button"; btn.className = "combo-caret"; btn.title = "展开选项";
+    wrap.appendChild(btn);
+    const pop = document.createElement("div"); pop.className = "combo-pop"; wrap.appendChild(pop);
+    function renderList(q){
+      const ql = String(q || "").trim().toLowerCase();
+      const all = getOptions();
+      const list = all.filter(o => !ql || o.toLowerCase().includes(ql));
+      const v = input.value.trim();
+      const exists = !v || all.indexOf(v) >= 0;
+      const addHtml = (!exists && v)
+        ? `<button type="button" class="combo-item combo-add" data-add="${S.esc(v)}">＋ 把「<b>${S.esc(v)}</b>」加入预设</button>` : "";
+      pop.innerHTML = (list.length || addHtml)
+        ? addHtml + list.map(o => `<button type="button" class="combo-item${o === input.value ? " on" : ""}">${S.esc(o)}</button>`).join("")
+        : '<div class="combo-empty">无匹配项 — 输入新内容后可点下方「加入预设」</div>';
+    }
+    function open(full){ renderList(full ? "" : input.value); pop.classList.add("open"); btn.classList.add("open"); }
+    function close(){ pop.classList.remove("open"); btn.classList.remove("open"); }
+    btn.addEventListener("click", e => { e.stopPropagation(); pop.classList.contains("open") ? close() : open(true); });
+    input.addEventListener("focus", () => open(true)); // 聚焦/再次点开都给完整列表
+    input.addEventListener("input", () => open(false));
+    pop.addEventListener("click", e => {
+      const addBtn = e.target.closest("[data-add]");
+      if(addBtn){
+        const v = addBtn.getAttribute("data-add");
+        let ok = true;
+        if(typeof opts.onAdd === "function") ok = opts.onAdd(v);
+        else if(typeof opts.onFree === "function") ok = opts.onFree(v);
+        if(ok){
+          input.value = v; close();
+          input.dispatchEvent(new Event("input", { bubbles:true }));
+          input.dispatchEvent(new Event("change", { bubbles:true }));
+          toast("已加入预设：「" + v + "」");
+        }else close();
+        return;
+      }
+      const it = e.target.closest(".combo-item"); if(!it) return;
+      input.value = it.textContent; close();
+      input.dispatchEvent(new Event("input", { bubbles:true }));
+      input.dispatchEvent(new Event("change", { bubbles:true }));
+    });
+    document.addEventListener("click", e => { if(!wrap.contains(e.target)) close(); });
+  }
+
+  /* ---------- 二级选择器（cascader）：点击触发器，弹出"左大类 / 右小类+说明"面板 ----------
+     - getCategories(): [{ name, note? }]
+     - getSubs(catName): [{ name, desc? }]
+     - onPick(subName, catName, subObj) 选中后回调（subObj.desc 为说明）
+     - 支持"输入新值"自动加入预设（仅小类级）：通过 opts.onAddSub(catName, subName) 钩子
+  */
+  function attachCascader(input, opts){
+    const wrap = document.createElement("span"); wrap.className = "combo cascader";
+    input.parentNode.insertBefore(wrap, input); wrap.appendChild(input);
+    const btn = document.createElement("button"); btn.type = "button"; btn.className = "combo-caret"; btn.title = "展开选项";
+    wrap.appendChild(btn);
+    const pop = document.createElement("div"); pop.className = "casc-pop";
+    wrap.appendChild(pop);
+    let activeCat = null;
+
+    function getCats(){ return opts.getCategories().slice(); }
+    function getSubs(c){ return opts.getSubs(c).slice(); }
+    function refreshActive(){
+      const cats = getCats();
+      if(!activeCat || !cats.find(c => c.name === activeCat)) activeCat = cats[0] ? cats[0].name : null;
+    }
+    function render(){
+      const cats = getCats();
+      if(!cats.length){
+        pop.innerHTML = '<div class="combo-empty">还没有任何大类，去「设置 → 预设管理」添加</div>';
+        return;
+      }
+      refreshActive();
+      const cur = cats.find(c => c.name === activeCat);
+      const subs = cur ? getSubs(cur.name) : [];
+      const note = cur && cur.note ? `<div class="casc-cat-note">${S.esc(cur.note)}</div>` : "";
+      pop.innerHTML =
+        '<div class="casc-grid">' +
+          '<div class="casc-left">' + note +
+            cats.map(c => `<button type="button" class="casc-cat${c.name === activeCat ? " on" : ""}" data-cat="${S.esc(c.name)}">${S.esc(c.name)}</button>`).join("") +
+          '</div>' +
+          '<div class="casc-right">' +
+            (subs.length
+              ? subs.map(s => `<button type="button" class="casc-sub" data-sub="${S.esc(s.name)}" data-cat="${S.esc(cur.name)}"><div class="casc-sub-n">${S.esc(s.name)}</div>${s.desc ? `<div class="casc-sub-d">${S.esc(s.desc)}</div>` : ""}</button>`).join("")
+              : '<div class="combo-empty">该大类下还没有小类</div>') +
+            (typeof opts.onAddSub === "function"
+              ? `<button type="button" class="casc-sub casc-add" data-addsub="1">＋ 在「${S.esc(cur.name)}」下新增小类</button>` : "") +
+          '</div>' +
+        '</div>';
+    }
+    function open(){ render(); pop.classList.add("open"); btn.classList.add("open"); }
+    function close(){ pop.classList.remove("open"); btn.classList.remove("open"); }
+    btn.addEventListener("click", e => { e.stopPropagation(); pop.classList.contains("open") ? close() : open(); });
+    input.addEventListener("focus", () => open());
+    pop.addEventListener("click", e => {
+      e.stopPropagation(); // 阻止冒泡到 document，避免 render() 替换 innerHTML 后 wrap.contains() 失效导致误关弹层
+      const cat = e.target.closest("[data-cat]");
+      const sub = e.target.closest("[data-sub]");
+      const addSub = e.target.closest("[data-addsub]");
+      if(cat && !sub){
+        activeCat = cat.getAttribute("data-cat"); render(); return;
+      }
+      if(sub){
+        const catName = sub.getAttribute("data-cat");
+        const subName = sub.getAttribute("data-sub");
+        const subObj = (opts.getSubs(catName) || []).find(x => x.name === subName);
+        input.value = subName; close();
+        input.dispatchEvent(new Event("input", { bubbles:true }));
+        input.dispatchEvent(new Event("change", { bubbles:true }));
+        if(typeof opts.onPick === "function") opts.onPick(subName, catName, subObj || { name:subName });
+        return;
+      }
+      if(addSub){
+        // 弹窗输入新小类名 + 说明
+        (async () => {
+          const nm = await promptBox("在「" + activeCat + "」下新增小类名称", "");
+          if(!nm) return;
+          const ds = await promptBox("简短说明（可留空）", "");
+          if(typeof opts.onAddSub === "function"){
+            const ok = opts.onAddSub(activeCat, nm.trim(), (ds || "").trim());
+            if(ok){ input.value = nm.trim(); close(); render();
+              input.dispatchEvent(new Event("input", { bubbles:true }));
+              input.dispatchEvent(new Event("change", { bubbles:true }));
+              toast("已新增：「" + activeCat + " / " + nm.trim() + "」");
+            }
+          }
+        })();
+      }
+    });
+    // 弹层内部滚轮不关闭弹层；点击空白处才关闭
+    pop.addEventListener("wheel", e => e.stopPropagation());
+    document.addEventListener("click", e => { if(!wrap.contains(e.target)) close(); });
+    /* 失焦时：若输入值不在任何小类里，自动作为新小类加到"当前激活的大类" */
+    if(typeof opts.onAddSub === "function"){
+      input.addEventListener("blur", () => {
+        const v = input.value.trim(); if(!v) return;
+        const cats = opts.getCategories();
+        // 排除：值等于某个大类名（避免老数据里纯大类名被误当小类）
+        if(cats.find(c => c.name === v)) return;
+        const all = [].concat(...cats.map(c => (opts.getSubs(c.name) || []).map(s => s.name)));
+        if(all.indexOf(v) >= 0) return;
+        refreshActive();
+        const cat = activeCat || (cats[0] && cats[0].name);
+        if(!cat) return;
+        if(S.addSub(cat, v, "")) toast("已加入「" + cat + "」下：「" + v + "」（可在设置页补充说明）");
+      });
+    }
+    /* 暴露刷新方法，供"设置页改了预设"后重渲染 */
+    wrap.refresh = () => { if(pop.classList.contains("open")) render(); };
+  }
+
+  /* ---------- 把耗材/打印机表单的字段接入预设 ---------- */
+  const MAT_BRANDS  = () => S.presets().matBrands;
+  const MAT_CATS    = () => S.presets().matCategories.map(c => ({ name:c.name, note:c.note }));
+  const MAT_SUBS    = n => { const c = S.findCategory(n); return c ? c.subs : []; };
+  const COLOR_NAMES = () => S.presets().matColors;
+  const PRI_BRANDS  = () => S.presets().priBrands;
+  attachCombo($("mBrand"), MAT_BRANDS,    { onAdd:v => S.addMatBrand(v) });
+  attachCascader($("mType"), {
+    getCategories: MAT_CATS, getSubs: MAT_SUBS,
+    onPick: () => {},  // input.value 已自动写好
+    onAddSub: (cat, sub, desc) => S.addSub(cat, sub, desc)
+  });
+  attachCombo($("mColorName"), COLOR_NAMES, { onAdd:v => S.addMatColor(v) });
+  /* 打印机品牌：从 <select> 改为 attachCombo 风格，支持输入新品牌 */
+  attachCombo($("pBrand"), PRI_BRANDS, { onAdd:v => S.addPriBrand(v) });
+
+  /* 颜色名 → 取色框联动 */
+  const COLOR_HEX = {};
+  PRESET_COLORS.forEach(([n, c]) => COLOR_HEX[n] = c);
+  Object.assign(COLOR_HEX, { "钛银":"#c0c6cc", "透明":"#dff1f5", "荧光绿":"#54e34a", "渐变色":"#b06ab3" });
+  function syncColorFromName(){
+    const n = $("mColorName").value.trim();
+    if(COLOR_HEX[n]) $("mColor").value = COLOR_HEX[n];
+  }
+  $("mColorName").addEventListener("input", syncColorFromName);
+  $("mColorName").addEventListener("change", syncColorFromName);
+
+  /* 迷你柱状图（HTML 弹性柱，避免 SVG 拉伸变形） */
+  function barChart(data, opts){
+    opts = opts || {};
+    const max = Math.max(...data.map(d => Math.abs(d.value)), 0.0001);
+    const cls = opts.color === "var(--ok)" ? "pos" : "acc";
+    return '<div class="hchart" style="height:' + (opts.height || 150) + 'px">' + data.map(d => {
+      const h = Math.max(2, Math.abs(d.value) / max * 100);
+      const c = d.value < 0 ? "neg" : cls;
+      return `<div class="hcol"><div class="hbar-wrap"><div class="hbar ${c}" style="height:${h.toFixed(1)}%" title="${S.esc(d.tip || d.label + " · " + S.money(d.value))}"></div></div><div class="hlab">${S.esc(d.label)}</div></div>`;
+    }).join("") + "</div>";
+  }
+
+  /* ---------- 路由 ---------- */
+  let currentTab = "dash";
+  function goto(tab){
+    if(!PAGE_TITLES[tab]) tab = "dash";
+    currentTab = tab;
+    document.querySelectorAll(".page").forEach(p => p.classList.remove("on"));
+    const page = $("page-" + tab); if(page) page.classList.add("on");
+    document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("on", b.getAttribute("data-tab") === tab));
+    $("pageTitle").textContent = PAGE_TITLES[tab];
+    if(location.hash !== "#/" + tab) history.replaceState(null, "", "#/" + tab);
+    RENDERERS[tab]();
+    window.scrollTo({ top:0 });
+  }
+  $("nav").addEventListener("click", e => {
+    const b = e.target.closest("button[data-tab]"); if(!b) return;
+    goto(b.getAttribute("data-tab"));
+  });
+  document.addEventListener("click", e => {
+    const g = e.target.closest("[data-goto]"); if(g) goto(g.getAttribute("data-goto"));
+  });
+  window.addEventListener("hashchange", () => {
+    const t = (location.hash.match(/^#\/(\w+)/) || [])[1];
+    if(t && t !== currentTab) goto(t);
+  });
+
+  /* ---------- 选择器填充 ---------- */
+  function matOpts(){ return '<option value="">— 选择耗材 —</option>' + S.materials.map(m => `<option value="${m.id}">${S.esc(m.name)} · 剩 ${S.fmt(m.remaining, 0)}g</option>`).join(""); }
+  function priOpts(){ return '<option value="">— 选择打印机（可选） —</option>' + S.printers.map(p => `<option value="${p.id}">${S.esc(p.name)}（${S.num(p.powerW)}W）</option>`).join(""); }
+  function fillSelects(){
+    ["selMat","oMat"].forEach(id => { const el = $(id), v = el.value; el.innerHTML = matOpts(); el.value = v; });
+    ["selPri","oPri"].forEach(id => { const el = $(id), v = el.value; el.innerHTML = priOpts(); el.value = v; });
+  }
+
+  /* ============ 仪表盘 ============ */
+  /* 时间筛选与订单列表同款（日期从/到），外加快捷区间按钮 */
+  function isoDate(d){ return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0"); }
+  let dashSel = { preset:"month" }; // {preset} 或 {from,to}
+  function dashRange(){
+    const t = S.today(), now = new Date();
+    if(dashSel.preset === "7d"){ const s = new Date(now); s.setDate(now.getDate() - 6); return { from:isoDate(s), to:t, label:"近7天" }; }
+    if(dashSel.preset === "6m"){ const s = new Date(now.getFullYear(), now.getMonth() - 5, 1); return { from:isoDate(s), to:t, label:"近6个月" }; }
+    if(dashSel.preset === "5y"){ return { from:(now.getFullYear() - 4) + "-01-01", to:t, label:"近5年" }; }
+    return { from:t.slice(0,7) + "-01", to:t, label:"本月" };
+  }
+  function inRange(o, r){ const d = String(o.date || ""); return d >= r.from && d <= r.to; }
+  function orderProfit(o){ return S.num(o.received) - S.num(o.totalCost); }
+  function dashMarkActive(){
+    document.querySelectorAll("#dashQuick button").forEach(b => b.classList.toggle("on", b.getAttribute("data-q") === dashSel.preset));
+  }
+  function dashApply(r, preset){
+    dashSel = preset ? { preset } : { from:r.from, to:r.to };
+    $("dashFrom").value = r.from; $("dashTo").value = r.to;
+    dashMarkActive(); renderDash();
+  }
+  $("dashQuick").addEventListener("click", e => {
+    const b = e.target.closest("button[data-q]"); if(!b) return;
+    dashApply(dashRange(), b.getAttribute("data-q") === "month" ? "month" : b.getAttribute("data-q"));
+    // 让 preset 与 range 完全一致
+    dashSel = { preset:b.getAttribute("data-q") };
+    dashMarkActive(); renderDash();
+  });
+  $("dashFrom").addEventListener("change", () => { dashSel = { from:$("dashFrom").value, to:$("dashTo").value }; dashMarkActive(); renderDash(); });
+  $("dashTo").addEventListener("change", () => { dashSel = { from:$("dashFrom").value, to:$("dashTo").value }; dashMarkActive(); renderDash(); });
+  $("dashClear").addEventListener("click", () => { dashSel = { preset:"month" }; const r = dashRange(); $("dashFrom").value = r.from; $("dashTo").value = r.to; dashMarkActive(); renderDash(); });
+
+  function inRange(o, r){ const d = String(o.date || ""); return d >= r.from && d <= r.to; }
+  function orderProfit(o){ return S.num(o.received) - S.num(o.totalCost); }
+
+  /* 趋势序列：按区间跨度自动选粒度（≤31天按日，≤2年按月，更长按年） */
+  function trendSeries(from, to){
+    const d1 = new Date(from + "T00:00:00"), d2 = new Date(to + "T00:00:00");
+    const days = Math.max(1, Math.round((d2 - d1) / 86400000) + 1);
+    const out = [];
+    if(days <= 31){
+      for(let i = 0; i < days; i++){
+        const d = new Date(d1); d.setDate(d1.getDate() + i);
+        out.push({ key:isoDate(d), label:(d.getMonth() + 1) + "/" + d.getDate(), value:0 });
+      }
+      S.orders.forEach(o => { const b = out.find(x => x.key === o.date); if(b) b.value += orderProfit(o); });
+    }else if(days <= 800){
+      const y1 = +from.slice(0,4), m1 = +from.slice(5,7), y2 = +to.slice(0,4), m2 = +to.slice(5,7);
+      let y = y1, m = m1;
+      while(y < y2 || (y === y2 && m <= m2)){
+        out.push({ key:y + "-" + String(m).padStart(2,"0"), label:m + "月", value:0 });
+        m++; if(m > 12){ m = 1; y++; }
+      }
+      S.orders.forEach(o => { const b = out.find(x => x.key === String(o.date || "").slice(0,7)); if(b) b.value += orderProfit(o); });
+    }else{
+      const y1 = +from.slice(0,4), y2 = +to.slice(0,4);
+      for(let y = y1; y <= y2; y++) out.push({ key:String(y), label:y + "年", value:0 });
+      S.orders.forEach(o => { const b = out.find(x => x.key === String(o.date || "").slice(0,4)); if(b) b.value += orderProfit(o); });
+    }
+    return out;
+  }
+
+  function renderDash(){
+    if(!$("dashFrom").value){ const rr = dashRange(); $("dashFrom").value = rr.from; $("dashTo").value = rr.to; }
+    const r = { from:$("dashFrom").value, to:$("dashTo").value };
+    const title = dashSel.preset ? { "7d":"近7天", "6m":"近6个月", "5y":"近5年", "month":"本月" }[dashSel.preset] : "所选区间";
+    const inP = S.orders.filter(o => o.status !== "canceled" && inRange(o, r));
+    const rev = inP.reduce((s,o) => s + S.num(o.received), 0);
+    const cost = inP.reduce((s,o) => s + S.num(o.totalCost), 0);
+    const profit = rev - cost;
+    const st = S.orderStats();
+    const prog = S.orders.filter(o => inRange(o, r));
+    const active = prog.filter(o => !["done","canceled"].includes(o.status)).length;
+    const doneN = prog.filter(o => o.status === "done").length;
+
+    $("dashRangeTitle").textContent = title + "经营";
+    $("dashStats").innerHTML = [
+      ["营收 · 利润", S.money(rev), `利润 ${S.money(profit)} · 利润率 ${rev > 0 ? (profit / rev * 100).toFixed(1) : 0}% · ${inP.length} 单`, profit >= 0 ? "up" : "down"],
+      ["待收款（全部）", S.money(st.due), st.due > 0 ? "有未结订单" : "已结清", st.due > 0 ? "down" : ""],
+      ["进行中订单", String(active), title + "已完成 " + doneN + " 单", "hi"],
+      ["累计订单", String(st.count), "历史总数 · 已完成 " + S.orders.filter(o => o.status === "done").length + " 单", ""]
+    ].map(([k, v, s, cls]) => `<div class="stat ${cls}"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join("");
+
+    // 趋势图
+    const series = trendSeries(r.from, r.to);
+    $("trendTitle").textContent = "区间利润走势";
+    $("trendHint").textContent = "期间利润 " + S.money(profit);
+    $("profitChart").innerHTML = series.every(m => m.value === 0)
+      ? '<div class="empty">这段时间还没有订单数据</div>'
+      : barChart(series, { color:"var(--ok)" });
+
+    // 经营提醒
+    const alerts = [];
+    S.materials.forEach(m => {
+      if(S.num(m.remaining) <= S.num(S.settings.lowStock))
+        alerts.push(`<div class="alert warn">🧵 <span><b>${S.esc(S.matLabel(m))}</b> 只剩 <b>${S.fmt(m.remaining, 0)}g</b>，低于预警线 ${S.fmt(S.settings.lowStock, 0)}g，记得补货。</span></div>`);
+    });
+    const dueOrders = S.orders.filter(o => o.status !== "canceled" && S.orderDue(o) > 0).sort((a,b) => S.orderDue(b) - S.orderDue(a));
+    if(dueOrders.length)
+      alerts.push(`<div class="alert info">💰 <span><b>${dueOrders.length}</b> 笔订单待收款，合计 <b>${S.money(st.due)}</b>，最大一笔：${S.esc(dueOrders[0].orderNo)}（${S.money(S.orderDue(dueOrders[0]))}）。</span></div>`);
+    if(!alerts.length) alerts.push('<div class="alert ok">✅ <span>一切正常：库存充足，没有待收款。</span></div>');
+    $("dashAlerts").innerHTML = alerts.join("");
+
+    // 最近订单（期间内）
+    const recent = inP.slice().sort((a,b) => String(b.date).localeCompare(String(a.date))).slice(0, 5);
+    $("dashRecent").innerHTML = recent.length ? recent.map(o => {
+      const stt = S.stOf(o.status);
+      return `<div class="ord" style="margin:8px 0"><div class="top">
+        <span class="no">${S.esc(o.orderNo)}</span>
+        <span class="badge" style="--bc:${stt.color}"><i></i>${stt.label}</span></div>
+        <div class="nums"><span>${S.esc(o.date)}</span><span>利润 <b class="${orderProfit(o) >= 0 ? "tot" : "loss"}">${S.money(orderProfit(o))}</b></span>${S.orderDue(o) > 0 ? `<span class="loss">待收 ${S.money(S.orderDue(o))}</span>` : ""}</div></div>`;
+    }).join("") : '<div class="empty">' + (S.orders.length ? title + "没有订单" : "还没有订单<br><span class=\"hint\">去「开单」页开第一单</span>") + "</div>";
+
+    // 客户排行（期间内）
+    const custs = S.byCustomer(inP).slice(0, 5);
+    $("dashCustomers").innerHTML = custs.length
+      ? `<table><thead><tr><th>客户</th><th class="num">单数</th><th class="num">利润</th></tr></thead><tbody>` +
+        custs.map(c => `<tr><td>${S.esc(c.name)}</td><td class="num">${c.n}</td><td class="num ${c.profit >= 0 ? "tot" : "loss"}">${S.money(c.profit)}</td></tr>`).join("") + "</tbody></table>"
+      : '<div class="empty">暂无客户数据</div>';
+
+    renderAch();
+  }
+
+  function renderAch(){
+    const s = S.buildAchStats();
+    $("achList").innerHTML = S.ACHS.map(a => {
+      const p = Math.max(0, Math.min(1, a.goal(s))), on = p >= 1;
+      return `<div class="ach ${on ? "on" : ""}"><div class="ic2">${a.ic}</div>
+        <div class="body" style="flex:1"><div class="nm">${a.nm} ${on ? "✓" : ""}</div><div class="ds">${a.ds}</div>
+        <div class="pg"><i style="width:${(p * 100).toFixed(0)}%"></i></div></div></div>`;
+    }).join("");
+  }
+
+  /* ============ 计算器 ============ */
+  let lastCalc = null; // 供「去开订单」自动带入
+  function calc(){
+    const m = S.matById($("selMat").value), p = S.priById($("selPri").value);
+    const g = S.num($("rGrams").value), h = S.num($("rHoursH").value) + S.num($("rHoursM").value) / 60, min = S.num($("rMin").value);
+    $("matHint").textContent = m ? `单价 ${S.money(S.num(m.pricePerKg))}/kg · 剩余 ${S.fmt(m.remaining, 0)}g` : "必选：去「耗材」页添加";
+    $("priHint").textContent = p ? `功率 ${S.num(p.powerW)}W · 电价 ${S.num(p.elecPrice)} 元/度 · 机器 ${S.money(S.machineRate(p))}/h` : "可选：不选则只算耗材与人工";
+    const c = S.computePrint(m, p, g, h);
+    const lab = (m || p || min) ? S.laborCost(min) : 0;
+    /* 勾选才计入总成本；未勾选项半透明展示，金额仍可见 */
+    const incl = { fil:$("cbFil").checked, elec:$("cbElec").checked, mach:$("cbMach").checked, lab:$("cbLab").checked };
+    const all = (incl.fil ? c.cFil : 0) + (incl.elec ? c.cElec : 0) + (incl.mach ? c.cMach : 0) + (incl.lab ? lab : 0);
+    $("costBig").textContent = S.money(all);
+    $("costFil").textContent = S.money(c.cFil);
+    $("costElec").textContent = S.money(c.cElec);
+    $("costMach").textContent = S.money(c.cMach);
+    $("costLab").textContent = S.money(lab);
+    $("cbFil").closest(".line").classList.toggle("off", !incl.fil);
+    $("cbElec").closest(".line").classList.toggle("off", !incl.elec);
+    $("cbMach").closest(".line").classList.toggle("off", !incl.mach);
+    $("cbLab").closest(".line").classList.toggle("off", !incl.lab);
+    const sug = all > 0 ? all * (1 + S.num(S.settings.markupPct) / 100) : 0;
+    $("costSug").textContent = all > 0 ? S.money(sug) + "（+" + S.fmt(S.settings.markupPct, 0) + "%）" : "—";
+    lastCalc = { matId:$("selMat").value, priId:$("selPri").value, g, h, min, note:$("rNote").value.trim(), sug, incl };
+    return { m, p, g, h, min, c, lab, all, sug, incl };
+  }
+  ["selMat","selPri","rGrams","rHoursH","rHoursM","rMin","cbFil","cbElec","cbMach","cbLab"].forEach(id => $(id).addEventListener("input", calc));
+
+  $("saveBtn").addEventListener("click", () => {
+    const { m, p, g, h, min, c, lab, all, incl } = calc();
+    if(!m){ $("homeMsg").textContent = "请先选择耗材（必填）"; toast("耗材为必填项"); return; }
+    if(g <= 0){ $("homeMsg").textContent = "请填写耗材用量（必填）"; toast("耗材用量为必填项"); return; }
+    if(all <= 0){ $("homeMsg").textContent = "至少勾选一项成本计入"; toast("请至少勾选一项成本"); return; }
+    S.records.unshift({ id:S.uid(), date:S.today(), created:Date.now(),
+      materialId:m.id, matName:m.name, matType:m.type, matColor:m.color, pricePerKg:S.num(m.pricePerKg),
+      printerId:p ? p.id : null, priName:p ? p.name : null, powerW:p ? S.num(p.powerW) : 0, elecPrice:p ? S.num(p.elecPrice) : 0,
+      grams:g, hours:h, handlingMin:min, cFil:c.cFil, cElec:c.cElec, cMach:c.cMach, cLab:lab, total:all,
+      inclFil:incl.fil, inclElec:incl.elec, inclMach:incl.mach, inclLab:incl.lab,
+      consumed:g, note:$("rNote").value.trim() });
+    m.remaining = Math.max(0, S.num(m.remaining) - g); // 自动扣减库存
+    S.saveRec(); S.saveMat();
+    $("rGrams").value = ""; $("rHoursH").value = "0"; $("rHoursM").value = "0"; $("rMin").value = ""; $("rNote").value = "";
+    $("homeMsg").textContent = "已保存：" + m.name + " · 计入成本 " + S.money(all) + " · 库存剩 " + S.fmt(m.remaining, 0) + "g";
+    toast("记录已保存，库存已扣减 " + randFace());
+    fillSelects(); calc();
+    if(currentTab === "records") renderRecords();
+  });
+
+  /* 去开订单：把计算器数据自动填入新增订单 */
+  $("toOrderBtn").addEventListener("click", () => {
+    if(!lastCalc) return;
+    editingOrdId = null;
+    $("ordFormTitle").textContent = "新增订单";
+    $("cancelOrd").style.display = "none";
+    if(!$("oNo").value && !$("oDate").value){ resetOrdForm(); }
+    $("oDate").value = S.today();
+    if(lastCalc.matId) $("oMat").value = lastCalc.matId;
+    if(lastCalc.priId) $("oPri").value = lastCalc.priId;
+    $("oG").value = lastCalc.g || "";
+    $("oH").value = lastCalc.h ? Math.round(lastCalc.h * 100) / 100 : "";
+    $("oMin").value = lastCalc.min || "";
+    /* 同步计算器的成本计入勾选 */
+    if(lastCalc.incl){
+      $("ocbFil").checked = lastCalc.incl.fil;
+      $("ocbElec").checked = lastCalc.incl.elec;
+      $("ocbMach").checked = lastCalc.incl.mach;
+      $("ocbLab").checked = lastCalc.incl.lab;
+    }
+    if(lastCalc.note && !$("oNote").value) $("oNote").value = lastCalc.note;
+    if(lastCalc.sug > 0) $("oQuote").value = Math.ceil(lastCalc.sug); // 建议报价取整带入
+    $("oStatus").value = "quote";
+    orderCalc();
+    toast("已把计算器数据带入订单，请确认金额");
+  });
+
+  /* ============ 订单 ============ */
+  $("oStatus").innerHTML = S.STATUSES.map(s => `<option value="${s.key}">${s.label}</option>`).join("");
+  $("fStatus").innerHTML = '<option value="all">全部状态</option>' + S.STATUSES.map(s => `<option value="${s.key}">${s.label}</option>`).join("");
+
+  let editingOrdId = null;
+  function extRow(label, amount){
+    const d = document.createElement("div"); d.className = "extras-row";
+    d.innerHTML = `<input class="el" type="text" value="${S.esc(label)}" placeholder="名目（建模/运费…）" />
+      <input class="ea" type="number" min="0" step="0.01" value="${S.num(amount) || ""}" placeholder="金额" />
+      <button class="btn danger ghost tiny" type="button">✕</button>`;
+    d.querySelector("button").addEventListener("click", () => { d.remove(); orderCalc(); });
+    d.querySelectorAll("input").forEach(i => i.addEventListener("input", orderCalc));
+    return d;
+  }
+  function getExtras(){
+    return Array.from($("oExtras").children)
+      .map(r => ({ label:r.querySelector(".el").value.trim(), amount:S.num(r.querySelector(".ea").value) }))
+      .filter(x => x.label || x.amount);
+  }
+  $("addExt").addEventListener("click", () => { $("oExtras").appendChild(extRow("", 0)); });
+
+  function payRow(date, amount, note){
+    const d = document.createElement("div"); d.className = "pay-row";
+    d.innerHTML = `<input class="pd" type="date" value="${S.esc(date)}" />
+      <input class="pa" type="number" min="0" step="0.01" value="${S.num(amount) || ""}" placeholder="金额" />
+      <input class="pn" type="text" value="${S.esc(note)}" placeholder="备注（定金/尾款…）" />
+      <button class="btn danger ghost tiny" type="button">✕</button>`;
+    d.querySelector("button").addEventListener("click", () => { d.remove(); orderCalc(); });
+    d.querySelectorAll("input").forEach(i => i.addEventListener("input", orderCalc));
+    return d;
+  }
+  function getPayments(){
+    return Array.from($("oPayments").children)
+      .map(r => ({ date:r.querySelector(".pd").value, note:r.querySelector(".pn").value.trim(), amount:S.num(r.querySelector(".pa").value) }))
+      .filter(x => x.amount > 0);
+  }
+  $("addPay").addEventListener("click", () => { $("oPayments").appendChild(payRow(S.today(), "", "")); orderCalc(); });
+
+  function orderCalc(){
+    const m = S.matById($("oMat").value), p = S.priById($("oPri").value);
+    const c = S.computePrint(m, p, $("oG").value, $("oH").value);
+    const lab = S.laborCost($("oMin").value);
+    const ec = getExtras().reduce((s,x) => s + x.amount, 0);
+    const rv = S.sumPayments(getPayments());
+    const quote = S.num($("oQuote").value);
+    /* 勾选才计入本单成本（额外成本始终计入） */
+    const incl = { fil:$("ocbFil").checked, elec:$("ocbElec").checked, mach:$("ocbMach").checked, lab:$("ocbLab").checked };
+    const ct = (incl.fil ? c.cFil : 0) + (incl.elec ? c.cElec : 0) + (incl.mach ? c.cMach : 0) + (incl.lab ? lab : 0) + ec;
+    const profit = rv - ct, due = Math.max(0, quote - rv);
+    const est = quote - ct; // 预估利润 = 报价 − 成本（按报价口径）
+    const big = $("oProfit");
+    big.textContent = (profit < 0 ? "-" : "") + S.money(Math.abs(profit)).replace(S.settings.currency, "");
+    big.className = "lcd-big " + (profit >= 0 ? "ok" : "loss");
+    const estEl = $("oEst");
+    estEl.textContent = (est < 0 ? "-" : "") + S.money(Math.abs(est)).replace(S.settings.currency, "");
+    estEl.className = "lcd-big sub " + (est >= 0 ? "" : "loss");
+    $("oPc").textContent = S.money(c.cFil);
+    $("oElec").textContent = S.money(c.cElec);
+    $("oMach").textContent = S.money(c.cMach);
+    $("oLab").textContent = S.money(lab);
+    $("ocbFil").closest(".line").classList.toggle("off", !incl.fil);
+    $("ocbElec").closest(".line").classList.toggle("off", !incl.elec);
+    $("ocbMach").closest(".line").classList.toggle("off", !incl.mach);
+    $("ocbLab").closest(".line").classList.toggle("off", !incl.lab);
+    $("oEc").textContent = S.money(ec); $("oCt").textContent = S.money(ct);
+    $("oRvQ").textContent = S.money(rv) + " / " + S.money(quote);
+    $("oMargin").textContent = ct > 0 ? (profit / ct * 100).toFixed(1) + " %" : "—";
+    $("recvTotal").textContent = S.money(rv);
+    $("dueTotal").textContent = S.money(due);
+    return { pc:c.cFil + c.cElec, fil:c.cFil, elec:c.cElec, mach:c.cMach, lab, incl, ec, ct, rv, quote, due, profit, est, extras:getExtras(), pays:getPayments() };
+  }
+  ["oMat","oPri","oG","oH","oMin","oQuote","ocbFil","ocbElec","ocbMach","ocbLab"].forEach(id => $(id).addEventListener("input", orderCalc));
+
+  function nextOrderNo(){
+    const d = S.today().replace(/-/g, "");
+    const pre = (S.settings.ordPrefix || "ORD").toUpperCase();
+    const same = S.orders.filter(o => (o.orderNo || "").indexOf(pre + "-" + d) === 0);
+    return pre + "-" + d + "-" + String(same.length + 1).padStart(3, "0");
+  }
+  function resetOrdForm(){
+    editingOrdId = null;
+    $("ordFormTitle").textContent = "新增订单";
+    $("cancelOrd").style.display = "none"; $("ordFormBody").style.display = "";
+    $("oNo").value = ""; $("oDate").value = S.today(); $("oStatus").value = "quote";
+    $("oWx").value = ""; $("oName").value = ""; $("oQuote").value = "";
+    $("oMat").value = ""; $("oPri").value = ""; $("oG").value = ""; $("oH").value = ""; $("oMin").value = "";
+    ["ocbFil","ocbElec","ocbMach","ocbLab"].forEach(id => $(id).checked = true);
+    $("oExtras").innerHTML = ""; ["建模","运费","包装","其他"].forEach(l => $("oExtras").appendChild(extRow(l, 0)));
+    $("oPayments").innerHTML = ""; $("oPayments").appendChild(payRow(S.today(), "", ""));
+    $("oFName").value = ""; $("oFSize").value = ""; $("oFNote").value = ""; $("oNote").value = "";
+    $("ordMsg").textContent = ""; orderCalc();
+  }
+  $("cancelOrd").addEventListener("click", resetOrdForm);
+
+  $("saveOrd").addEventListener("click", () => {
+    if(!$("oDate").value){ toast("请选择订单日期（必填）"); $("oDate").focus(); return; }
+    if(S.num($("oQuote").value) <= 0){ toast("请填写报价金额（必填，欠款跟踪依赖它）"); $("oQuote").focus(); return; }
+    const c = orderCalc();
+    const no = $("oNo").value.trim() || nextOrderNo();
+    const m = S.matById($("oMat").value), p = S.priById($("oPri").value);
+    const rec = {
+      id: editingOrdId || S.uid(), orderNo:no, date:$("oDate").value || S.today(),
+      status:$("oStatus").value,
+      wechat:$("oWx").value.trim(), custName:$("oName").value.trim(), quote:c.quote,
+      materialId:m ? m.id : null, matName:m ? m.name : null, matColor:m ? m.color : null,
+      printerId:p ? p.id : null, priName:p ? p.name : null,
+      grams:S.num($("oG").value), hours:S.num($("oH").value), handlingMin:S.num($("oMin").value),
+      printCost:(c.incl.fil ? c.fil : 0) + (c.incl.elec ? c.elec : 0) + (c.incl.mach ? c.mach : 0) + (c.incl.lab ? c.lab : 0),
+      inclFil:c.incl.fil, inclElec:c.incl.elec, inclMach:c.incl.mach, inclLab:c.incl.lab,
+      extras:c.extras, extraCost:c.ec, totalCost:c.ct,
+      received:c.rv, payments:c.pays, profit:c.profit,
+      modelFile:{ name:$("oFName").value.trim(), size:$("oFSize").value.trim(), note:$("oFNote").value.trim() },
+      note:$("oNote").value.trim(),
+      updated:Date.now(), created: editingOrdId ? undefined : Date.now()
+    };
+    if(editingOrdId){
+      const i = S.orders.findIndex(o => o.id === editingOrdId);
+      if(i >= 0) S.orders[i] = Object.assign(S.orders[i], rec, { created:S.orders[i].created });
+    } else S.orders.unshift(rec);
+    S.saveOrd();
+    toast((editingOrdId ? "已更新：" : "已保存：") + no + (rec.profit >= 0 ? " " + randFace() : "（这单亏了，下次报高点呀）"));
+    const newAch = checkAch();
+    resetOrdForm(); renderOrders();
+    if(newAch.length) setTimeout(() => toast("🏆 解锁成就：" + newAch.join("、")), 900);
+  });
+
+  /* 筛选 */
+  const filt = { q:"", status:"all", sort:"date-desc", from:"", to:"" };
+  $("fSearch").addEventListener("input", () => { filt.q = $("fSearch").value.trim().toLowerCase(); renderOrdList(); });
+  $("fStatus").addEventListener("change", () => { filt.status = $("fStatus").value; renderOrdList(); });
+  $("fSort").addEventListener("change", () => { filt.sort = $("fSort").value; renderOrdList(); });
+  $("fFrom").addEventListener("change", () => { filt.from = $("fFrom").value; renderOrdList(); });
+  $("fTo").addEventListener("change", () => { filt.to = $("fTo").value; renderOrdList(); });
+  $("fClear").addEventListener("click", () => {
+    Object.assign(filt, { q:"", status:"all", sort:"date-desc", from:"", to:"" });
+    $("fSearch").value = ""; $("fStatus").value = "all"; $("fSort").value = "date-desc";
+    $("fFrom").value = ""; $("fTo").value = "";
+    renderOrdList();
+  });
+
+  function summaryText(o){
+    const st = S.stOf(o.status);
+    const lines = [
+      "订单 " + (o.orderNo || "") + " · " + st.label,
+      "日期：" + (o.date || ""),
+      (o.custName ? "客户：" + o.custName : "") + (o.matName ? "\n耗材：" + o.matName + (o.grams ? " × " + S.fmt(o.grams, 1) + "g" : "") : ""),
+      "报价：" + S.money(o.quote), "已收：" + S.money(o.received),
+      (S.orderDue(o) > 0 ? "待收：" + S.money(S.orderDue(o)) : ""),
+      "总成本：" + S.money(o.totalCost),
+      "预估利润（报价−成本）：" + S.money(S.num(o.quote) - S.num(o.totalCost)),
+      "实时利润（已收−成本）：" + S.money(S.num(o.received) - S.num(o.totalCost)),
+      (o.note ? "备注：" + o.note : "")
+    ];
+    return lines.filter(Boolean).join("\n");
+  }
+  function copyText(t){
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(t).then(() => toast("订单摘要已复制，可直接发给客户"), () => fallbackCopy(t));
+    } else fallbackCopy(t);
+  }
+  function fallbackCopy(t){
+    const ta = document.createElement("textarea"); ta.value = t;
+    ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand("copy"); toast("订单摘要已复制"); }catch(e){ toast("复制失败，请手动复制"); }
+    document.body.removeChild(ta);
+  }
+
+  function renderOrdList(){
+    let list = S.orders.slice();
+    if(filt.status !== "all") list = list.filter(o => o.status === filt.status);
+    if(filt.from) list = list.filter(o => (o.date || "") >= filt.from);
+    if(filt.to) list = list.filter(o => (o.date || "") <= filt.to);
+    if(filt.q){
+      list = list.filter(o => [o.orderNo, o.wechat, o.custName, o.note, o.matName, o.modelFile && o.modelFile.name]
+        .some(v => String(v || "").toLowerCase().includes(filt.q)));
+    }
+    const sorters = {
+      "date-desc": (a,b) => String(b.date).localeCompare(String(a.date)) || (b.updated || 0) - (a.updated || 0),
+      "date-asc": (a,b) => String(a.date).localeCompare(String(b.date)),
+      "profit-desc": (a,b) => (S.num(b.received) - S.num(b.totalCost)) - (S.num(a.received) - S.num(a.totalCost)),
+      "due-desc": (a,b) => S.orderDue(b) - S.orderDue(a)
+    };
+    list.sort(sorters[filt.sort] || sorters["date-desc"]);
+    $("ordCount").textContent = "共 " + list.length + " 单";
+    const box = $("ordList");
+    if(!list.length){
+      box.innerHTML = '<div class="empty">' + (S.orders.length ? "没有符合筛选条件的订单" : "还没有订单<br><span class=\"hint\">展开上方表单，开出第一单</span>") + "</div>";
+      return;
+    }
+    box.innerHTML = list.map(o => {
+      const st = S.stOf(o.status), profit = S.num(o.received) - S.num(o.totalCost), due = S.orderDue(o);
+      const est = S.num(o.quote) - S.num(o.totalCost); // 预估利润 = 报价 − 成本
+      const mf = o.modelFile && o.modelFile.name ? `📎 ${S.esc(o.modelFile.name)}${o.modelFile.size ? " (" + S.esc(o.modelFile.size) + ")" : ""}` : "";
+      return `<div class="ord">
+        <div class="top"><span class="no">${S.esc(o.orderNo)}</span>
+          <span class="badge" style="--bc:${st.color}"><i></i>${st.label}</span></div>
+        <div class="meta"><span>📅 ${S.esc(o.date)}</span>
+          ${o.wechat ? `<span>💬 ${S.esc(o.wechat)}</span>` : ""}${o.custName ? `<span>🙋 ${S.esc(o.custName)}</span>` : ""}</div>
+        ${mf ? `<div class="meta">${mf}${o.modelFile.note ? " · " + S.esc(o.modelFile.note) : ""}</div>` : ""}
+        ${(o.payments && o.payments.length > 1) ? `<div class="meta">💰 ${o.payments.map(p => S.esc(p.note || "收款") + " " + S.money(p.amount)).join(" · ")}</div>` : ""}
+        <div class="nums">
+          <span>报价 <b>${S.money(o.quote)}</b></span>
+          <span>已收 <b>${S.money(o.received)}</b></span>
+          ${due > 0 ? `<span class="loss">待收 <b>${S.money(due)}</b></span>` : ""}
+          <span>成本 <b>${S.money(o.totalCost)}</b></span>
+          <span class="${est >= 0 ? "tot" : "loss"}">预估 <b>${S.money(est)}</b></span>
+          <span class="${profit >= 0 ? "tot" : "loss"}">利润 <b>${S.money(profit)}</b></span>
+        </div>
+        ${o.note ? `<div class="meta">📝 ${S.esc(o.note)}</div>` : ""}
+        <div class="acts">
+          <select class="ost" data-id="${o.id}">
+            ${S.STATUSES.map(s => `<option value="${s.key}" ${s.key === o.status ? "selected" : ""}>${s.label}</option>`).join("")}
+          </select>
+          <button class="btn ghost sm" data-copy="${o.id}">复制摘要</button>
+          <button class="btn ghost sm" data-edito="${o.id}">编辑</button>
+          <button class="btn danger ghost sm" data-delo="${o.id}">删除</button>
+        </div></div>`;
+    }).join("");
+    box.querySelectorAll(".ost").forEach(sel => sel.addEventListener("change", () => {
+      const o = S.orders.find(x => x.id === sel.getAttribute("data-id"));
+      if(o){ o.status = sel.value; o.updated = Date.now(); S.saveOrd(); renderOrders(); toast("状态已更新：" + S.stOf(o.status).label); }
+    }));
+    box.querySelectorAll("[data-copy]").forEach(b => b.addEventListener("click", () => {
+      const o = S.orders.find(x => x.id === b.getAttribute("data-copy")); if(o) copyText(summaryText(o));
+    }));
+    box.querySelectorAll("[data-edito]").forEach(b => b.addEventListener("click", () => editOrder(b.getAttribute("data-edito"))));
+    box.querySelectorAll("[data-delo]").forEach(b => b.addEventListener("click", async () => {
+      if(await confirmBox("删除该订单？删除后不可恢复.")){
+        const i = S.orders.findIndex(x => x.id === b.getAttribute("data-delo"));
+        if(i >= 0) S.orders.splice(i, 1);
+        S.saveOrd(); renderOrders(); toast("已删除");
+      }
+    }));
+  }
+
+  function renderOrders(){
+    const st = S.orderStats();
+    $("ordStats").innerHTML = [
+      ["订单总数", String(st.count), "已取消不计", "", ""],
+      ["累计营收", S.money(st.rev), "报价 " + S.money(st.quote), "", ""],
+      ["待收款", S.money(st.due), st.due > 0 ? "有未结订单" : "已结清", st.due > 0 ? "down" : "up", ""],
+      ["累计利润", S.money(st.profit), "利润率 " + (st.margin > 0 ? st.margin.toFixed(1) : 0) + " %", st.profit >= 0 ? "up" : "down", ""]
+    ].map(([k, v, s, cls]) => `<div class="stat ${cls}"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join("");
+    renderOrdList();
+  }
+
+  function editOrder(id){
+    const o = S.orders.find(x => x.id === id); if(!o) return;
+    editingOrdId = id;
+    $("ordFormTitle").textContent = "编辑订单 · " + (o.orderNo || "");
+    $("cancelOrd").style.display = ""; $("ordFormBody").style.display = "";
+    goto("order");
+    $("oNo").value = o.orderNo || ""; $("oDate").value = o.date || S.today(); $("oStatus").value = o.status || "quote";
+    $("oWx").value = o.wechat || ""; $("oName").value = o.custName || ""; $("oQuote").value = S.num(o.quote) || "";
+    $("oPayments").innerHTML = "";
+    if(o.payments && o.payments.length) o.payments.forEach(p => $("oPayments").appendChild(payRow(p.date || S.today(), p.amount, p.note)));
+    else if(S.num(o.received) > 0) $("oPayments").appendChild(payRow(o.date || S.today(), o.received, ""));
+    else $("oPayments").appendChild(payRow(S.today(), "", ""));
+    $("oMat").value = o.materialId || ""; $("oPri").value = o.printerId || "";
+    $("oG").value = o.grams || ""; $("oH").value = o.hours || ""; $("oMin").value = o.handlingMin || "";
+    /* 编辑时还原计入勾选（旧数据无标志视为全计入） */
+    $("ocbFil").checked = o.inclFil !== false;
+    $("ocbElec").checked = o.inclElec !== false;
+    $("ocbMach").checked = o.inclMach !== false;
+    $("ocbLab").checked = o.inclLab !== false;
+    $("oExtras").innerHTML = "";
+    (o.extras && o.extras.length ? o.extras : [{ label:"建模", amount:0 }]).forEach(e => $("oExtras").appendChild(extRow(e.label, e.amount)));
+    const mf = o.modelFile || {};
+    $("oFName").value = mf.name || ""; $("oFSize").value = mf.size || ""; $("oFNote").value = mf.note || ""; $("oNote").value = o.note || "";
+    orderCalc();
+    $("ordFormBody").scrollIntoView({ behavior:"smooth", block:"start" });
+  }
+
+  /* ============ 耗材 ============ */
+  let editingMatId = null;
+  function resetMatForm(){
+    editingMatId = null;
+    $("matFormTitle").textContent = "添加耗材";
+    $("addMat").textContent = "添加耗材";
+    $("cancelEditMat").style.display = "none";
+    $("mBrand").value = ""; $("mType").value = ""; $("mColorName").value = ""; $("mPrice").value = "";
+    $("mColor").value = "#ffb02e";
+    $("mSpool").value = "1000"; $("mRemain").value = "1000";
+    document.querySelectorAll(".sw-p").forEach(x => x.classList.remove("on"));
+  }
+  function editMat(id){
+    const m = S.matById(id); if(!m) return;
+    editingMatId = id;
+    $("matFormTitle").textContent = "编辑耗材 · " + m.name;
+    $("addMat").textContent = "保存修改";
+    $("cancelEditMat").style.display = "";
+    $("mBrand").value = m.brand || ""; $("mType").value = m.type || "";
+    $("mColor").value = m.color || "#ffb02e"; $("mColorName").value = m.colorName || "";
+    $("mPrice").value = S.num(m.pricePerKg) || "";
+    $("mSpool").value = S.num(m.spool) || 1000; $("mRemain").value = S.num(m.remaining) || 0;
+    document.querySelectorAll(".sw-p").forEach(x => x.classList.toggle("on", x.getAttribute("data-c") === (m.color || "").toLowerCase()));
+    document.querySelector("#page-mats .card").scrollIntoView({ behavior:"smooth", block:"start" });
+  }
+  $("cancelEditMat").addEventListener("click", resetMatForm);
+  $("addMat").addEventListener("click", () => {
+    const brand = $("mBrand").value.trim(), type = $("mType").value.trim();
+    if(!type){ toast("请填写耗材类型（必填）"); $("mType").focus(); return; }
+    const price = S.num($("mPrice").value);
+    if(price <= 0){ toast("请填写材料单价（必填，成本计算依赖它）"); $("mPrice").focus(); return; }
+    const spool = Math.max(0, S.num($("mSpool").value));
+    const fields = { brand, type, color:$("mColor").value, colorName:$("mColorName").value.trim(),
+      pricePerKg:price, spool, remaining:Math.min(spool, S.num($("mRemain").value) || spool) };
+    if(editingMatId){
+      const m = S.matById(editingMatId);
+      if(m){ Object.assign(m, fields); m.name = S.matLabel(m); toast("耗材已更新：" + m.name); }
+    }else{
+      const m = Object.assign({ id:S.uid() }, fields);
+      m.name = S.matLabel(m);
+      S.materials.push(m);
+      toast("耗材已添加");
+    }
+    S.saveMat();
+    resetMatForm();
+    renderMaterials(); fillSelects(); calc();
+  });
+  function renderMaterials(){
+    const box = $("matList");
+    if(!S.materials.length){ box.innerHTML = '<div class="empty">还没有耗材<br><span class="hint">在上方添加第一卷料</span></div>'; return; }
+    box.innerHTML = `<table><thead><tr><th>耗材</th><th>颜色</th><th class="num">价格(元/kg)</th><th style="min-width:130px">库存</th><th class="num">剩余</th><th></th></tr></thead><tbody>` +
+      S.materials.map(m => {
+        const rem = S.num(m.remaining), spool = Math.max(1, S.num(m.spool)), pct = Math.min(100, rem / spool * 100);
+        const low = S.num(S.settings.lowStock) > 0 && rem <= S.num(S.settings.lowStock);
+        const cls = low ? "low" : (pct < 35 ? "mid" : "ok");
+        return `<tr>
+          <td><span class="sw" style="background:${S.esc(m.color)}"></span>${S.esc(m.name)}${low ? ' <span class="badge" style="--bc:var(--danger)"><i></i>低库存</span>' : ""}</td>
+          <td><span class="pill">${S.esc(m.colorName || m.type)}</span></td>
+          <td class="num">${S.fmt(m.pricePerKg, 2)}</td>
+          <td><div class="stock"><i class="${cls}" style="width:${pct.toFixed(1)}%"></i></div><div class="hint">${S.fmt(rem, 0)} / ${S.fmt(spool, 0)} g</div></td>
+          <td class="num">${S.fmt(rem, 0)} g</td>
+          <td style="white-space:nowrap">
+            <button class="btn ghost sm" data-editm="${m.id}">编辑</button>
+            <button class="btn ghost sm" data-refill="${m.id}">补货</button>
+            <button class="btn danger ghost sm" data-delm="${m.id}">删除</button>
+          </td></tr>`;
+      }).join("") + "</tbody></table>";
+    box.querySelectorAll("[data-editm]").forEach(b => b.addEventListener("click", () => editMat(b.getAttribute("data-editm"))));
+    box.querySelectorAll("[data-refill]").forEach(b => b.addEventListener("click", async () => {
+      const m = S.matById(b.getAttribute("data-refill")); if(!m) return;
+      const v = await promptBox("「" + m.name + "」补货了多少克？（整卷一般为 " + S.fmt(m.spool, 0) + "g）", S.fmt(m.spool, 0));
+      if(v == null) return;
+      m.remaining = Math.min(S.num(m.spool), S.num(m.remaining) + S.num(v));
+      S.saveMat(); renderMaterials(); fillSelects(); toast("已补货，剩余 " + S.fmt(m.remaining, 0) + "g");
+    }));
+    box.querySelectorAll("[data-delm]").forEach(b => b.addEventListener("click", async () => {
+      const m = S.matById(b.getAttribute("data-delm")); if(!m) return;
+      if(await confirmBox("删除耗材「" + m.name + "」？已有记录不受影响。")){
+        const i = S.materials.indexOf(m);
+        if(i >= 0) S.materials.splice(i, 1);
+        S.saveMat(); renderMaterials(); fillSelects(); calc();
+      }
+    }));
+  }
+
+  /* ============ 打印机 ============ */
+  let editingPriId = null;
+  function resetPriForm(){
+    editingPriId = null;
+    $("priFormTitle").textContent = "添加打印机";
+    $("addPri").textContent = "添加打印机";
+    $("cancelEditPri").style.display = "none";
+    $("pModel").value = ""; $("pPow").value = ""; $("pElec").value = ""; $("pPrice").value = ""; $("pMaint").value = "";
+    $("pDep").value = "2"; $("pUtil").value = "50";
+  }
+  function editPri(id){
+    const p = S.priById(id); if(!p) return;
+    editingPriId = id;
+    $("priFormTitle").textContent = "编辑打印机 · " + p.name;
+    $("addPri").textContent = "保存修改";
+    $("cancelEditPri").style.display = "";
+    $("pBrand").value = S.printers.some(x => x.brand === p.brand) ? p.brand : "其他 / 自制";
+    $("pModel").value = p.model || p.name || "";
+    $("pPow").value = S.num(p.powerW) || "";
+    $("pElec").value = S.num(p.elecPrice) || "";
+    $("pPrice").value = S.num(p.price) || "";
+    $("pDep").value = S.num(p.depYears) || 2;
+    $("pMaint").value = S.num(p.maintPerYear) || "";
+    $("pUtil").value = S.num(p.utilization) || 50;
+    document.querySelector("#page-printers .card").scrollIntoView({ behavior:"smooth", block:"start" });
+  }
+  $("cancelEditPri").addEventListener("click", resetPriForm);
+  $("addPri").addEventListener("click", () => {
+    const model = $("pModel").value.trim();
+    if(!model){ toast("请填写打印机型号（必填）"); $("pModel").focus(); return; }
+    const fields = { brand:$("pBrand").value, model, powerW:S.num($("pPow").value), elecPrice:S.num($("pElec").value),
+      price:S.num($("pPrice").value), depYears:Math.max(0.1, S.num($("pDep").value) || 2),
+      maintPerYear:S.num($("pMaint").value), utilization:Math.min(100, Math.max(1, S.num($("pUtil").value) || 50)) };
+    if(editingPriId){
+      const p = S.priById(editingPriId);
+      if(p){ Object.assign(p, fields); p.name = S.priLabel(p); toast("打印机已更新：" + p.name); }
+    }else{
+      const p = Object.assign({ id:S.uid() }, fields);
+      p.name = S.priLabel(p);
+      S.printers.push(p);
+      toast("打印机已添加");
+    }
+    S.savePri();
+    resetPriForm();
+    renderPrinters(); fillSelects(); calc();
+  });
+  function renderPrinters(){
+    const box = $("priList");
+    if(!S.printers.length){ box.innerHTML = '<div class="empty">还没有打印机<br><span class="hint">在上方添加你的第一台机器</span></div>'; return; }
+    box.innerHTML = `<table><thead><tr><th>名称</th><th>品牌</th><th class="num">功率(W)</th><th class="num">电费/h</th><th class="num">机器折旧/h</th><th class="num">机器合计/h</th><th></th></tr></thead><tbody>` +
+      S.printers.map(p => {
+        const rate = S.machineRate(p);
+        const elecH = S.num(p.powerW) / 1000 * S.num(p.elecPrice);
+        return `<tr><td>${S.esc(p.name)}<div class="hint">购入 ${S.fmt(p.price, 0)} 元 · 折旧 ${S.fmt(p.depYears, 1)} 年 · 年维 ${S.fmt(p.maintPerYear, 0)} 元 · 使用率 ${S.fmt(p.utilization, 0)}%</div></td>
+        <td><span class="pill">${S.esc(p.brand || "其他")}</span></td>
+        <td class="num">${S.fmt(p.powerW, 0)}</td><td class="num">${S.money(elecH)}</td>
+        <td class="num">${S.money(rate)}</td><td class="num tot">${S.money(rate + elecH)}</td>
+        <td style="white-space:nowrap">
+          <button class="btn ghost sm" data-editp="${p.id}">编辑</button>
+          <button class="btn danger ghost sm" data-delp="${p.id}">删除</button>
+        </td></tr>`;
+      }).join("") + "</tbody></table>";
+    box.querySelectorAll("[data-editp]").forEach(b => b.addEventListener("click", () => editPri(b.getAttribute("data-editp"))));
+    box.querySelectorAll("[data-delp]").forEach(b => b.addEventListener("click", async () => {
+      const p = S.priById(b.getAttribute("data-delp")); if(!p) return;
+      if(await confirmBox("删除打印机「" + p.name + "」？已有记录不受影响。")){
+        const i = S.printers.indexOf(p);
+        if(i >= 0) S.printers.splice(i, 1);
+        S.savePri(); renderPrinters(); fillSelects(); calc();
+      }
+    }));
+  }
+
+  /* ============ 打印记录 ============ */
+  const recFilt = { q:"", mat:"all", pri:"all", from:"", to:"" };
+  [["frSearch","q","value"],["frMat","mat","value"],["frPri","pri","value"],["frFrom","from","value"],["frTo","to","value"]]
+    .forEach(([id, key]) => $(id).addEventListener("input", () => { recFilt[key] = $(id).value; renderRecList(); }));
+  $("frClear").addEventListener("click", () => {
+    Object.assign(recFilt, { q:"", mat:"all", pri:"all", from:"", to:"" });
+    $("frSearch").value = ""; $("frMat").value = "all"; $("frPri").value = "all";
+    $("frFrom").value = ""; $("frTo").value = "";
+    renderRecList();
+  });
+
+  function renderRecords(){
+    // 填充筛选下拉
+    const fm = $("frMat"), fp = $("frPri");
+    const mv = fm.value, pv = fp.value;
+    fm.innerHTML = '<option value="all">全部耗材</option>' + S.materials.map(m => `<option value="${m.id}">${S.esc(m.name)}</option>`).join("");
+    fp.innerHTML = '<option value="all">全部打印机</option>' + S.printers.map(p => `<option value="${p.id}">${S.esc(p.name)}</option>`).join("");
+    fm.value = mv && S.matById(mv) ? mv : "all";
+    fp.value = pv && S.priById(pv) ? pv : "all";
+    recFilt.mat = fm.value; recFilt.pri = fp.value;
+
+    const rs = S.records;
+    const tFil = rs.reduce((s,r) => s + S.num(r.cFil), 0), tElec = rs.reduce((s,r) => s + S.num(r.cElec), 0);
+    const total = tFil + tElec, sumH = rs.reduce((s,r) => s + S.num(r.hours), 0), sumG = rs.reduce((s,r) => s + S.num(r.grams), 0);
+    $("stats").innerHTML = [
+      ["总记录", String(rs.length), "", ""],
+      ["总耗材 / 时长", S.fmt(sumG, 0) + " g · " + S.fmt(sumH, 1) + " h", "", ""],
+      ["总成本", S.money(total), "", "hi"],
+      ["单克 / 单时成本", (sumG > 0 ? S.money(total / sumG) : "—") + " · " + (sumH > 0 ? S.money(total / sumH) : "—"), "", ""]
+    ].map(([k, v, s, cls]) => `<div class="stat ${cls}"><div class="k">${k}</div><div class="v" style="font-size:${v.length > 14 ? "16px" : "19px"}">${v}</div></div>`).join("");
+
+    const months = S.monthly(rs.map(r => ({ date:r.date, value:r.total })), "value", 12);
+    $("monthChart").innerHTML = months.every(m => m.value === 0)
+      ? '<div class="empty">还没有月度数据</div>'
+      : barChart(months, { height:130 });
+
+    renderRecList();
+  }
+
+  function renderRecList(){
+    let rs = S.records.slice();
+    if(recFilt.mat !== "all") rs = rs.filter(r => r.materialId === recFilt.mat);
+    if(recFilt.pri !== "all") rs = rs.filter(r => r.printerId === recFilt.pri);
+    if(recFilt.from) rs = rs.filter(r => (r.date || "") >= recFilt.from);
+    if(recFilt.to) rs = rs.filter(r => (r.date || "") <= recFilt.to);
+    if(recFilt.q){
+      rs = rs.filter(r => [r.matName, r.note, r.priName].some(v => String(v || "").toLowerCase().includes(recFilt.q)));
+    }
+    const box = $("recList");
+    if(!S.records.length){ box.innerHTML = '<div class="empty">还没有打印记录<br><span class="hint">去「计算器」算第一笔</span></div>'; return; }
+    if(!rs.length){ box.innerHTML = '<div class="empty">没有符合筛选条件的记录</div>'; return; }
+    box.innerHTML = `<table><thead><tr><th>日期</th><th>耗材</th><th>打印机</th><th class="num">克</th><th class="num">时/分</th><th class="num">材+电</th><th class="num">机+人</th><th class="num">合计</th><th></th></tr></thead><tbody>` +
+      rs.map(r => `<tr><td>${S.esc(r.date)}</td>
+        <td><span class="sw" style="background:${S.esc(r.matColor || "#888")}"></span>${S.esc(r.matName || "")}${r.note ? `<div class="hint">${S.esc(r.note)}</div>` : ""}</td>
+        <td>${S.esc(r.priName || "")}</td>
+        <td class="num">${S.fmt(r.grams, 1)}</td><td class="num">${S.fmt(r.hours, 1)}${S.num(r.handlingMin) ? `<div class="hint">处理 ${S.fmt(r.handlingMin, 0)} 分</div>` : ""}</td>
+        <td class="num">${S.money(S.num(r.cFil) + S.num(r.cElec))}</td>
+        <td class="num">${S.money(S.num(r.cMach) + S.num(r.cLab))}</td>
+        <td class="num tot">${S.money(r.total)}</td>
+        <td><button class="btn danger ghost sm" data-delr="${r.id}">删</button></td></tr>`).join("") + "</tbody></table>";
+    box.querySelectorAll("[data-delr]").forEach(b => b.addEventListener("click", async () => {
+      const r = S.records.find(x => x.id === b.getAttribute("data-delr")); if(!r) return;
+      if(await confirmBox("删除这条记录？" + (S.num(r.consumed) > 0 ? "\n对应库存会加回。" : ""))){
+        const m = S.matById(r.materialId);
+        if(m && S.num(r.consumed) > 0){ m.remaining = Math.min(S.num(m.spool), S.num(m.remaining) + S.num(r.consumed)); S.saveMat(); fillSelects(); }
+        const i = S.records.indexOf(r);
+        if(i >= 0) S.records.splice(i, 1);
+        S.saveRec(); renderRecords(); toast("已删除");
+      }
+    }));
+  }
+
+  function download(name, content, type){
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([content], { type }));
+    a.download = name; a.click(); URL.revokeObjectURL(a.href);
+  }
+  $("csvBtn").addEventListener("click", () => {
+    if(!S.records.length){ toast("没有记录可导出"); return; }
+    const head = ["日期","耗材","类型","打印机","克数(g)","时长(h)","处理分钟","耗材+电费","机器折旧","人工","合计","备注"];
+    const rows = S.records.map(r => [r.date, r.matName, r.matType, r.priName, S.num(r.grams), S.num(r.hours),
+      S.num(r.handlingMin), (S.num(r.cFil) + S.num(r.cElec)).toFixed(2), S.num(r.cMach).toFixed(2),
+      S.num(r.cLab).toFixed(2), S.num(r.total).toFixed(2), r.note || ""]);
+    const csv = "\uFEFF" + [head].concat(rows).map(r => r.map(c => '"' + String(c == null ? "" : c).replace(/"/g, '""') + '"').join(",")).join("\r\n");
+    download("printforge_records_" + S.today() + ".csv", csv, "text/csv;charset=utf-8");
+    toast("CSV 已导出");
+  });
+  $("expBtn").addEventListener("click", () => {
+    download("printforge_backup_" + S.today() + ".json", JSON.stringify(S.exportPayload(), null, 2), "application/json"); S.setSettings({ lastExportAt:Date.now() }); renderSettings();
+    toast("备份已导出");
+  });
+  $("impBtn").addEventListener("click", () => $("impFile").click());
+  $("impFile").addEventListener("change", e => {
+    const f = e.target.files[0]; if(!f) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      try{ S.importPayload(JSON.parse(rd.result)); refreshAll(); toast("导入成功 " + randFace()); }
+      catch(err){ toast("导入失败：" + err.message); }
+    };
+    rd.readAsText(f); e.target.value = "";
+  });
+  $("clrBtn").addEventListener("click", async () => {
+    if(!S.records.length){ toast("没有记录"); return; }
+    if(await confirmBox("清空全部 " + S.records.length + " 条打印记录？不可恢复。")){
+      S.records.splice(0); S.saveRec(); renderRecords(); toast("已清空");
+    }
+  });
+
+  /* ============ 设置页 Tab 切换 ============ */
+  let activeSetPane = "general";
+  function renderSetTabs(){
+    document.querySelectorAll("#setTabs button").forEach(b =>
+      b.classList.toggle("on", b.getAttribute("data-p") === activeSetPane)
+    );
+    document.querySelectorAll(".set-pane").forEach(p =>
+      p.hidden = p.id !== "setp-" + activeSetPane
+    );
+    if(activeSetPane === "presets"){
+      console.log("[renderSetTabs] presets clicked, renderPresets type:", typeof renderPresets);
+      if(typeof renderPresets === "function") renderPresets();
+    }
+  }
+  $("setTabs").addEventListener("click", e => {
+    const b = e.target.closest("button[data-p]"); if(!b) return;
+    activeSetPane = b.getAttribute("data-p"); renderSetTabs();
+  });
+
+  /* ============ 设置 ============ */
+  let activePresetPane = "matCategories";
+  function renderSettings(){
+    $("setCur").value = S.settings.currency;
+    if($("setCur").selectedIndex === -1) $("setCur").selectedIndex = 0;
+    $("setLow").value = S.settings.lowStock;
+    $("setLabor").value = S.settings.laborHourly;
+    $("setPct").value = S.settings.markupPct;
+    $("setLeadMin").value = S.settings.leadMin != null ? S.settings.leadMin : 15;
+    $("setOrdPrefix").value = S.settings.ordPrefix || "ORD";
+    $("setStart").value = S.settings.startPage || "dash";
+    $("setTheme").value = S.settings.theme;
+    $("setUpdateUrl").value = S.settings.updateUrl || "";
+    const le = S.settings.lastExportAt;
+    $("backupInfo").textContent = le ? "上次导出备份：" + new Date(le).toLocaleString("zh-CN") + "。" : "尚未导出过备份。";
+    renderSetTabs();
+  }
+  $("setCur").addEventListener("change", () => { S.setSettings({ currency:$("setCur").value || "¥" }); refreshAll(); });
+  $("setLow").addEventListener("change", () => { S.setSettings({ lowStock:S.num($("setLow").value) }); if(currentTab === "mats") renderMaterials(); renderDash(); });
+  $("setLabor").addEventListener("change", () => { S.setSettings({ laborHourly:S.num($("setLabor").value) }); calc(); orderCalc(); });
+  $("setPct").addEventListener("change", () => { S.setSettings({ markupPct:Math.max(0, S.num($("setPct").value)) }); calc(); });
+  $("setLeadMin").addEventListener("change", () => { S.setSettings({ leadMin:Math.max(0, S.num($("setLeadMin").value)) }); });
+  $("setOrdPrefix").addEventListener("change", () => { S.setSettings({ ordPrefix:$("setOrdPrefix").value.trim().toUpperCase() || "ORD" }); });
+  $("setStart").addEventListener("change", () => { S.setSettings({ startPage:$("setStart").value }); });
+  $("setTheme").addEventListener("change", () => {
+    S.setSettings({ theme:$("setTheme").value });
+    applyTheme(); updateMeta();
+  });
+  $("setExp").addEventListener("click", () => {
+    download("printforge_backup_" + S.today() + ".json", JSON.stringify(S.exportPayload(), null, 2), "application/json"); S.setSettings({ lastExportAt:Date.now() }); renderSettings();
+    toast("备份已导出");
+  });
+  $("setImp").addEventListener("click", () => $("impFile").click());
+  $("setDemo").addEventListener("click", async () => {
+    if(await confirmBox("载入演示数据会覆盖现有数据，继续？")){ S.loadDemo(); refreshAll(); toast("演示数据已载入 " + randFace()); }
+  });
+  $("setClr").addEventListener("click", async () => {
+    if(await confirmBox("清空全部数据（耗材/打印机/记录/订单/成就）？此操作不可恢复，建议先导出备份。")){
+      S.wipeAll(); refreshAll(); toast("已清空，样例数据已就位");
+    }
+  });
+
+  /* ============ 预设管理（设置页） ============ */
+  /* 防回车换行 + 失焦保存的小工具 */
+  function bindEditable(el, onSave){
+    el.addEventListener("keydown", e => {
+      if(e.key === "Enter"){ e.preventDefault(); el.blur(); }
+      if(e.key === "Escape"){ el.blur(); }
+    });
+    el.addEventListener("blur", () => {
+      const v = el.textContent.trim();
+      onSave(v);
+    });
+  }
+
+  function renderPresets(){
+    document.querySelectorAll("#presetTabs button").forEach(b => {
+      b.classList.toggle("on", b.getAttribute("data-pane") === activePresetPane);
+    });
+    ["matCategories","matBrands","matColors","priBrands"].forEach(k => {
+      $("pane-" + k).hidden = k !== activePresetPane;
+    });
+    if(activePresetPane === "matCategories") renderPresetCategories();
+    else if(activePresetPane === "matBrands") renderPresetList("matBrands", "耗材品牌");
+    else if(activePresetPane === "matColors") renderPresetList("matColors", "颜色名");
+    else if(activePresetPane === "priBrands") renderPresetList("priBrands", "打印机品牌");
+  }
+  $("presetTabs").addEventListener("click", e => {
+    const b = e.target.closest("button[data-pane]"); if(!b) return;
+    activePresetPane = b.getAttribute("data-pane"); renderPresets();
+  });
+
+  /* 树形面板：耗材大类 / 小类 */
+  function renderPresetCategories(){
+    const box = $("pane-matCategories");
+    const ps = S.presets();
+    if(!ps.matCategories.length){
+      box.innerHTML = '<div class="preset-empty">还没有大类，点下面新增</div>' +
+        '<div class="preset-add-row"><input id="pcAddCat" placeholder="新增大类名，如「金属线材」" />' +
+        '<button class="btn sm" id="pcAddCatBtn" type="button">新增大类</button></div>';
+      $("pcAddCatBtn").addEventListener("click", addNewCategory);
+      $("pcAddCat").addEventListener("keydown", e => { if(e.key === "Enter") addNewCategory(); });
+      return;
+    }
+    box.innerHTML = '<div class="preset-list" id="catList" data-list-key="matCategories">' + ps.matCategories.map((cat, ci) => {
+      const subs = cat.subs.map(s => `
+        <div class="preset-sub-row" data-cat="${S.esc(cat.name)}" data-sub="${S.esc(s.name)}">
+          <div class="sub-body">
+            <div class="sub-nm" contenteditable="true" spellcheck="false">${S.esc(s.name)}</div>
+            <div class="sub-ds" contenteditable="true" spellcheck="false" data-placeholder="点此添加说明…">${S.esc(s.desc || "")}</div>
+          </div>
+          <div class="edits">
+            <button class="btn danger ghost tiny" data-delsub="${S.esc(s.name)}" type="button" title="删除该小类">✕</button>
+          </div>
+        </div>`).join("") +
+        `<div class="preset-add-row">
+           <input placeholder="在「${S.esc(cat.name)}」下新增小类名" data-addsub-in="${S.esc(cat.name)}" />
+           <input placeholder="简短说明（可留空）" data-addsub-ds="${S.esc(cat.name)}" />
+           <button class="btn ghost sm" data-addsub-btn="${S.esc(cat.name)}" type="button">+ 小类</button>
+         </div>`;
+      return `<div class="preset-cat" data-cat="${S.esc(cat.name)}" data-i="${ci}" draggable="true">
+        <div class="preset-cat-head">
+          <div class="drag-handle" title="拖拽排序">☰</div>
+          <div class="nm" contenteditable="true" spellcheck="false">${S.esc(cat.name)}</div>
+          <div class="acts">
+            <button class="btn danger ghost tiny" data-delcat="${S.esc(cat.name)}" type="button" title="删除该大类（含其下所有小类）">✕</button>
+          </div>
+        </div>
+        ${cat.note ? `<div class="preset-cat-note" contenteditable="true" spellcheck="false">${S.esc(cat.note)}</div>` : ""}
+        <div class="preset-subs">${subs}</div>
+      </div>`;
+    }).join("") + `</div>
+      <div class="preset-add-row">
+        <input id="pcAddCat" placeholder="新增大类名，如「金属线材」" />
+        <button class="btn sm" id="pcAddCatBtn" type="button">+ 大类</button>
+      </div>`;
+    /* 大类拖拽排序 */
+    const catList = $("catList");
+    catList.addEventListener("dragstart", e => {
+      const el = e.target.closest(".preset-cat"); if(!el) return;
+      el.classList.add("dragging"); e.dataTransfer.setData("text/plain", el.getAttribute("data-i")); e.dataTransfer.effectAllowed = "move";
+    });
+    catList.addEventListener("dragend", e => {
+      const el = e.target.closest(".preset-cat"); if(el) el.classList.remove("dragging");
+      catList.querySelectorAll(".drag-over").forEach(x => x.classList.remove("drag-over"));
+    });
+    catList.addEventListener("dragover", e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; });
+    catList.addEventListener("dragenter", e => {
+      const el = e.target.closest(".preset-cat"); if(el && !el.classList.contains("dragging")) el.classList.add("drag-over");
+    });
+    catList.addEventListener("dragleave", e => {
+      const el = e.target.closest(".preset-cat");
+      if(el && !el.contains(e.relatedTarget)) el.classList.remove("drag-over");
+    });
+    catList.addEventListener("drop", e => {
+      e.preventDefault();
+      const from = e.dataTransfer.getData("text/plain");
+      const toEl = e.target.closest(".preset-cat");
+      if(!toEl || from === toEl.getAttribute("data-i")) return;
+      const arr = S.presets().matCategories;
+      const fi = +from, ti = +toEl.getAttribute("data-i");
+      const item = arr[fi]; arr.splice(fi, 1); arr.splice(ti, 0, item);
+      S.setSettings({}); renderPresets();
+    });
+    $("pcAddCatBtn").addEventListener("click", addNewCategory);
+    $("pcAddCat").addEventListener("keydown", e => { if(e.key === "Enter") addNewCategory(); });
+    bindCategoryEvents();
+  }
+
+  function addNewCategory(){
+    const inp = $("pcAddCat"); if(!inp) return;
+    const v = inp.value.trim();
+    if(!v){ toast("请输入大类名"); return; }
+    if(S.addCategory(v)){ inp.value = ""; renderPresets(); toast("已新增大类：「" + v + "」"); }
+    else toast("已存在同名大类");
+  }
+
+  function bindCategoryEvents(){
+    /* 大类名：失焦改名 */
+    document.querySelectorAll("#pane-matCategories .preset-cat .nm").forEach(el => {
+      bindEditable(el, v => {
+        const cat = el.closest(".preset-cat").getAttribute("data-cat");
+        if(!v){ el.textContent = cat; return; }
+        if(v === cat) return;
+        if(S.renameCategory(cat, v)) renderPresets();
+        else { el.textContent = cat; toast("改名失败：已存在同名大类"); }
+      });
+    });
+    /* 大类 note */
+    document.querySelectorAll("#pane-matCategories .preset-cat-note").forEach(el => {
+      const cat = el.closest(".preset-cat").getAttribute("data-cat");
+      bindEditable(el, v => { S.setCategoryNote(cat, v); });
+    });
+    /* 删除大类 */
+    document.querySelectorAll("#pane-matCategories [data-delcat]").forEach(b => {
+      b.addEventListener("click", async () => {
+        const cat = b.getAttribute("data-delcat");
+        const c = S.findCategory(cat);
+        const n = c ? c.subs.length : 0;
+        if(await confirmBox("删除大类「" + cat + "」？" + (n ? "其下 " + n + " 个小类也会一起删除。" : ""))){
+          S.removeCategory(cat); renderPresets();
+        }
+      });
+    });
+    /* 小类名 / 描述：失焦更新 */
+    document.querySelectorAll("#pane-matCategories .preset-sub-row").forEach(row => {
+      const cat = row.getAttribute("data-cat");
+      const oldSub = row.getAttribute("data-sub");
+      const nm = row.querySelector(".sub-nm");
+      const ds = row.querySelector(".sub-ds");
+      bindEditable(nm, v => {
+        if(!v){ nm.textContent = oldSub; return; }
+        if(v === oldSub) return;
+        if(S.updateSub(cat, oldSub, v, ds.textContent.trim())){
+          row.setAttribute("data-sub", v); renderPresets();
+        }else{ nm.textContent = oldSub; toast("已存在同名小类"); }
+      });
+      bindEditable(ds, v => { S.updateSub(cat, row.getAttribute("data-sub"), null, v); });
+    });
+    /* 删除小类 */
+    document.querySelectorAll("#pane-matCategories [data-delsub]").forEach(b => {
+      b.addEventListener("click", async () => {
+        const row = b.closest(".preset-sub-row");
+        const cat = row.getAttribute("data-cat"), sub = row.getAttribute("data-sub");
+        if(await confirmBox("删除小类「" + cat + " / " + sub + "」？")){
+          S.removeSub(cat, sub); renderPresets();
+        }
+      });
+    });
+    /* 在某大类下新增小类 */
+    document.querySelectorAll("#pane-matCategories [data-addsub-btn]").forEach(b => {
+      b.addEventListener("click", () => {
+        const cat = b.getAttribute("data-addsub-btn");
+        const inp = document.querySelector('[data-addsub-in="' + CSS.escape(cat) + '"]');
+        const dInp = document.querySelector('[data-addsub-ds="' + CSS.escape(cat) + '"]');
+        const v = inp.value.trim();
+        if(!v){ toast("请填写小类名"); return; }
+        const ok = S.addSub(cat, v, (dInp.value || "").trim());
+        if(ok){ renderPresets(); toast("已新增小类：「" + cat + " / " + v + "」"); }
+        else toast("该大类下已存在同名小类");
+      });
+    });
+  }
+  function moveCategory(name, dir){
+    const arr = S.presets().matCategories;
+    const i = arr.findIndex(c => c.name === name); if(i < 0) return;
+    const j = i + dir;
+    if(j < 0 || j >= arr.length) return;
+    const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+    S.setSettings({});  // 触发 push
+    renderPresets();
+  }
+
+  /* 列表式面板：品牌 / 颜色 / 打印机品牌 */
+  function renderPresetList(key, label){
+    const box = $("pane-" + key);
+    const ps = S.presets();
+    const arr = ps[key] || [];
+    box.innerHTML = (arr.length
+      ? '<div class="preset-list" data-list-key="' + key + '">' + arr.map((v, i) => `
+          <div class="preset-row" data-i="${i}" draggable="true">
+            <div class="drag-handle" title="拖拽排序">☰</div>
+            <div class="nm" contenteditable="true" spellcheck="false">${S.esc(v)}</div>
+            <div class="edits">
+              <button class="btn danger ghost tiny" data-del="${i}" type="button" title="删除">✕</button>
+            </div>
+          </div>`).join("") + '</div>'
+      : '<div class="preset-empty">还没有' + label + '，在下面新增</div>'
+    ) + `<div class="preset-add-row">
+          <input id="add${key}" placeholder="新增${label}，回车确认" />
+          <button class="btn sm" id="add${key}Btn" type="button">+ ${label}</button>
+        </div>`;
+    /* 拖拽排序 */
+    const list = box.querySelector('[data-list-key="' + key + '"]');
+    if(list){
+      list.addEventListener("dragstart", e => {
+        const row = e.target.closest(".preset-row"); if(!row) return;
+        row.classList.add("dragging");
+        e.dataTransfer.setData("text/plain", row.getAttribute("data-i"));
+        e.dataTransfer.effectAllowed = "move";
+      });
+      list.addEventListener("dragend", e => {
+        const row = e.target.closest(".preset-row"); if(row) row.classList.remove("dragging");
+        list.querySelectorAll(".drag-over").forEach(el => el.classList.remove("drag-over"));
+      });
+      list.addEventListener("dragover", e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; });
+      list.addEventListener("dragenter", e => {
+        const row = e.target.closest(".preset-row"); if(row && !row.classList.contains("dragging")) row.classList.add("drag-over");
+      });
+      list.addEventListener("dragleave", e => {
+        const row = e.target.closest(".preset-row");
+        if(row && !row.contains(e.relatedTarget)) row.classList.remove("drag-over");
+      });
+      list.addEventListener("drop", e => {
+        e.preventDefault();
+        const from = e.dataTransfer.getData("text/plain");
+        const to = e.target.closest(".preset-row");
+        if(!to || from === to.getAttribute("data-i")) return;
+        const fi = +from, ti = +to.getAttribute("data-i");
+        const item = arr[fi];
+        arr.splice(fi, 1); arr.splice(ti, 0, item);
+        S.setSettings({}); renderPresets();
+      });
+    }
+    /* 失焦改名 */
+    box.querySelectorAll(".preset-row .nm").forEach(el => {
+      const i = +el.closest(".preset-row").getAttribute("data-i");
+      bindEditable(el, v => {
+        if(!v){ el.textContent = arr[i]; return; }
+        if(v === arr[i]) return;
+        if(S.updateInList(key, arr[i], v)){ arr[i] = v; renderPresets(); }
+        else { el.textContent = arr[i]; toast("已存在同名项"); }
+      });
+    });
+    /* 删 */
+    box.querySelectorAll("[data-del]").forEach(b => {
+      b.addEventListener("click", async () => {
+        const i = +b.getAttribute("data-del");
+        if(await confirmBox("删除「" + arr[i] + "」？")){ S.removeFromList(key, arr[i]); renderPresets(); }
+      });
+    });
+    /* 新增 */
+    const ai = $("add" + key), ab = $("add" + key + "Btn");
+    const doAdd = () => {
+      const v = ai.value.trim(); if(!v){ toast("请填写" + label); return; }
+      const ok = key === "matBrands" ? S.addMatBrand(v)
+              : key === "matColors" ? S.addMatColor(v)
+              : S.addPriBrand(v);
+      if(ok){ ai.value = ""; renderPresets(); }
+      else toast("已存在同名项");
+    };
+    ab.addEventListener("click", doAdd);
+    ai.addEventListener("keydown", e => { if(e.key === "Enter") doAdd(); });
+  }
+
+  /* 重置当前面板 */
+  $("presetResetBtn").addEventListener("click", async () => {
+    const map = { matCategories:"耗材类型树", matBrands:"耗材品牌", matColors:"颜色名", priBrands:"打印机品牌" };
+    if(!await confirmBox("把「" + map[activePresetPane] + "」还原为内置默认？当前自定义内容会丢失。")) return;
+    S.resetPresets(activePresetPane); renderPresets();
+    toast("已重置为默认");
+  });
+
+  function applyTheme(){ document.documentElement.dataset.theme = S.settings.theme; }
+  function updateMeta(){
+    document.querySelector('meta[name="theme-color"]').setAttribute("content", S.settings.theme === "light" ? "#f2f4f7" : "#0e1218");
+  }
+
+  /* ---------- 成就检查 ---------- */
+  function checkAch(){
+    const s = S.buildAchStats(), now = new Set(), unlocked = [];
+    S.ACHS.forEach(a => { if(a.goal(s) >= 1){ now.add(a.id); if(!S.achKeys.has(a.id)) unlocked.push(a.ic + " " + a.nm); } });
+    S.setAchKeys(now);
+    return unlocked;
+  }
+
+  /* ---------- 新手引导 ---------- */
+  const OB_STEPS = [
+    { ic:"🖨️", t:"欢迎使用 PrintForge", b:"这是你的 3D 打印接单经营台：成本核算、订单利润、耗材库存、打印记录一站式管理。数据存在你部署的服务端，多设备打开同一地址即可共享同一份数据。" },
+    { ic:"🧵", t:"第一步：建耗材与打印机", b:"在「耗材」页添加品牌、类型（PLA / 丝绸 / 碳纤维…，可自由输入）、颜色与单价；在「打印机」页添加品牌、型号、功率电价，填上购入价与使用率，机器折旧会自动摊到每小时。" },
+    { ic:"🧮", t:"第二步：算成本、开订单", b:"「计算器」输入克数、打印时长和处理耗时，自动算出耗材 + 电费 + 机器折旧 + 人工的全成本与建议报价；点「去开订单」一键带入，报价取整后自动填好。" },
+    { ic:"📦", t:"第三步：跟踪订单与利润", b:"订单支持定金/尾款分期收款、自动算欠款与利润率；「订单列表」可按状态与日期区间筛选；「仪表盘」支持按日 / 月 / 年查看经营情况。左下角指示灯实时显示数据同步状态。" }
+  ];
+  let obIdx = 0;
+  function obRender(){
+    const s = OB_STEPS[obIdx];
+    $("obStep").textContent = (obIdx + 1) + " / " + OB_STEPS.length;
+    $("obIcon").textContent = s.ic;
+    $("obTitle").textContent = s.t;
+    $("obBody").textContent = s.b;
+    $("obPrev").style.visibility = obIdx > 0 ? "visible" : "hidden";
+    $("obNext").textContent = obIdx === OB_STEPS.length - 1 ? "开始使用" : "下一步";
+    $("obDots").innerHTML = OB_STEPS.map((_, i) => `<i class="${i === obIdx ? "on" : ""}"></i>`).join("");
+  }
+  function obShow(){ obIdx = 0; obRender(); $("onboard").hidden = false; }
+  function obClose(){ $("onboard").hidden = true; }
+  $("obPrev").addEventListener("click", () => { if(obIdx > 0){ obIdx--; obRender(); } });
+  $("obNext").addEventListener("click", () => {
+    if(obIdx < OB_STEPS.length - 1){ obIdx++; obRender(); }
+    else { obClose(); S.setSettings({ onboarded:true }); toast("开始接单吧 " + randFace()); }
+  });
+  $("obSkip").addEventListener("click", () => { obClose(); S.setSettings({ onboarded:true }); });
+  $("showOnboard").addEventListener("click", obShow);
+
+  /* ---------- 初始化 ---------- */
+  Object.assign(RENDERERS, { dash:renderDash, calc:calc, order:()=>{}, olist:renderOrders, mats:renderMaterials, printers:renderPrinters, records:renderRecords, settings:renderSettings });
+
+  /* 数据同步状态 LED */
+  S.onSync(st => {
+    const led = $("saveLed"), txt = $("modeText");
+    if(st === "saving"){ led.style.background = "var(--accent)"; led.style.boxShadow = "0 0 6px var(--accent)"; txt.textContent = "保存中…"; }
+    else if(st === "error"){ led.style.background = "var(--danger)"; led.style.boxShadow = "0 0 6px var(--danger)"; txt.textContent = "保存失败，请检查服务"; }
+    else{
+      const ok = "var(--ok)";
+      led.style.background = ok; led.style.boxShadow = "0 0 6px " + ok;
+      txt.textContent = S.mode === "server" ? "服务端存储 · 已同步" : "本地模式 · 服务未连接";
+    }
+  });
+
+  /* 时长下拉（闹钟样式） */
+  (function fillDuration(){
+    const h = $("rHoursH"), m = $("rHoursM");
+    let html = "";
+    for(let i = 0; i <= 48; i++) html += `<option value="${i}">${i}</option>`;
+    h.innerHTML = html; h.value = "0";
+    html = "";
+    for(let i = 0; i < 60; i += 5) html += `<option value="${i}">${String(i).padStart(2, "0")}</option>`;
+    m.innerHTML = html; m.value = "0";
+  })();
+
+  function refreshAll(){
+    applyTheme(); updateMeta(); renderSettings(); fillSelects(); loadVersion();
+    if(!$("rMin").value && S.settings.leadMin != null) $("rMin").value = S.settings.leadMin; // 默认处理耗时
+    resetOrdForm(); calc();
+    renderDash(); renderOrders(); renderMaterials(); renderPrinters(); renderRecords();
+    $("headDate").textContent = S.today();
+  }
+  refreshAll();
+  goto((location.hash.match(/^#\/(\w+)/) || [])[1] || "dash");
+
+  /* ---------- 版本与更新 ---------- */
+  let APP_VER = "";
+  let remoteUpdate = null; // 检查到的新版本清单
+  function cmpVer(a, b){
+    const pa = String(a).split(".").map(Number), pb = String(b).split(".").map(Number);
+    for(let i = 0; i < 3; i++){
+      const x = pa[i] || 0, y = pb[i] || 0;
+      if(x !== y) return x > y ? 1 : -1;
+    }
+    return 0;
+  }
+  function renderChangelog(list){
+    $("changelogList").innerHTML = list.map(e =>
+      '<div class="chg"><div class="chg-v">v' + S.esc(e.v) + ' <span class="muted">' + S.esc(e.date || "") + '</span></div><ul>' +
+      (e.items || []).map(i => "<li>" + S.esc(i) + "</li>").join("") + "</ul></div>"
+    ).join("");
+  }
+  async function loadVersion(){
+    try{
+      const d = await fetch("/api/version").then(r => r.json());
+      APP_VER = d.version;
+      $("verCur").textContent = "v" + d.version + (d.build ? " · " + d.build : "");
+      renderChangelog(d.changelog || []);
+    }catch(e){ $("verCur").textContent = "未知"; }
+  }
+  function updShow(cls, html){
+    const el = $("updResult"); el.className = "upd-result " + cls; el.innerHTML = html; el.hidden = false;
+  }
+  $("checkUpd").addEventListener("click", async () => {
+    const url = ($("setUpdateUrl").value || "").trim();
+    if(!url){ updShow("warn", "请先填写更新源地址（指向远程 <b>version.json</b> 的 URL），会自动保存。"); return; }
+    S.setSettings({ updateUrl:url });
+    const btn = $("checkUpd"); btn.disabled = true; const old = btn.textContent; btn.textContent = "检查中…";
+    updShow("warn", "正在连接更新源…"); $("updResult").hidden = false; $("getUpd").style.display = "none";
+    try{
+      const m = await fetch(url, { cache:"no-store" }).then(r => { if(!r.ok) throw new Error("HTTP " + r.status); return r.json(); });
+      if(!m || !m.version) throw new Error("清单格式不正确（需要 version 字段）");
+      const cmp = cmpVer(m.version, APP_VER);
+      remoteUpdate = m;
+      if(cmp > 0){
+        updShow("warn", "发现新版本 <b>v" + S.esc(m.version) + "</b>（当前 v" + S.esc(APP_VER) + "）" +
+          (m.date ? " · " + S.esc(m.date) : "") +
+          (m.notes && m.notes.length ? '<ul class="um-note">' + m.notes.map(n => "<li>" + S.esc(n) + "</li>").join("") + "</ul>" : ""));
+        $("getUpd").style.display = "";
+      }else if(cmp === 0){
+        updShow("ok", "已是最新版本 v" + S.esc(APP_VER) + "。");
+      }else{
+        updShow("ok", "本地版本 v" + S.esc(APP_VER) + " 比更新源（v" + S.esc(m.version) + "）还新。");
+      }
+    }catch(e){
+      updShow("err", "检查失败：" + S.esc(e.message) + "。请确认更新源 URL 可访问，且服务端允许跨域（CORS）。");
+    }finally{ btn.disabled = false; btn.textContent = old; }
+  });
+  $("getUpd").addEventListener("click", () => {
+    const m = remoteUpdate; if(!m) return;
+    $("umTitle").textContent = "获取更新 · v" + m.version;
+    $("umBody").innerHTML =
+      (m.notes && m.notes.length ? '<ul class="um-note">' + m.notes.map(n => "<li>" + S.esc(n) + "</li>").join("") + "</ul>" : "") +
+      (m.downloadUrl ? '<a class="btn um-link" href="' + S.esc(m.downloadUrl) + '" target="_blank" rel="noopener">打开下载页 / 下载最新包</a>' : "") +
+      '<p class="muted" style="margin:14px 0 4px">按你的部署方式执行对应命令（完成后刷新页面即更新）：</p>' +
+      '<div class="cmd"><button class="copy" data-cmd="git pull&#10;docker compose up -d --build">复制</button>git pull\ndocker compose up -d --build</div>' +
+      '<div class="cmd"><button class="copy" data-cmd="npx wrangler deploy">复制</button>npx wrangler deploy</div>' +
+      '<div class="cmd"><button class="copy" data-cmd="vercel --prod">复制</button>vercel --prod</div>' +
+      '<p class="muted" style="margin-top:8px">提示：数据存在数据目录 / KV / Redis 中，更新程序不会影响数据。</p>';
+    $("updModal").hidden = false;
+  });
+  $("umClose").addEventListener("click", () => { $("updModal").hidden = true; });
+  $("updModal").addEventListener("click", e => { if(e.target === $("updModal")) $("updModal").hidden = true; });
+  $("umBody").addEventListener("click", e => {
+    const c = e.target.closest(".copy"); if(!c) return;
+    const t = c.getAttribute("data-cmd").replace("&#10;", "\n");
+    const done = () => { c.textContent = "已复制"; setTimeout(() => c.textContent = "复制", 1200); };
+    if(navigator.clipboard) navigator.clipboard.writeText(t).then(done).catch(() => toast("复制失败，请手动选择文本复制"));
+    else toast("复制失败，请手动选择文本复制");
+  });
+  $("setUpdateUrl").addEventListener("change", () => S.setSettings({ updateUrl:$("setUpdateUrl").value.trim() }));
+
+  /* ---------- 登录门 ---------- */
+  let appStarted = false;
+  function appStart(){
+    if(appStarted) return; appStarted = true;
+    refreshAll(); render(currentTab);
+    if(!S.settings.onboarded) obShow(); // 初次使用自动引导
+    const sp = S.settings.startPage;    // 启动页
+    if(sp && PAGE_TITLES[sp] && !location.hash) goto(sp);
+    const lb = $("logoutBtn");
+    if(S.auth && S.auth.required) lb.style.display = ""; // 服务端密码模式下显示登出
+  }
+  function loginErr(msg){
+    const e = $("loginErr"); e.textContent = msg; e.hidden = !msg;
+  }
+  function showLoginGate(){
+    const setup = S.auth.setup;
+    $("loginTitle").textContent = setup ? "设置管理密码" : "验证身份";
+    $("loginSub").textContent = setup
+      ? "首次使用：为经营台设置一个管理密码（至少 4 位），之后查看和操作数据都需要它。"
+      : "数据受密码保护，验证通过后才能查看与操作。";
+    $("loginPw2").hidden = !setup;
+    $("loginPw2").value = ""; $("loginPw").value = "";
+    loginErr(""); $("loginGate").hidden = false;
+    $("loginPw").focus();
+  }
+  async function doLogin(){
+    const pw = $("loginPw").value;
+    if(!pw){ loginErr("请输入密码"); return; }
+    const setup = S.auth.setup;
+    if(setup){
+      if(pw.length < 4){ loginErr("密码至少 4 位"); return; }
+      if(pw !== $("loginPw2").value){ loginErr("两次输入的密码不一致"); return; }
+    }
+    $("loginBtn").disabled = true; loginErr("");
+    try{
+      if(setup) await S.setupAuth(pw); else await S.login(pw);
+      $("loginGate").hidden = true;
+      toast("已解锁 " + randFace());
+      appStart();
+    }catch(e){
+      loginErr(e.message || "登录失败");
+      $("loginPw").value = ""; $("loginPw").focus();
+    }finally{
+      $("loginBtn").disabled = false;
+    }
+  }
+  $("loginBtn").addEventListener("click", doLogin);
+  $("loginPw").addEventListener("keydown", e => { if(e.key === "Enter") doLogin(); });
+  $("loginPw2").addEventListener("keydown", e => { if(e.key === "Enter") doLogin(); });
+  $("logoutBtn").addEventListener("click", () => S.logout());
+
+  Store.ready.then(mode => {
+    if(mode === "auth"){ showLoginGate(); return; } // 服务端要求登录，先解锁
+    appStart();
+  });
+  if("serviceWorker" in navigator){
+    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+  }
+  function render(tab){ RENDERERS[tab] && RENDERERS[tab](); }
+})();
