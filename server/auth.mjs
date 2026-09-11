@@ -1,4 +1,4 @@
-/* PrintForge 认证核心 · 跨运行时（Node / Workers / Vercel）
+/* 3D打印业务平台 认证核心 · 跨运行时（Node / Workers / Vercel）
    - 密码：PBKDF2-SHA256 加盐哈希（WebCrypto，120k 迭代）
    - 会话：HMAC-SHA256 签名的过期时间戳令牌（Cookie，默认 30 天）
    - 密码来源：环境变量 APP_PASSWORD，或服务端存储中的 auth 记录（首次访问时设置）
@@ -49,9 +49,9 @@ export function createAuth(store, envPw){
     },
     /* 令牌签名密钥 */
     async secret(){
-      if(envPw) return sha256hex("printforge:" + envPw);
+      if(envPw) return sha256hex("3d-printing-business:" + envPw);
       const r = await rec();
-      return r ? r.secret : "printforge-insecure";
+      return r ? r.secret : "3d-printing-business-insecure";
     },
     /* 修改密码（仅在服务端存储密码时允许，环境变量密码不支持） */
     async changePassword(currentPw, newPw){

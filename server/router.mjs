@@ -1,4 +1,4 @@
-/* PrintForge 后端核心 · 与运行时无关的 API 路由
+/* 3D打印业务平台 后端核心 · 与运行时无关的 API 路由
    存储适配器只需实现：{ get(col) -> any, set(col, val) }
    集合：materials / printers / records / orders / settings / achievements
    特殊集合：data（读写全部）、auth（密码记录，仅服务端内部使用，不对外暴露）

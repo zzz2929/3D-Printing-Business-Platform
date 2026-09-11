@@ -1,4 +1,4 @@
-/* PrintForge 存储适配器：file（Node/Docker/NAS）· kv（Cloudflare Workers）· upstash（Vercel 可选）· memory（兜底） */
+/* 3D打印业务平台 存储适配器：file（Node/Docker/NAS）· kv（Cloudflare Workers）· upstash（Vercel 可选）· memory（兜底） */
 import fs from "node:fs";
 
 /* 文件存储：每集合一个 JSON，原子写入（临时文件 + rename） */

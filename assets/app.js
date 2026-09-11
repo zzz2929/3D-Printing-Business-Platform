@@ -1,4 +1,4 @@
-/* PrintForge · 界面与交互 */
+/* 3D打印业务平台 · 界面与交互 */
 "use strict";
 
 (function(){
@@ -1014,11 +1014,11 @@
       S.num(r.handlingMin), (S.num(r.cFil) + S.num(r.cElec)).toFixed(2), S.num(r.cMach).toFixed(2),
       S.num(r.cLab).toFixed(2), S.num(r.total).toFixed(2), r.note || ""]);
     const csv = "\uFEFF" + [head].concat(rows).map(r => r.map(c => '"' + String(c == null ? "" : c).replace(/"/g, '""') + '"').join(",")).join("\r\n");
-    download("printforge_records_" + S.today() + ".csv", csv, "text/csv;charset=utf-8");
+    download("3d-printing-business_records_" + S.today() + ".csv", csv, "text/csv;charset=utf-8");
     toast("CSV 已导出");
   });
   $("expBtn").addEventListener("click", () => {
-    download("printforge_backup_" + S.today() + ".json", JSON.stringify(S.exportPayload(), null, 2), "application/json"); S.setSettings({ lastExportAt:Date.now() }); renderSettings();
+    download("3d-printing-business_backup_" + S.today() + ".json", JSON.stringify(S.exportPayload(), null, 2), "application/json"); S.setSettings({ lastExportAt:Date.now() }); renderSettings();
     toast("备份已导出");
   });
   $("impBtn").addEventListener("click", () => $("impFile").click());
@@ -1086,7 +1086,7 @@
     applyTheme(); updateMeta();
   });
   $("setExp").addEventListener("click", () => {
-    download("printforge_backup_" + S.today() + ".json", JSON.stringify(S.exportPayload(), null, 2), "application/json"); S.setSettings({ lastExportAt:Date.now() }); renderSettings();
+    download("3d-printing-business_backup_" + S.today() + ".json", JSON.stringify(S.exportPayload(), null, 2), "application/json"); S.setSettings({ lastExportAt:Date.now() }); renderSettings();
     toast("备份已导出");
   });
   $("setImp").addEventListener("click", () => $("impFile").click());
@@ -1501,7 +1501,7 @@
 
   /* ---------- 新手引导 ---------- */
   const OB_STEPS = [
-    { ic:"🖨️", t:"欢迎使用 PrintForge", b:"这是你的 3D 打印接单经营台：成本核算、订单利润、耗材库存、打印记录一站式管理。数据存在你部署的服务端，多设备打开同一地址即可共享同一份数据。" },
+    { ic:"🖨️", t:"欢迎使用 3D打印业务平台", b:"这是你的 3D 打印接单经营台：成本核算、订单利润、耗材库存、打印记录一站式管理。数据存在你部署的服务端，多设备打开同一地址即可共享同一份数据。" },
     { ic:"🧵", t:"第一步：建耗材与打印机", b:"在「耗材」页添加品牌、类型（PLA / 丝绸 / 碳纤维…，可自由输入）、颜色与单价；在「打印机」页添加品牌、型号、功率电价，填上购入价与使用率，机器折旧会自动摊到每小时。" },
     { ic:"🧮", t:"第二步：算成本、开订单", b:"「计算器」输入克数、打印时长和处理耗时，自动算出耗材 + 电费 + 机器折旧 + 人工的全成本与建议报价；点「去开订单」一键带入，报价取整后自动填好。" },
     { ic:"📦", t:"第三步：跟踪订单与利润", b:"订单支持定金/尾款分期收款、自动算欠款与利润率；「订单列表」可按状态与日期区间筛选；「仪表盘」支持按日 / 月 / 年查看经营情况。左下角指示灯实时显示数据同步状态。" }

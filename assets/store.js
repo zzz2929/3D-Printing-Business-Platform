@@ -1,4 +1,4 @@
-/* PrintForge · 数据层：REST API 客户端（前后端分离）
+/* 3D打印业务平台 · 数据层：REST API 客户端（前后端分离）
    服务端存储；服务不可达时自动降级为 localStorage「本地模式」；
    旧版（v1/v2 纯前端）localStorage 数据在首次连接服务端时自动上载迁移 */
 "use strict";
@@ -527,7 +527,7 @@ const Store = (function(){
 
   /* ---------- 备份 / 导入 ---------- */
   function exportPayload(){
-    return { _app:"printforge", _version:3, _legacy:"3dprint-cost",
+    return { _app:"3d-printing-business", _version:3, _legacy:"3dprint-cost",
       settings, materials, printers, records, orders,
       achievements:Array.from(achKeys), exportedAt:new Date().toISOString() };
   }

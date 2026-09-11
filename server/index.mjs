@@ -1,4 +1,4 @@
-/* PrintForge Node 宿主：静态文件 + REST API + 文件存储
+/* 3D打印业务平台 Node 宿主：静态文件 + REST API + 文件存储
    环境变量：PORT（默认 8080）、DATA_DIR（默认 ./data） */
 import http from "node:http";
 import { readFile } from "node:fs/promises";
@@ -60,7 +60,7 @@ const server = http.createServer(async (req, res) => {
     const buf = out.body ? Buffer.from(await out.arrayBuffer()) : null;
     res.end(buf);
   }catch(err){
-    console.error("[printforge]", err);
+    console.error("[3d-printing-business]", err);
     res.writeHead(500, { "content-type": "application/json" });
     res.end(JSON.stringify({ error: "internal error" }));
   }
@@ -78,12 +78,12 @@ function readStream(req){
 server.on("error", err => {
   if(err.code === "EADDRINUSE"){
     console.error("启动失败：端口 " + PORT + " 已被占用。");
-    console.error("可能已有一个 PrintForge 在运行；或换一个端口：PORT=8081 npm start");
+    console.error("可能已有一个 3D打印业务平台 在运行；或换一个端口：PORT=8081 npm start");
     process.exit(1);
   }
   throw err;
 });
 
 server.listen(PORT, () => {
-  console.log("PrintForge 服务已启动 → http://localhost:" + PORT + "（数据目录：" + DATA_DIR + "）");
+  console.log("3D打印业务平台 服务已启动 → http://localhost:" + PORT + "（数据目录：" + DATA_DIR + "）");
 });

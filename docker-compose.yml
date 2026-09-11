@@ -1,13 +1,13 @@
 services:
-  printforge:
-    image: printforge:latest
+  3d-printing-business:
+    image: 3d-printing-business:latest
     build: .
-    container_name: printforge
+    container_name: 3d-printing-business
     restart: unless-stopped
     ports:
       - "8080:8080"
     volumes:
-      - printforge-data:/data
+      - 3d-printing-business-data:/data
 
 volumes:
-  printforge-data:
+  3d-printing-business-data:

@@ -1,4 +1,4 @@
-# PrintForge · Node 服务 + 文件存储（Docker / 飞牛OS / 群晖等 NAS）
+# 3D打印业务平台 · Node 服务 + 文件存储（Docker / 飞牛OS / 群晖等 NAS）
 FROM node:22-alpine
 
 WORKDIR /app

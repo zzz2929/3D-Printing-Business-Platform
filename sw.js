@@ -1,5 +1,5 @@
-/* PrintForge — 离线缓存（应用壳）；/api 一律走网络，不缓存 */
-const CACHE = "printforge-v13";
+/* 3D打印业务平台 — 离线缓存（应用壳）；/api 一律走网络，不缓存 */
+const CACHE = "3d-printing-business-v13";
 const ASSETS = [
   "./",
   "index.html",

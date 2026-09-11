@@ -1,4 +1,4 @@
-/* PrintForge Cloudflare Workers 宿主
+/* 3D打印业务平台 Cloudflare Workers 宿主
    部署前创建 KV 并绑定（见 README）：
      npx wrangler kv namespace create DATA
    然后把输出的 id 填入 wrangler.jsonc 的 kv_namespaces */

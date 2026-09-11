@@ -1,7 +1,7 @@
 {
-  "name": "PrintForge · 3D 打印经营台",
-  "short_name": "PrintForge",
-  "description": "纯前端离线的 3D 打印成本核算、订单与耗材管理",
+  "name": "3D打印业务平台 · 3D 打印经营台",
+  "short_name": "3D打印业务平台",
+  "description": "3D 打印成本核算、订单与耗材管理",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
