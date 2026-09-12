@@ -21,15 +21,15 @@
 
 ## 功能总览
 
-| 模块 | 能力 |
-| --- | --- |
-| **仪表盘** | 营收与利润合并卡，按日 / 月 / 年筛选；订单进度（进行中 / 已完成）、待收款提醒、低库存预警、客户排行、经营成就 |
-| **成本计算器** | 材料 + 电费 + 机器折旧 + 人工全成本核算，建议报价 = 全成本 ×（1 + 利润加成%）；打印时长用时 / 分下拉（闹钟式）输入；「去开订单」一键带入订单表单（含建议报价取整） |
-| **开单 / 订单列表** | 独立两页；报价（应收）与多笔分期收款 → 自动算欠款；全成本自动算利润与利润率；列表支持关键字 / 状态 / 日期区间筛选与四种排序；一键复制订单摘要 |
-| **耗材库房** | 整卷克重 / 剩余库存 / 低库存预警；打印记录自动扣减、删除加回；支持补货 |
-| **打印机** | 品牌下拉（拓竹 / 创想 / Prusa…）、功率与电价、购入价 / 折旧年限 / 年维护费 / 使用率 → 每小时机器成本 |
-| **打印记录** | 汇总统计 + 近 12 个月成本图；耗材 / 打印机 / 日期区间 / 关键字筛选；导出 CSV / JSON |
-| **设置** | 结算货币、低库存预警线、人工时薪、利润加成%；深浅主题；备份 / 恢复 / 演示数据；修改管理密码 |
+| 模块                      | 能力                                                                                                                                                                |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **仪表盘**          | 营收与利润合并卡，按日 / 月 / 年筛选；订单进度（进行中 / 已完成）、待收款提醒、低库存预警、客户排行、经营成就                                                       |
+| **成本计算器**      | 材料 + 电费 + 机器折旧 + 人工全成本核算，建议报价 = 全成本 ×（1 + 利润加成%）；打印时长用时 / 分下拉（闹钟式）输入；「去开订单」一键带入订单表单（含建议报价取整） |
+| **开单 / 订单列表** | 独立两页；报价（应收）与多笔分期收款 → 自动算欠款；全成本自动算利润与利润率；列表支持关键字 / 状态 / 日期区间筛选与四种排序；一键复制订单摘要                      |
+| **耗材库房**        | 整卷克重 / 剩余库存 / 低库存预警；打印记录自动扣减、删除加回；支持补货                                                                                              |
+| **打印机**          | 品牌下拉（拓竹 / 创想 / Prusa…）、功率与电价、购入价 / 折旧年限 / 年维护费 / 使用率 → 每小时机器成本                                                              |
+| **打印记录**        | 汇总统计 + 近 12 个月成本图；耗材 / 打印机 / 日期区间 / 关键字筛选；导出 CSV / JSON                                                                                 |
+| **设置**            | 结算货币、低库存预警线、人工时薪、利润加成%；深浅主题；备份 / 恢复 / 演示数据；修改管理密码                                                                         |
 
 ## 成本模型
 
@@ -46,8 +46,6 @@
 > 只算材料和电就接单，短期看开张了，长期都是赔本买卖——机器会坏、时间值钱。
 
 ## 架构与项目结构
-
-一套与运行时无关的核心代码，通过存储适配器跑在四种环境上：
 
 ```
 ├── index.html            # 前端单页（零构建原生 HTML/CSS/JS）
@@ -68,36 +66,13 @@
 └── data/*.json           # Node 模式下的数据文件
 ```
 
-**存储适配器**只需实现 `{ get(col), set(col, val) }` 两个方法：
-
-| 适配器 | 使用场景 |
-| --- | --- |
-| 文件（`data/*.json`） | Node / Docker，默认 |
-| Cloudflare KV | Workers 部署 |
-| Upstash Redis | Vercel 部署（可选，持久化需要） |
-| 内存 | 兜底（重启即失，响应头带 `x-storage-warning`） |
-
-## API 一览
-
-所有端点均为 `/api/{collection}` 形式，`GET` 读取、`PUT` 写入；已启用密码时，除鉴权端点外均需有效会话 Cookie。
-
-| 端点 | 说明 |
-| --- | --- |
-| `GET/PUT /api/{materials\|printers\|records\|orders\|settings\|achievements}` | 六个业务集合的读写 |
-| `GET/PUT /api/data` | 全量读 / 写（备份、恢复用） |
-| `GET /api/version` | 版本信息（无需登录） |
-| `GET /api/auth` | 鉴权状态：是否已设密码、是否已登录、是否可初始化 |
-| `POST /api/setup` | 首次设置管理密码（仅未配置时可用） |
-| `POST /api/login` / `POST /api/logout` | 登录 / 登出 |
-| `POST /api/change-password` | 修改管理密码 |
-
 ## 本地运行
 
 要求 Node ≥ 18，无需 `npm install`：
 
 ```bash
 npm start            # 等价于 node server/index.mjs
-# → http://localhost:8080
+# → http://localhost:2929
 ```
 
 数据存放在 `./data/*.json`，可用 `DATA_DIR` 环境变量改变位置。
@@ -110,7 +85,7 @@ npm start            # 等价于 node server/index.mjs
 
 ```bash
 docker run -d --name 3d-printing-business --restart unless-stopped \
-  -p 8080:8080 -v 3d-printing-business-data:/data \
+  -p 2929:2929 -v 3d-printing-business-data:/data \
   zzz2929/3d-printing-business:latest
 ```
 
@@ -122,17 +97,52 @@ docker run -d --name 3d-printing-business --restart unless-stopped \
 docker compose up -d   # 数据持久化在 named volume 3d-printing-business-data（容器内 /data）
 ```
 
-访问 `http://<设备IP>:8080`。
+访问 `http://<设备IP>:2929`。
 
-**镜像发布**（维护者）：推送 `v*` 标签到 GitHub（如 `git tag v1.0.1 && git push --tags`），GitHub Actions 会自动构建 amd64 + arm64 双架构镜像并推送到 Docker Hub；也可本地构建后手动 `docker push zzz2929/3d-printing-business:latest`。
+### 方式二：Docker Compose
 
-**飞牛OS（fnOS）操作路径**：
+```yaml
+services:
+  3d-printing-business:
+    image: zzz2929/3d-printing-business:latest
+    container_name: 3d-printing-business
+    restart: unless-stopped
+    ports:
+      - "2929:2929"
+    volumes:
+      - 3d-printing-business-data:/data
+    # 标记此容器由Watchtower管理
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
 
-1. 把本项目文件夹上传到存储空间（如 `/vol1/docker/3d-printing-business`）
-2. Docker 应用 → Compose → 新增项目，指向该文件夹（自动识别 `docker-compose.yml`）
-3. 启动后端口映射 `8080:8080`，数据卷自动创建；局域网直接访问，配合远程访问可暴露公网
+  # 自动更新容器 - 检测到新镜像后自动重建
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      # 时区
+      - TZ=Asia/Shanghai
+      # 检测间隔（秒），默认300秒(5分钟)，这里设30分钟
+      - WATCHTOWER_POLL_INTERVAL=1800
+      # 更新前清理旧镜像
+      - WATCHTOWER_CLEANUP=true
+      # 通知（可选，取消注释可启用邮件通知）
+      # - WATCHTOWER_NOTIFICATIONS=email
+      # - WATCHTOWER_NOTIFICATION_EMAIL_FROM=发件邮箱
+      # - WATCHTOWER_NOTIFICATION_EMAIL_TO=收件邮箱
+      # - WATCHTOWER_NOTIFICATION_EMAIL_SERVER=smtp.qq.com
+      # - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PORT=587
+      # - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_USER=你的邮箱
+      # - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PASSWORD=授权码
+    restart: unless-stopped
 
-### 方式二：Cloudflare Workers（KV 存储）
+volumes:
+  3d-printing-business-data:
+```
+
+### 方式三：Cloudflare Workers（KV 存储）
 
 ```bash
 npx wrangler kv namespace create DATA   # 把输出的 id 填入 wrangler.jsonc
@@ -141,7 +151,7 @@ npx wrangler deploy
 
 免费 KV 每日写入 1000 次，个人记账频率完全够用。不绑定 KV 时服务可启动但数据只存内存（重启即失），响应头会带 `x-storage-warning`。
 
-### 方式三：Vercel（Serverless）
+### 方式四：Vercel（Serverless）
 
 `vercel --prod` 零配置即可部署，但 serverless 文件系统是临时的——**要持久保存数据，需配置免费的 Upstash Redis**：
 
@@ -152,18 +162,18 @@ npx wrangler deploy
 ### 方式四：任意有 Node 的机器 / NAS 裸跑
 
 ```bash
-DATA_DIR=/vol1/3d-printing-business-data PORT=8080 node server/index.mjs
+DATA_DIR=/vol1/3d-printing-business-data PORT=2929 node server/index.mjs
 ```
 
 ## 环境变量
 
-| 变量 | 默认值 | 说明 | 适用平台 |
-| --- | --- | --- | --- |
-| `PORT` | `8080` | HTTP 监听端口 | Node / Docker |
-| `DATA_DIR` | `./data` | JSON 数据目录 | Node / Docker |
-| `APP_PASSWORD` | 未设置 | 管理密码；不设置时可在页面首次引导中设置 | 全部 |
-| `UPSTASH_REDIS_REST_URL` | — | Upstash Redis REST 地址 | Vercel |
-| `UPSTASH_REDIS_REST_TOKEN` | — | Upstash Redis REST Token | Vercel |
+| 变量                         | 默认值     | 说明                                     | 适用平台      |
+| ---------------------------- | ---------- | ---------------------------------------- | ------------- |
+| `PORT`                     | `2929`   | HTTP 监听端口                            | Node / Docker |
+| `DATA_DIR`                 | `./data` | JSON 数据目录                            | Node / Docker |
+| `APP_PASSWORD`             | 未设置     | 管理密码；不设置时可在页面首次引导中设置 | 全部          |
+| `UPSTASH_REDIS_REST_URL`   | —         | Upstash Redis REST 地址                  | Vercel        |
+| `UPSTASH_REDIS_REST_TOKEN` | —         | Upstash Redis REST Token                 | Vercel        |
 
 ## 登录鉴权
 
@@ -171,11 +181,11 @@ DATA_DIR=/vol1/3d-printing-business-data PORT=8080 node server/index.mjs
 
 ### 启用方式（三选一）
 
-| 平台 | 方式 |
-| --- | --- |
-| Docker / NAS / 裸跑 Node | 什么都不用配——首次打开页面会引导你「设置管理密码」（PBKDF2 加盐哈希存于 `data/auth.json`）；也可用环境变量 `APP_PASSWORD=你的密码` |
-| Cloudflare Workers | `npx wrangler secret put APP_PASSWORD`（输入密码后重新部署） |
-| Vercel | 项目环境变量添加 `APP_PASSWORD`（建议同时配置 Upstash，否则密码记录无法持久化） |
+| 平台                     | 方式                                                                                                                                    |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Docker / NAS / 裸跑 Node | 什么都不用配——首次打开页面会引导你「设置管理密码」（PBKDF2 加盐哈希存于`data/auth.json`）；也可用环境变量 `APP_PASSWORD=你的密码` |
+| Cloudflare Workers       | `npx wrangler secret put APP_PASSWORD`（输入密码后重新部署）                                                                          |
+| Vercel                   | 项目环境变量添加`APP_PASSWORD`（建议同时配置 Upstash，否则密码记录无法持久化）                                                        |
 
 - 会话凭据为 HMAC 签名的 HttpOnly Cookie，有效期 30 天；「设置 → 数据 → 退出登录」可主动登出
 - 会话过期后保存数据会被拒绝并自动回到登录页，不会丢数据（改动仍在内存中，重新登录后可重新保存）
@@ -189,11 +199,11 @@ DATA_DIR=/vol1/3d-printing-business-data PORT=8080 node server/index.mjs
 
 ## 升级
 
-| 平台 | 操作 |
-| --- | --- |
-| Docker / NAS | `git pull && docker compose up -d --build`，数据在卷里不受影响 |
-| Cloudflare Workers | `git pull && npx wrangler deploy` |
-| Vercel | `git pull && vercel --prod` |
-| 裸跑 Node | `git pull` 后重启进程即可 |
+| 平台               | 操作                                                             |
+| ------------------ | ---------------------------------------------------------------- |
+| Docker / NAS       | `git pull && docker compose up -d --build`，数据在卷里不受影响 |
+| Cloudflare Workers | `git pull && npx wrangler deploy`                              |
+| Vercel             | `git pull && vercel --prod`                                    |
+| 裸跑 Node          | `git pull` 后重启进程即可                                      |
 
 前端会通过 `GET /api/version` 检查新版本并在页面提示更新（`version.json` 控制版本号与更新说明，`downloadUrl` 指向 Releases 页面）。

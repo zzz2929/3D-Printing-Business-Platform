@@ -1209,6 +1209,8 @@
   }
   
   function bindCatEvents(box, cats){
+    const catList = $("catList");
+    
     // 大类选择
     box.querySelectorAll(".cat-list-item").forEach(item => {
       item.addEventListener("click", e => {
@@ -1255,7 +1257,6 @@
     });
     
     // 大类拖拽排序
-    const catList = $("catList");
     catList.addEventListener("dragstart", e => {
       const el = e.target.closest(".cat-list-item"); if(!el) return;
       el.classList.add("dragging"); e.dataTransfer.setData("text/plain", el.getAttribute("data-i")); e.dataTransfer.effectAllowed = "move";
@@ -1623,12 +1624,7 @@
     $("umTitle").textContent = "获取更新 · v" + m.version;
     $("umBody").innerHTML =
       (m.notes && m.notes.length ? '<ul class="um-note">' + m.notes.map(n => "<li>" + S.esc(n) + "</li>").join("") + "</ul>" : "") +
-      (m.downloadUrl ? '<a class="btn um-link" href="' + S.esc(m.downloadUrl) + '" target="_blank" rel="noopener">打开下载页 / 下载最新包</a>' : "") +
-      '<p class="muted" style="margin:14px 0 4px">按你的部署方式执行对应命令（完成后刷新页面即更新）：</p>' +
-      '<div class="cmd"><button class="copy" data-cmd="git pull&#10;docker compose up -d --build">复制</button>git pull\ndocker compose up -d --build</div>' +
-      '<div class="cmd"><button class="copy" data-cmd="npx wrangler deploy">复制</button>npx wrangler deploy</div>' +
-      '<div class="cmd"><button class="copy" data-cmd="vercel --prod">复制</button>vercel --prod</div>' +
-      '<p class="muted" style="margin-top:8px">提示：数据存在数据目录 / KV / Redis 中，更新程序不会影响数据。</p>';
+      (m.downloadUrl ? '<a class="btn um-link" href="' + S.esc(m.downloadUrl) + '" target="_blank" rel="noopener">打开下载页 / 查看更新说明</a>' : "")
     $("updModal").hidden = false;
   });
   $("umClose").addEventListener("click", () => { $("updModal").hidden = true; });

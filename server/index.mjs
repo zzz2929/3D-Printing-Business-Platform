@@ -1,5 +1,5 @@
 /* 3D打印业务平台 Node 宿主：静态文件 + REST API + 文件存储
-   环境变量：PORT（默认 8080）、DATA_DIR（默认 ./data） */
+   环境变量：PORT（默认 2929）、DATA_DIR（默认 ./data） */
 import http from "node:http";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -8,7 +8,7 @@ import { createRouter } from "./router.mjs";
 import { fileStore } from "./stores.mjs";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url)) + "/..";
-const PORT = Number(process.env.PORT) || 8080;
+const PORT = Number(process.env.PORT) || 2929;
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, "data");
 
 const store = fileStore(DATA_DIR);

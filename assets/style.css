@@ -142,7 +142,20 @@ input,select,textarea{
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
 input::placeholder{color:var(--faint)}
 input[type="color"]{padding:3px;cursor:pointer}
-select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--sub) 50%),linear-gradient(135deg,var(--sub) 50%,transparent 50%);background-position:calc(100% - 16px) 55%,calc(100% - 11px) 55%;background-size:5px 5px;background-repeat:no-repeat;padding-right:30px}
+select{
+  appearance:none;-webkit-appearance:none;-moz-appearance:none;
+  padding-right:28px;position:relative;background-image:none;
+}
+/* 隐藏 IE/Edge 默认箭头 */
+select::-ms-expand{display:none}
+/* 隐藏 Safari 默认箭头 */
+select:not(:root:root){-webkit-appearance:none}
+/* 自定义小三角 */
+select::after{
+  content:"";position:absolute;right:10px;top:50%;transform:translateY(-50%);
+  width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;
+  border-top:6px solid var(--sub);pointer-events:none;z-index:1;
+}
 .hint{font-size:11px;color:var(--faint);margin-top:4px}
 
 .sect{border-top:1px dashed var(--line2);margin-top:15px;padding-top:13px}
@@ -307,9 +320,9 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 .combo{position:relative;display:flex;width:100%}
 .combo input{flex:1;min-width:0;padding-right:32px}
 .combo-caret{
-  position:absolute;right:1px;top:1px;bottom:1px;width:28px;border:none;cursor:pointer;
+  position:absolute;right:0;top:0;bottom:0;width:28px;border:none;cursor:pointer;
   background:transparent;color:var(--sub);display:flex;align-items:center;justify-content:center;
-  border-radius:0 8px 8px 0;
+  border-radius:0 8px 8px 0;overflow:hidden;
 }
 .combo-caret::before{content:"";border-left:4.5px solid transparent;border-right:4.5px solid transparent;border-top:5px solid currentColor;transition:transform .15s}
 .combo-caret.open::before{transform:rotate(180deg)}
