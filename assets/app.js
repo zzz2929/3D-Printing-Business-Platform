@@ -7,6 +7,10 @@
   const FACES = ["(≧▽≦)","(´▽`ʃ♡ƪ)","(｡•̀ᴗ-)✧","ヾ(•ω•`)o","✧(≖ ‿ ≖)✧","(๑•̀ㅂ•́)و✧"];
   const randFace = () => FACES[Math.floor(Math.random() * FACES.length)];
 
+  /* ---------- 动画：GSAP（CDN 不可达或系统开启「减少动态效果」时自动降级为无动画） ---------- */
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function fx(fn){ if(!window.gsap || reduceMotion) return; try{ fn(window.gsap); }catch(e){} }
+
   const PAGE_TITLES = { dash:"仪表盘", calc:"成本计算器", order:"开单", olist:"订单列表", mats:"耗材库房", printers:"打印机", records:"打印记录", settings:"设置" };
   const RENDERERS = {};
 
@@ -73,6 +77,10 @@
       if(opts.input) $("dlgInput").value = opts.def || "";
       $("dlgOk").textContent = opts.okText || "确定";
       $("dlg").hidden = false;
+      fx(g => {
+        g.from("#dlg", { autoAlpha:0, duration:0.18, ease:"power1.out" });
+        g.from("#dlg .ob-card", { y:18, scale:0.96, autoAlpha:0, duration:0.3, ease:"power3.out", clearProps:"all" });
+      });
       (opts.input ? $("dlgInput") : $("dlgOk")).focus();
     });
   }
@@ -269,7 +277,8 @@
   Object.assign(COLOR_HEX, { "钛银":"#c0c6cc", "透明":"#dff1f5", "荧光绿":"#54e34a", "渐变色":"#b06ab3" });
   function syncColorFromName(){
     const n = $("mColorName").value.trim();
-    if(COLOR_HEX[n]) $("mColor").value = COLOR_HEX[n];
+    const hex = S.matColorHexOf(n) || COLOR_HEX[n]; // 优先用预设里编辑过的色值
+    if(hex) $("mColor").value = hex;
   }
   $("mColorName").addEventListener("input", syncColorFromName);
   $("mColorName").addEventListener("change", syncColorFromName);
@@ -302,6 +311,14 @@
     if(location.hash !== "#/" + tab) history.replaceState(null, "", "#/" + tab);
     RENDERERS[tab]();
     window.scrollTo({ top:0 });
+    /* 页面切换动画：整页淡入上移 + 卡片错落入场（GSAP，未加载时自动跳过） */
+    fx(g => {
+      const page = $("page-" + tab);
+      if(!page) return;
+      g.fromTo(page, { autoAlpha:0, y:14 }, { autoAlpha:1, y:0, duration:0.28, ease:"power2.out", clearProps:"transform" });
+      const cards = page.querySelectorAll(":scope > .card");
+      if(cards.length) g.from(cards, { y:12, autoAlpha:0, duration:0.32, stagger:0.06, ease:"power2.out", clearProps:"all" });
+    });
   }
   $("nav").addEventListener("click", e => {
     const b = e.target.closest("button[data-tab]"); if(!b) return;
@@ -1108,6 +1125,8 @@
     $("setOrdPrefix").value = S.settings.ordPrefix || "ORD";
     $("setStart").value = S.settings.startPage || "dash";
     $("setTheme").value = S.settings.theme;
+    $("setFontSize").value = String(S.settings.fontScale || 1);
+    $("setFont").value = S.settings.font || "sys";
     $("setUpdateUrl").value = S.settings.updateUrl || "";
     const le = S.settings.lastExportAt;
     $("backupInfo").textContent = le ? "上次导出备份：" + new Date(le).toLocaleString("zh-CN") + "。" : "尚未导出过备份。";
@@ -1123,6 +1142,14 @@
   $("setTheme").addEventListener("change", () => {
     S.setSettings({ theme:$("setTheme").value });
     applyTheme(); updateMeta();
+  });
+  $("setFontSize").addEventListener("change", () => {
+    S.setSettings({ fontScale:Number($("setFontSize").value) || 1 });
+    applyFont(); toast("字号已调整");
+  });
+  $("setFont").addEventListener("change", () => {
+    S.setSettings({ font:$("setFont").value });
+    applyFont(); toast("字体已切换");
   });
   $("setExp").addEventListener("click", exportBackup);
   $("setImp").addEventListener("click", () => $("impFile").click());
@@ -1157,7 +1184,7 @@
     });
     if(activePresetPane === "matCategories") renderPresetCategories();
     else if(activePresetPane === "matBrands") renderPresetList("matBrands", "耗材品牌");
-    else if(activePresetPane === "matColors") renderPresetList("matColors", "颜色名");
+    else if(activePresetPane === "matColors") renderPresetList("matColors", "颜色名", true);
     else if(activePresetPane === "priBrands") renderPresetList("priBrands", "打印机品牌");
   }
   $("presetTabs").addEventListener("click", e => {
@@ -1181,10 +1208,11 @@
     const catListHtml = cats.map((cat, ci) => `
       <div class="cat-list-item${cat.name === selectedCat ? ' selected' : ''}" data-cat="${S.esc(cat.name)}" data-i="${ci}" draggable="true">
         <div class="drag-handle" title="拖拽排序">☰</div>
-        <div class="cat-name" contenteditable="false" spellcheck="false">${S.esc(cat.name)}</div>
+        ${ci === 0 ? '<span class="pin-badge" title="已置顶">📌</span>' : ""}
+        <div class="cat-name" contenteditable="true" spellcheck="false" title="点击编辑名称">${S.esc(cat.name)}</div>
         <span class="cat-count">${cat.subs.length}</span>
         <div class="edits">
-          <button class="btn ghost tiny edit-cat-btn" data-editcat="${S.esc(cat.name)}" type="button" title="编辑名称">✎</button>
+          ${ci > 0 ? `<button class="btn ghost tiny pin-cat-btn" data-pincat="${S.esc(cat.name)}" data-i="${ci}" type="button" title="置顶显示">📌</button>` : ""}
           <button class="btn danger ghost tiny del-cat-btn" data-delcat="${S.esc(cat.name)}" type="button" title="删除该大类（含其下所有小类）">✕</button>
         </div>
       </div>`).join("");
@@ -1203,12 +1231,13 @@
       subListHtml = selectedCategory.subs.map((s, si) => `
         <div class="preset-sub-row" data-cat="${S.esc(selectedCat)}" data-sub="${S.esc(s.name)}" data-sub-i="${si}" draggable="true">
           <div class="sub-drag-handle" title="拖拽排序">☰</div>
+          ${si === 0 ? '<span class="pin-badge" title="已置顶">📌</span>' : ""}
           <div class="sub-body">
-            <div class="sub-nm" contenteditable="false" spellcheck="false">${S.esc(s.name)}</div>
-            <div class="sub-ds" contenteditable="false" spellcheck="false" data-placeholder="点此添加说明…">${S.esc(s.desc || "")}</div>
+            <div class="sub-nm" contenteditable="true" spellcheck="false" title="点击编辑名称">${S.esc(s.name)}</div>
+            <div class="sub-ds" contenteditable="true" spellcheck="false" data-placeholder="点此添加说明…">${S.esc(s.desc || "")}</div>
           </div>
           <div class="edits">
-            <button class="btn ghost tiny edit-sub-btn" data-sub="${S.esc(s.name)}" type="button" title="编辑">✎</button>
+            ${si > 0 ? `<button class="btn ghost tiny pin-sub-btn" data-pinsub="${si}" type="button" title="置顶显示">📌</button>` : ""}
             <button class="btn danger ghost tiny del-sub-btn" data-sub="${S.esc(s.name)}" type="button" title="删除该小类">✕</button>
           </div>
         </div>`).join("");
@@ -1250,45 +1279,30 @@
     // 大类选择
     box.querySelectorAll(".cat-list-item").forEach(item => {
       item.addEventListener("click", e => {
-        if(e.target.closest(".del-cat-btn") || e.target.closest(".edit-cat-btn") || e.target.closest(".drag-handle")) return;
+        if(e.target.closest(".del-cat-btn") || e.target.closest(".pin-cat-btn") || e.target.closest(".drag-handle")) return;
         if(e.target.closest(".cat-name")) return; // 点击名称但不编辑时
         selectedCat = item.getAttribute("data-cat");
         renderPresetCategories();
       });
     });
     
-    // 大类编辑按钮
-    catList.querySelectorAll(".edit-cat-btn").forEach(b => {
+    // 大类置顶
+    catList.querySelectorAll(".pin-cat-btn").forEach(b => {
       b.addEventListener("click", e => {
         e.stopPropagation();
-        const item = b.closest(".cat-list-item");
-        const nmEl = item.querySelector(".cat-name");
-        if(nmEl.contentEditable === "true"){
-          // 退出编辑模式
-          nmEl.contentEditable = "false";
-          nmEl.classList.remove("editing");
-          b.textContent = "✎";
-          const oldCat = item.getAttribute("data-cat");
-          const newName = nmEl.textContent.trim();
-          if(!newName){ nmEl.textContent = oldCat; return; }
-          if(newName === oldCat) return;
-          if(S.renameCategory(oldCat, newName)){
-            selectedCat = newName;
-            renderPresetCategories();
-          } else { nmEl.textContent = oldCat; toast("改名失败：已存在同名大类"); }
-        } else {
-          // 进入编辑模式
-          nmEl.contentEditable = "true";
-          nmEl.classList.add("editing");
-          nmEl.focus();
-          // 选中全部文字
-          const range = document.createRange();
-          range.selectNodeContents(nmEl);
-          const sel = window.getSelection();
-          sel.removeAllRanges();
-          sel.addRange(range);
-          b.textContent = "✓";
-        }
+        if(S.moveCategory(+b.getAttribute("data-i"), 0)){ selectedCat = b.getAttribute("data-pincat"); renderPresetCategories(); toast("已置顶"); }
+      });
+    });
+
+    // 大类名称：直接点击编辑，回车/失焦保存（与品牌/颜色列表一致）
+    catList.querySelectorAll(".cat-name").forEach(el => {
+      const oldCat = el.closest(".cat-list-item").getAttribute("data-cat");
+      bindEditable(el, v => {
+        if(!v || v === oldCat){ el.textContent = oldCat; return; }
+        if(S.renameCategory(oldCat, v)){
+          if(selectedCat === oldCat) selectedCat = v;
+          renderPresetCategories();
+        } else { el.textContent = oldCat; toast("改名失败：已存在同名大类"); }
       });
     });
     
@@ -1378,37 +1392,31 @@
         renderPresetCategories();
       });
       
-      // 小类编辑按钮
-      subList.querySelectorAll(".edit-sub-btn").forEach(b => {
+      // 小类置顶
+      subList.querySelectorAll(".pin-sub-btn").forEach(b => {
         b.addEventListener("click", e => {
           e.stopPropagation();
-          const row = b.closest(".preset-sub-row");
-          const nm = row.querySelector(".sub-nm");
-          const ds = row.querySelector(".sub-ds");
-          if(nm.contentEditable === "true"){
-            // 退出编辑模式
-            nm.contentEditable = "false";
-            ds.contentEditable = "false";
-            nm.classList.remove("editing");
-            ds.classList.remove("editing");
-            b.textContent = "✎";
-            const oldSub = row.getAttribute("data-sub");
-            const newName = nm.textContent.trim();
-            const newDesc = ds.textContent.trim();
-            if(!newName){ nm.textContent = oldSub; return; }
-            if(S.updateSub(selectedCat, oldSub, newName === oldSub ? null : newName, newDesc)){
-              renderPresetCategories();
-            } else { nm.textContent = oldSub; toast("已存在同名小类"); }
-          } else {
-            // 进入编辑模式
-            nm.contentEditable = "true";
-            ds.contentEditable = "true";
-            nm.classList.add("editing");
-            ds.classList.add("editing");
-            nm.focus();
-            b.textContent = "✓";
-          }
+          S.moveSub(selectedCat, +b.getAttribute("data-pinsub"), 0);
+          renderPresetCategories();
+          toast("已置顶");
         });
+      });
+
+      // 小类：点击名称/说明直接编辑，回车/失焦保存（与品牌/颜色列表一致）
+      subList.querySelectorAll(".preset-sub-row").forEach(row => {
+        const oldSub = row.getAttribute("data-sub");
+        const nm = row.querySelector(".sub-nm");
+        const ds = row.querySelector(".sub-ds");
+        const save = (newName, newDesc) => {
+          const nameArg = (!newName || newName === oldSub) ? null : newName;
+          if(S.updateSub(selectedCat, oldSub, nameArg, newDesc)){
+            renderPresetCategories();
+          } else {
+            nm.textContent = oldSub; toast("已存在同名小类");
+          }
+        };
+        bindEditable(nm, v => save(v, ds.textContent.trim()));
+        bindEditable(ds, () => save(nm.textContent.trim() === oldSub ? null : nm.textContent.trim(), ds.textContent.trim()));
       });
       
       // 删除小类
@@ -1436,24 +1444,53 @@
   }
 
   /* 列表式面板：品牌 / 颜色 / 打印机品牌 */
-  function renderPresetList(key, label){
+  function renderPresetList(key, label, colorMode){
     const box = $("pane-" + key);
     const ps = S.presets();
     const arr = ps[key] || [];
+    const HEX_RE = /^#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/;
     box.innerHTML = (arr.length
-      ? '<div class="preset-list" data-list-key="' + key + '">' + arr.map((v, i) => `
+      ? '<div class="preset-list" data-list-key="' + key + '">' + arr.map((v, i) => {
+          const colorHtml = colorMode ? (() => {
+            const hex = S.matColorHexOf(v);
+            return `<span class="sw" data-swatch style="background:${S.esc(hex)}"></span>` +
+                   `<input class="hex-in" data-hexin value="${S.esc(hex)}" placeholder="#RRGGBB" maxlength="7" spellcheck="false" title="十六进制颜色代码" />`;
+          })() : "";
+          return `
           <div class="preset-row" data-i="${i}" draggable="true">
             <div class="drag-handle" title="拖拽排序">☰</div>
+            ${i === 0 ? '<span class="pin-badge" title="已置顶">📌</span>' : ""}
+            ${colorHtml}
             <div class="nm" contenteditable="true" spellcheck="false">${S.esc(v)}</div>
             <div class="edits">
+              ${i > 0 ? `<button class="btn ghost tiny" data-pin="${i}" type="button" title="置顶显示">📌</button>` : ""}
               <button class="btn danger ghost tiny" data-del="${i}" type="button" title="删除">✕</button>
             </div>
-          </div>`).join("") + '</div>'
+          </div>`;
+        }).join("") + '</div>'
       : '<div class="preset-empty">还没有' + label + '，在下面新增</div>'
     ) + `<div class="preset-add-row">
           <input id="add${key}" placeholder="新增${label}，回车确认" />
           <button class="btn sm" id="add${key}Btn" type="button">+ ${label}</button>
         </div>`;
+    /* 颜色模式：编辑色值 → 色块即时预览 + 写入预设 */
+    if(colorMode){
+      box.querySelectorAll("[data-hexin]").forEach(inp => {
+        const row = inp.closest(".preset-row");
+        const sw = row.querySelector("[data-swatch]");
+        inp.addEventListener("input", () => {
+          const v = inp.value.trim();
+          if(HEX_RE.test(v)){
+            sw.style.background = v;
+            S.setMatColorHex(row.querySelector(".nm").textContent.trim(), v);
+          }
+        });
+        inp.addEventListener("blur", () => {
+          const v = inp.value.trim();
+          if(v && !HEX_RE.test(v)){ toast("色值格式应为 #RRGGBB，如 #1a1a1a"); inp.value = S.matColorHexOf(row.querySelector(".nm").textContent.trim()); }
+        });
+      });
+    }
     /* 拖拽排序 */
     const list = box.querySelector('[data-list-key="' + key + '"]');
     if(list){
@@ -1490,8 +1527,17 @@
       bindEditable(el, v => {
         if(!v){ el.textContent = arr[i]; return; }
         if(v === arr[i]) return;
-        if(S.updateInList(key, arr[i], v)){ arr[i] = v; renderPresets(); }
+        if(S.updateInList(key, arr[i], v)){
+          if(colorMode) S.renameMatColorHex(arr[i], v); // 色值跟着改名走
+          arr[i] = v; renderPresets();
+        }
         else { el.textContent = arr[i]; toast("已存在同名项"); }
+      });
+    });
+    /* 置顶：移到首位，耗材/打印机表单下拉自动优先显示 */
+    box.querySelectorAll("[data-pin]").forEach(b => {
+      b.addEventListener("click", () => {
+        if(S.moveInList(key, +b.getAttribute("data-pin"), 0)){ renderPresets(); toast("已置顶，表单下拉将优先显示"); }
       });
     });
     /* 删 */
@@ -1524,8 +1570,13 @@
   });
 
   function applyTheme(){ document.documentElement.dataset.theme = S.settings.theme; }
+  function applyFont(){
+    document.documentElement.dataset.font = S.settings.font || "sys";
+    document.body.style.zoom = Number(S.settings.fontScale) || 1;
+  }
   function updateMeta(){
-    document.querySelector('meta[name="theme-color"]').setAttribute("content", S.settings.theme === "light" ? "#f2f4f7" : "#0e1218");
+    const bgMap = { dark:"#0e1218", light:"#f2f4f7", nord:"#2e3440", matcha:"#101712", sunset:"#1a1210", rose:"#191218", paper:"#f6f1e7" };
+    document.querySelector('meta[name="theme-color"]').setAttribute("content", bgMap[S.settings.theme] || "#0e1218");
   }
 
   /* ---------- 成就检查 ---------- */
@@ -1554,7 +1605,12 @@
     $("obNext").textContent = obIdx === OB_STEPS.length - 1 ? "开始使用" : "下一步";
     $("obDots").innerHTML = OB_STEPS.map((_, i) => `<i class="${i === obIdx ? "on" : ""}"></i>`).join("");
   }
-  function obShow(){ obIdx = 0; obRender(); $("onboard").hidden = false; }
+  function obShow(){ obIdx = 0; obRender(); $("onboard").hidden = false;
+    fx(g => {
+      g.from("#onboard", { autoAlpha:0, duration:0.2, ease:"power1.out" });
+      g.from("#onboard .ob-card", { y:24, scale:0.96, autoAlpha:0, duration:0.36, ease:"power3.out", clearProps:"all" });
+    });
+  }
   function obClose(){ $("onboard").hidden = true; }
   $("obPrev").addEventListener("click", () => { if(obIdx > 0){ obIdx--; obRender(); } });
   $("obNext").addEventListener("click", () => {
@@ -1591,7 +1647,7 @@
   })();
 
   function refreshAll(){
-    applyTheme(); updateMeta(); renderSettings(); fillSelects(); loadVersion();
+    applyTheme(); applyFont(); updateMeta(); renderSettings(); fillSelects(); loadVersion();
     if(!$("rMin").value && S.settings.leadMin != null) $("rMin").value = S.settings.leadMin; // 默认处理耗时
     resetOrdForm(); calc();
     renderDash(); renderOrders(); renderMaterials(); renderPrinters(); renderRecords();
@@ -1702,6 +1758,10 @@
     $("loginUser").value = ""; $("loginPw").value = "";
     loginErr(""); $("loginGate").hidden = false;
     $("loginMain").hidden = false; $("forgotBox").hidden = true;
+    fx(g => {
+      g.from("#loginGate", { autoAlpha:0, duration:0.22, ease:"power1.out" });
+      g.from("#loginGate .ob-card", { y:26, scale:0.96, autoAlpha:0, duration:0.38, ease:"power3.out", clearProps:"all" });
+    });
     $("loginUser").focus();
   }
   /* ---- 忘记密码：邮箱验证码重置 ---- */
@@ -1779,12 +1839,12 @@
   $("loginBtn").addEventListener("click", doLogin);
   $("loginUser").addEventListener("keydown", e => { if(e.key === "Enter") doLogin(); });
   $("loginPw").addEventListener("keydown", e => { if(e.key === "Enter") doLogin(); });
-  /* 退出登录：侧栏底部 + 顶栏各一枚，登录态可见 */
-  const logoutEls = [$("logoutBtn"), $("logoutBtnTop")];
-  logoutEls.forEach(b => b && b.addEventListener("click", () => S.logout()));
+  /* 退出登录：顶栏唯一入口，登录态可见 */
+  const logoutEl = $("logoutBtnTop");
+  logoutEl.addEventListener("click", () => S.logout());
   function applyLogoutVisibility(){
     const logged = S.mode === "server" && S.auth.required && S.auth.ok;
-    logoutEls.forEach(b => { if(b) b.style.display = logged ? "" : "none"; });
+    logoutEl.style.display = logged ? "" : "none";
   }
 
   /* ---------- 用户管理（账号设置已合并于此） ----------

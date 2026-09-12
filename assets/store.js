@@ -95,6 +95,13 @@ const Store = (function(){
       "曜石黑","象牙白","太空灰","中国红","火山橙","柠檬黄","松涛绿",
       "克莱因蓝","罗兰紫","樱花粉","咖啡棕","香槟金","钛银","透明","荧光绿","渐变色"
     ],
+    /* 内置颜色名 → 十六进制色值（可在预设管理中逐个编辑；缺省项显示为透明色块） */
+    matColorHex: {
+      "曜石黑":"#1a1a1a","象牙白":"#f5f2ea","太空灰":"#9aa3ad","中国红":"#d03a2b",
+      "火山橙":"#e8590c","柠檬黄":"#f5b301","松涛绿":"#2f9e44","克莱因蓝":"#1971c2",
+      "罗兰紫":"#7048e8","樱花粉":"#f783ac","咖啡棕":"#8d6e4a","香槟金":"#c9a86a",
+      "钛银":"#c0c6cc","透明":"#dff1f5","荧光绿":"#54e34a","渐变色":"#b06ab3"
+    },
     priBrands: [
       "拓竹 Bambu Lab","创想三维 Creality","Prusa Research","纵维立方 Anycubic",
       "爱乐酷 Elegoo","QIDI 科技","Snapmaker","UltiMaker","拓斯 Tiertime","其他 / 自制"
@@ -161,6 +168,22 @@ const Store = (function(){
   function addMatColor(name){
     if(addUnique(presets().matColors, name)){ push("settings"); return true; }
     return false;
+  }
+  /* 颜色名 → 十六进制色值（预设管理中可编辑） */
+  function matColorHexOf(name){
+    const m = presets().matColorHex;
+    if(m && m[name]) return m[name];
+    return (DEFAULT_PRESETS.matColorHex || {})[name] || "";
+  }
+  function setMatColorHex(name, hex){
+    const m = presets().matColorHex || (presets().matColorHex = {});
+    if(hex) m[name] = hex; else delete m[name];
+    push("settings"); return true;
+  }
+  function renameMatColorHex(oldName, newName){
+    const m = presets().matColorHex;
+    if(m && m[oldName] !== undefined){ m[newName] = m[oldName]; if(newName !== oldName) delete m[oldName]; push("settings"); }
+    return true;
   }
   function addPriBrand(name){
     if(addUnique(presets().priBrands, name)){ push("settings"); return true; }
@@ -236,7 +259,12 @@ const Store = (function(){
     if(!arr) return false;
     const i = arr.indexOf(name);
     if(i < 0) return false;
-    arr.splice(i, 1); push("settings"); return true;
+    arr.splice(i, 1);
+    if(listKey === "matColors"){ // 清理残留色值
+      const m = presets().matColorHex;
+      if(m) delete m[name];
+    }
+    push("settings"); return true;
   }
   function updateInList(listKey, oldName, newName){
     newName = String(newName || "").trim();
@@ -261,6 +289,7 @@ const Store = (function(){
       settings.presets = JSON.parse(JSON.stringify(defaultPresets));
     }else if(defaultPresets[scope]){
       settings.presets[scope] = JSON.parse(JSON.stringify(defaultPresets[scope]));
+      if(scope === "matColors") settings.presets.matColorHex = JSON.parse(JSON.stringify(defaultPresets.matColorHex));
     }else return false;
     push("settings"); return true;
   }
@@ -344,7 +373,7 @@ const Store = (function(){
     if(!settings.presets || typeof settings.presets !== "object"){
       settings.presets = JSON.parse(JSON.stringify(defaultPresets));
     }else{
-      ["matBrands","matCategories","matColors","priBrands"].forEach(k => {
+      ["matBrands","matCategories","matColors","matColorHex","priBrands"].forEach(k => {
         if(!settings.presets[k]) settings.presets[k] = JSON.parse(JSON.stringify(defaultPresets[k]));
       });
     }
@@ -679,6 +708,7 @@ const Store = (function(){
     /* 预设 API */
     presets, flatMatTypes, findSub, findCategory,
     addMatBrand, addMatColor, addPriBrand,
+    matColorHexOf, setMatColorHex, renameMatColorHex,
     addCategory, renameCategory, setCategoryNote, removeCategory, moveCategory,
     addSub, updateSub, removeSub, moveSub,
     removeFromList, updateInList, moveInList, resetPresets

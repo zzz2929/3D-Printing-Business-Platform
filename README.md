@@ -80,7 +80,40 @@ npm start            # 等价于 node server/index.mjs
 
 ## 部署
 
-### 方式一：Docker（推荐，含飞牛OS / 群晖 / 绿联等 NAS）
+### 方式一：Cloudflare Workers（免服务器 · 全程浏览器操作 · 免费额度充足）
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/zzz2929/3D-Printing-Business-Platform)
+
+**点击上方按钮即可在浏览器里完成部署，无需本地命令行：**
+
+1. 点击按钮 → 登录 Cloudflare 账号（没有就免费注册一个）→ 授权访问你的 GitHub → 选择本仓库
+2. 向导会读取仓库里的 `wrangler.jsonc`，列出需要创建的资源：**KV 命名空间（DATA）**——这就是本应用的数据库，保持默认点「创建」即可，无需填任何 id
+3. 点「创建并部署」（Create and Deploy）→ 等待构建完成 → 打开分配的 `xxx.workers.dev` 地址即可使用
+4. 部署完成后 Cloudflare 会把你的 GitHub 仓库连到该项目：**以后改代码 push 到 main，自动重新部署**；也可以在 Dashboard → Workers & Pages 里手动「Create deployment」重试
+5. 首次打开是开放模式，进「设置 → 数据与账号」创建管理员即可启用密码保护
+
+**关于存储的说明：**本应用只需要 **KV** 键值存储；**不需要 R2**（应用不保存任何文件，R2 是对象存储，用于图片/视频类需求）。KV 免费额度为每日 10 万次读 / 1000 次写，个人记账频率完全够用。
+
+**邮件（忘记密码）功能：**Workers 上依赖 `nodejs_compat` 兼容标记（`wrangler.jsonc` 已包含，nodemailer v10 支持 Workers）。SMTP 建议在管理员「设置 → 数据与账号 → 邮件服务（SMTP）」卡片里配置；如 Worker 打包报 nodemailer 相关错误，可改用 Vercel 部署邮件功能。
+
+**命令行方式（可选）：**如果你本地装有 Node，也可以 `npx wrangler kv namespace create DATA` 后把输出的 id 填入 `wrangler.jsonc`，再 `npx wrangler deploy`——效果与面板操作相同。
+
+### 方式二：Vercel（免服务器 · 浏览器一键部署 · 数据库存到 Upstash）
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fzzz2929%2F3D-Printing-Business-Platform)
+
+**点击上方按钮即可在浏览器里完成部署：**
+
+1. 点击按钮 → 用 GitHub 登录 Vercel → 填写项目名 → 直接点 **Deploy**（首次部署不需要配任何东西，应用立即可用，只是数据临时保存）
+2. **配置持久化数据库（重要）：**进入项目页 → **Storage（存储）** 标签 → **Marketplace（市场）** → 选择 **Upstash Redis**（有免费套餐）→ 点 **Connect** 连接到本项目 → Vercel 会自动注入 `UPSTASH_REDIS_REST_URL` 和 `UPSTASH_REDIS_REST_TOKEN` 两个环境变量
+3. 回到 **Deployments** 标签 → 对最新一次部署点 **⋯ → Redeploy**，让环境变量生效
+4. 完成后数据永久保存在 Upstash Redis，多设备访问同一地址即共享；以后 git push 自动重新部署
+
+**关于「Vercel 数据库」：**Vercel 自己不提供数据库，它在 **Storage 市场**里聚合了第三方存储（Upstash Redis、Neon Postgres、Blob 等）。本应用只需要 **Upstash Redis** 一种；**不需要 R2**（那是 Cloudflare 的对象存储，本应用不保存文件）。
+
+**邮件功能：**Vercel Serverless 函数是 Node 环境，nodemailer 开箱即用，SMTP 在管理员设置页配置即可。
+
+### 方式三：Docker（推荐自托管，含飞牛OS / 群晖 / 绿联等 NAS）
 
 **一键安装**（镜像已发布到 Docker Hub，支持 amd64 / arm64，无需克隆代码）：
 
@@ -100,46 +133,26 @@ docker compose up -d   # 数据持久化在 named volume 3d-printing-business-da
 
 访问 `http://<设备IP>:2929`。
 
-### 方式二：Docker Compose
-
-```yaml
-services:
-  3d-printing-business:
-    image: zzz2929/3d-printing-business:latest
-    container_name: 3d-printing-business
-    restart: unless-stopped
-    ports:
-      - "2929:2929"
-    volumes:
-      - 3d-printing-business-data:/data
-
-volumes:
-  3d-printing-business-data:
-```
-
-### 方式三：Cloudflare Workers（KV 存储）
+### 方式四：裸跑 Node / NAS 直跑
 
 ```bash
+npm install          # 安装依赖（nodemailer）
+DATA_DIR=/vol1/3d-printing-business-data PORT=2929 npm start
+```
+
+### 方式五：命令行部署到 Cloudflare / Vercel（可选）
+
+不想用面板向导的话：
+
+```bash
+# Cloudflare
 npx wrangler kv namespace create DATA   # 把输出的 id 填入 wrangler.jsonc
 npx wrangler deploy
+
+# Vercel
+npx vercel          # 按提示登录并关联项目
+npx vercel --prod   # 生产部署；Upstash 环境变量在 Vercel 面板或 vercel env add 配置
 ```
-
-免费 KV 每日写入 1000 次，个人记账频率完全够用。不绑定 KV 时服务可启动但数据只存内存（重启即失），响应头会带 `x-storage-warning`。
-
-### 方式四：Vercel（Serverless）
-
-`vercel --prod` 零配置即可部署，但 serverless 文件系统是临时的——**要持久保存数据，需配置免费的 Upstash Redis**：
-
-1. 在 [Upstash](https://upstash.com) 创建免费 Redis，拿到 REST URL 和 Token
-2. Vercel 项目 → Settings → Environment Variables，添加 `UPSTASH_REDIS_REST_URL` 和 `UPSTASH_REDIS_REST_TOKEN`
-3. 重新部署即可
-
-### 方式四：任意有 Node 的机器 / NAS 裸跑
-
-```bash
-DATA_DIR=/vol1/3d-printing-business-data PORT=2929 node server/index.mjs
-```
-
 ## 环境变量
 
 | 变量                         | 默认值     | 说明                                     | 适用平台      |
