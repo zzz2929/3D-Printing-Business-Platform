@@ -4,7 +4,7 @@
    鉴权：createAuth(store, envPw)；已配置用户时，除 auth/* 外的所有 /api/* 都需要有效会话
    用户数据隔离：通过 users/{userId}/ 前缀区分 */
 
-import { createAuth, verify, tokenCookie, CLEAR_COOKIE } from "./auth.mjs";
+import { createAuth, tokenCookie, CLEAR_COOKIE } from "./auth.mjs";
 import { appVersion } from "./version.mjs";
 
 const DATA_COLS = ["materials", "printers", "records", "orders", "settings", "achievements"];
