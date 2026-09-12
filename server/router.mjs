@@ -52,7 +52,7 @@ export function createRouter(store, mailer){
         const result = await auth.register(username, password, "admin");
         if(result.error) return json({ error:result.error }, 400);
         const token = await auth.issueTokenForUser(result.user);
-        return json(result, 200, { "set-cookie": tokenCookie(token) });
+        return json(result, 200, { "set-cookie": tokenCookie(token, await auth.sessionDays()) });
       }else{
         // 已配置，需要管理员权限
         const operator = await auth.verify(req);
@@ -70,7 +70,26 @@ export function createRouter(store, mailer){
       const result = await auth.login(username, password);
       if(result.error) return json({ error:result.error }, result.error.includes("未配置") ? 400 : 401);
       const token = await auth.issueTokenForUser(result.user);
-      return json(result, 200, { "set-cookie": tokenCookie(token) });
+      return json(result, 200, { "set-cookie": tokenCookie(token, await auth.sessionDays()) });
+    }
+
+    /* ---- 登录安全（仅管理员）：会话有效期 ---- */
+    if(path === "authcfg" && req.method === "GET"){
+      const user = await auth.verify(req);
+      if(!user) return json({ error:"请先登录" }, 401);
+      if(user.role !== "admin") return json({ error:"只有管理员可以查看登录安全设置" }, 403);
+      return json({ sessionDays: await auth.sessionDays() });
+    }
+    if(path === "authcfg" && req.method === "POST"){
+      const user = await auth.verify(req);
+      if(!user) return json({ error:"请先登录" }, 401);
+      if(user.role !== "admin") return json({ error:"只有管理员可以修改登录安全设置" }, 403);
+      const body = await readBody(req) || {};
+      const days = Math.round(Number(body.sessionDays));
+      if(!(days >= 1 && days <= 365)) return json({ error:"会话有效期需为 1-365 的整数天" }, 400);
+      const prev = await store.get("authcfg") || {};
+      await store.set("authcfg", Object.assign(prev, { sessionDays:days }));
+      return json({ ok:true, sessionDays:days });
     }
 
     // 登出

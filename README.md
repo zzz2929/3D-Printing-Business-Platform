@@ -80,11 +80,11 @@ npm start            # 等价于 node server/index.mjs
 
 ## 部署
 
-### 方式一：Cloudflare Workers（免服务器 · 全程浏览器操作 · 免费额度充足）
+### 方式一：Cloudflare Workers
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/zzz2929/3D-Printing-Business-Platform)
 
-**点击上方按钮即可在浏览器里完成部署，无需本地命令行：**
+**点击上方按钮即可完成部署：**
 
 1. 点击按钮 → 登录 Cloudflare 账号（没有就免费注册一个）→ 授权访问你的 GitHub → 选择本仓库
 2. 向导会读取仓库里的 `wrangler.jsonc`，列出需要创建的资源：**KV 命名空间（DATA）**——这就是本应用的数据库，保持默认点「创建」即可，无需填任何 id
@@ -98,11 +98,11 @@ npm start            # 等价于 node server/index.mjs
 
 **命令行方式（可选）：**如果你本地装有 Node，也可以 `npx wrangler kv namespace create DATA` 后把输出的 id 填入 `wrangler.jsonc`，再 `npx wrangler deploy`——效果与面板操作相同。
 
-### 方式二：Vercel（免服务器 · 浏览器一键部署 · 数据库存到 Upstash）
+### 方式二：Vercel
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fzzz2929%2F3D-Printing-Business-Platform)
 
-**点击上方按钮即可在浏览器里完成部署：**
+**点击上方按钮即可完成部署：**
 
 1. 点击按钮 → 用 GitHub 登录 Vercel → 填写项目名 → 直接点 **Deploy**（首次部署不需要配任何东西，应用立即可用，只是数据临时保存）
 2. **配置持久化数据库（重要）：**进入项目页 → **Storage（存储）** 标签 → **Marketplace（市场）** → 选择 **Upstash Redis**（有免费套餐）→ 点 **Connect** 连接到本项目 → Vercel 会自动注入 `UPSTASH_REDIS_REST_URL` 和 `UPSTASH_REDIS_REST_TOKEN` 两个环境变量
@@ -153,20 +153,21 @@ npx wrangler deploy
 npx vercel          # 按提示登录并关联项目
 npx vercel --prod   # 生产部署；Upstash 环境变量在 Vercel 面板或 vercel env add 配置
 ```
+
 ## 环境变量
 
-| 变量                         | 默认值     | 说明                                     | 适用平台      |
-| ---------------------------- | ---------- | ---------------------------------------- | ------------- |
-| `PORT`                     | `2929`   | HTTP 监听端口                            | Node / Docker |
-| `DATA_DIR`                 | `./data` | JSON 数据目录                            | Node / Docker |
-| `SMTP_HOST`                | 未设置     | SMTP 服务器地址；**推荐在设置页配置**（见下方「SMTP 配置详解」），此处仅兜底 | 全部          |
-| `SMTP_PORT`                | 自动       | 端口（465 自动启用 TLS）                 | 全部          |
-| `SMTP_SECURE`              | —          | 设为 `1` 使用 TLS 直连                   | 全部          |
-| `SMTP_USER` / `SMTP_PASS`  | —          | SMTP 认证账号（AUTH LOGIN）              | 全部          |
-| `MAIL_FROM`                | SMTP_USER  | 发件人地址                               | 全部          |
-| `MAIL_DEBUG`               | —          | 设为 `1` 时验证码打印到服务端日志（联调用）| 全部          |
-| `UPSTASH_REDIS_REST_URL`   | —         | Upstash Redis REST 地址                  | Vercel        |
-| `UPSTASH_REDIS_REST_TOKEN` | —         | Upstash Redis REST Token                 | Vercel        |
+| 变量                          | 默认值     | 说明                                                                               | 适用平台      |
+| ----------------------------- | ---------- | ---------------------------------------------------------------------------------- | ------------- |
+| `PORT`                      | `2929`   | HTTP 监听端口                                                                      | Node / Docker |
+| `DATA_DIR`                  | `./data` | JSON 数据目录                                                                      | Node / Docker |
+| `SMTP_HOST`                 | 未设置     | SMTP 服务器地址；**推荐在设置页配置**（见下方「SMTP 配置详解」），此处仅兜底 | 全部          |
+| `SMTP_PORT`                 | 自动       | 端口（465 自动启用 TLS）                                                           | 全部          |
+| `SMTP_SECURE`               | —         | 设为`1` 使用 TLS 直连                                                            | 全部          |
+| `SMTP_USER` / `SMTP_PASS` | —         | SMTP 认证账号（AUTH LOGIN）                                                        | 全部          |
+| `MAIL_FROM`                 | SMTP_USER  | 发件人地址                                                                         | 全部          |
+| `MAIL_DEBUG`                | —         | 设为`1` 时验证码打印到服务端日志（联调用）                                       | 全部          |
+| `UPSTASH_REDIS_REST_URL`    | —         | Upstash Redis REST 地址                                                            | Vercel        |
+| `UPSTASH_REDIS_REST_TOKEN`  | —         | Upstash Redis REST Token                                                           | Vercel        |
 
 ### 邮箱与忘记密码
 
@@ -176,30 +177,30 @@ SMTP 在管理员的「设置 → 数据与账号 → 邮件服务（SMTP）」�
 
 配置入口：**管理员登录 → 设置 → 数据与账号 → 邮件服务（SMTP）**。逐字段说明：
 
-| 字段 | 填什么 | 说明 |
-| --- | --- | --- |
-| 服务器地址 * | 邮件服务商的 SMTP 域名，如 `smtp.qq.com` | 由你的**发件邮箱**所属服务商决定，见下方对照表 |
-| 端口 | `465` 或 `587` | `465` = TLS 直连（勾选「TLS 直连」）；`587` = STARTTLS（**不勾**）；`25` 基本被云服务器封禁，不要用 |
-| TLS 直连 | 465 勾选，587 不勾 | 与端口配套，勾错是最常见的连不上的原因 |
-| 认证用户名 | 一般就是**发件邮箱完整地址** | 如 `zhangsan@qq.com`；SendGrid 等专业发信服务例外（填固定值 `apikey`） |
-| 认证密码 / 授权码 | **不是邮箱登录密码！** 是「授权码 / 应用专用密码」 | 见下方各服务商的获取方法 |
-| 发件人地址 | 与认证用户名相同的邮箱 | 留空默认取认证用户名；部分服务商要求必须一致，否则拒信 |
+| 字段              | 填什么                                                   | 说明                                                                                                            |
+| ----------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| 服务器地址 *      | 邮件服务商的 SMTP 域名，如`smtp.qq.com`                | 由你的**发件邮箱**所属服务商决定，见下方对照表                                                            |
+| 端口              | `465` 或 `587`                                       | `465` = TLS 直连（勾选「TLS 直连」）；`587` = STARTTLS（**不勾**）；`25` 基本被云服务器封禁，不要用 |
+| TLS 直连          | 465 勾选，587 不勾                                       | 与端口配套，勾错是最常见的连不上的原因                                                                          |
+| 认证用户名        | 一般就是**发件邮箱完整地址**                       | 如`zhangsan@qq.com`；SendGrid 等专业发信服务例外（填固定值 `apikey`）                                       |
+| 认证密码 / 授权码 | **不是邮箱登录密码！** 是「授权码 / 应用专用密码」 | 见下方各服务商的获取方法                                                                                        |
+| 发件人地址        | 与认证用户名相同的邮箱                                   | 留空默认取认证用户名；部分服务商要求必须一致，否则拒信                                                          |
 
 **常见邮箱服务商对照与授权码获取位置：**
 
-| 发件邮箱 | 服务器地址 | 端口/加密 | 密码填什么 · 授权码获取路径 |
-| --- | --- | --- | --- |
-| QQ 邮箱 `@qq.com` | `smtp.qq.com` | 465 / TLS | **授权码**。网页版 QQ 邮箱 → 设置 → 账号 → 「POP3/IMAP/SMTP…服务」→ 开启「IMAP/SMTP 服务」→ 按提示发短信 → 生成 16 位授权码 |
-| 163 邮箱 `@163.com` | `smtp.163.com` | 465 / TLS | **授权码**。网页版 → 设置 → POP3/SMTP/IMAP → 开启服务 → 新增授权码（只显示一次，记好） |
-| 126 邮箱 `@126.com` | `smtp.126.com` | 465 / TLS | 同 163 |
-| Gmail `@gmail.com` | `smtp.gmail.com` | 465 / TLS | **应用专用密码**。Google 账号 → 安全性 → 开启两步验证 → 应用专用密码（App Password）生成 16 位；国内网络需自行解决连通性 |
-| Outlook / Hotmail | `smtp-mail.outlook.com` | 587 / STARTTLS（不勾 TLS 直连） | 直接填**邮箱登录密码**（不支持授权码）；个人免费邮箱有每日发信上限 |
-| 腾讯企业邮 `@xxx.com` | `smtp.exmail.qq.com` | 465 / TLS | **客户端专用密码**。管理后台开启「安全登录」后，成员在 设置 → 客户端专用密码 生成 |
-| 阿里企业邮 | `smtp.qiye.aliyun.com` | 465 / TLS | 邮箱登录密码（管理员可在后台禁用 SMTP，需确认开启） |
-| iCloud 邮箱 | `smtp.mail.me.com` | 587 / STARTTLS | **App 专用密码**。Apple ID → 登录与安全 → App 专用密码 |
-| Zoho | `smtp.zoho.com` | 465 / TLS | **应用专用密码**。Zoho 账户 → 安全 → 应用密码 |
-| SendGrid（专业发信） | `smtp.sendgrid.net` | 587 / STARTTLS | 用户名固定填 `apikey`，密码填 SendGrid 后台生成的 API Key |
-| Mailgun（专业发信） | `smtp.mailgun.org` | 587 / STARTTLS | 后台 Domain 设置页的 SMTP 凭据 |
+| 发件邮箱               | 服务器地址                | 端口/加密                       | 密码填什么 · 授权码获取路径                                                                                                             |
+| ---------------------- | ------------------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| QQ 邮箱`@qq.com`     | `smtp.qq.com`           | 465 / TLS                       | **授权码**。网页版 QQ 邮箱 → 设置 → 账号 → 「POP3/IMAP/SMTP…服务」→ 开启「IMAP/SMTP 服务」→ 按提示发短信 → 生成 16 位授权码 |
+| 163 邮箱`@163.com`   | `smtp.163.com`          | 465 / TLS                       | **授权码**。网页版 → 设置 → POP3/SMTP/IMAP → 开启服务 → 新增授权码（只显示一次，记好）                                         |
+| 126 邮箱`@126.com`   | `smtp.126.com`          | 465 / TLS                       | 同 163                                                                                                                                   |
+| Gmail`@gmail.com`    | `smtp.gmail.com`        | 465 / TLS                       | **应用专用密码**。Google 账号 → 安全性 → 开启两步验证 → 应用专用密码（App Password）生成 16 位；国内网络需自行解决连通性        |
+| Outlook / Hotmail      | `smtp-mail.outlook.com` | 587 / STARTTLS（不勾 TLS 直连） | 直接填**邮箱登录密码**（不支持授权码）；个人免费邮箱有每日发信上限                                                                 |
+| 腾讯企业邮`@xxx.com` | `smtp.exmail.qq.com`    | 465 / TLS                       | **客户端专用密码**。管理后台开启「安全登录」后，成员在 设置 → 客户端专用密码 生成                                                 |
+| 阿里企业邮             | `smtp.qiye.aliyun.com`  | 465 / TLS                       | 邮箱登录密码（管理员可在后台禁用 SMTP，需确认开启）                                                                                      |
+| iCloud 邮箱            | `smtp.mail.me.com`      | 587 / STARTTLS                  | **App 专用密码**。Apple ID → 登录与安全 → App 专用密码                                                                           |
+| Zoho                   | `smtp.zoho.com`         | 465 / TLS                       | **应用专用密码**。Zoho 账户 → 安全 → 应用密码                                                                                    |
+| SendGrid（专业发信）   | `smtp.sendgrid.net`     | 587 / STARTTLS                  | 用户名固定填`apikey`，密码填 SendGrid 后台生成的 API Key                                                                               |
+| Mailgun（专业发信）    | `smtp.mailgun.org`      | 587 / STARTTLS                  | 后台 Domain 设置页的 SMTP 凭据                                                                                                           |
 
 **配置步骤与排错：**
 
@@ -213,15 +214,14 @@ SMTP 在管理员的「设置 → 数据与账号 → 邮件服务（SMTP）」�
 4. 找不到授权码入口时，在邮箱网页版的「设置」里搜索关键词“SMTP”或“授权码”；
 5. 联调时可设环境变量 `MAIL_DEBUG=1`：验证码不真实发信，直接打印到服务端日志。
 
-
 ## 登录鉴权
 
 系统内置多用户密码保护：启用后，**未登录无法读取或修改任何数据**（订单、耗材、打印机、记录、设置全部受保护），前端会先弹出登录门。首个创建的用户自动成为管理员。
 
 ### 启用方式
 
-| 模式                     | 方式                                                                                                                                    |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 模式                     | 方式                                                                                                                                            |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | 全部平台（默认开放模式） | 打开页面 →「设置 → 数据」→「启用密码保护」卡片创建管理员账号（PBKDF2 加盐哈希存于用户数据中）；管理员登录后可在同页添加 / 删除用户、分配角色 |
 
 - 会话凭据为 HMAC 签名的 HttpOnly Cookie，有效期 30 天；「设置 → 数据 → 退出登录」可主动登出

@@ -222,15 +222,16 @@ ck("auth user has email", r.j.user && r.j.user.email === "alice2@example.com", J
 // 忘记密码全流程（依赖 MAIL_DEBUG；无 debug 环境只验证防枚举）
 r = await api("POST", "/api/forgot", { username: "alice2" });
 ck("forgot always ok", r.status === 200 && r.j.ok === true, JSON.stringify(r.j));
+const resetCode = r.j && r.j.debugCode; // 先取 alice2 的验证码，再测 ghost（避免覆盖响应）
 r = await api("POST", "/api/forgot", { username: "ghost-user" });
 ck("forgot unknown user also ok (anti-enum)", r.status === 200 && r.j.ok === true);
-if(r.j && r.j.debugCode){
-  const code = r.j.debugCode;
+if(resetCode){
+  const code = resetCode; // 注意：此处 r.j 已被 ghost 响应覆盖，必须用上面捕获的 resetCode
   r = await api("POST", "/api/forgot/reset", { username: "alice2", code: "000000", newPassword: "Xx9ooo99" });
   ck("wrong reset code rejected", r.status === 400, JSON.stringify(r.j));
   r = await api("POST", "/api/forgot/reset", { username: "alice2", code, newPassword: "weak" });
   ck("weak new password rejected", r.status === 400, JSON.stringify(r.j));
-  r = await api("POST", "/api/forgot/reset", { username: "alice2", code, newPassword: "Forgot999A" });
+r = await api("POST", "/api/forgot/reset", { username: "alice2", code, newPassword: "Forgot999A" });
   ck("reset with code ok", r.status === 200 && r.j.ok === true, JSON.stringify(r.j));
   r = await api("POST", "/api/login", { username: "alice2", password: "Forgot999A" });
   ck("login with reset password", r.status === 200, JSON.stringify(r.j));
@@ -238,11 +239,12 @@ if(r.j && r.j.debugCode){
   cookie = aliceCookie2;
   r = await api("GET", "/api/auth");
   ck("old session dead after forgot-reset", r.j && r.j.ok === false, JSON.stringify(r.j));
-  cookie = alice2CookieNew;
+  cookie = alice2CookieNew; // 换用重置后的新会话，后续 403 断言才有效
 }
 
 console.log("\n[SMTP 配置管理]");
-cookie = aliceCookie2;
+// 沿用当前普通用户会话
+const normalCookie = cookie;
 r = await api("GET", "/api/smtp");
 ck("normal user cannot read smtp", r.status === 403, "got " + r.status);
 cookie = bossCookie;
@@ -257,9 +259,35 @@ r = await api("GET", "/api/smtp");
 ck("config persisted with masked pass", r.j.host === "smtp.invalid" && r.j.hasPass === true && r.j.pass === undefined, JSON.stringify(r.j));
 r = await api("POST", "/api/mail/test", { to: "dest@example.invalid", host: "smtp.invalid", port: 465, secure: true, user: "test@invalid", pass: "secret123" });
 ck("test mail surfaces smtp error", r.status === 400 && (r.j.error || "").startsWith("发送失败"), JSON.stringify(r.j));
-cookie = aliceCookie2;
+// 沿用当前普通用户会话
+cookie = normalCookie; // 切回普通用户会话
 r = await api("POST", "/api/mail/test", { to: "dest@example.invalid" });
 ck("normal user cannot send test mail", r.status === 403, "got " + r.status);
+
+console.log("\n[会话有效期配置]");
+cookie = bossCookie;
+r = await api("GET", "/api/authcfg");
+ck("admin reads session days (default 30)", r.status === 200 && r.j.sessionDays === 30, JSON.stringify(r.j));
+r = await api("POST", "/api/authcfg", { sessionDays: 7 });
+ck("admin sets session days = 7", r.status === 200 && r.j.sessionDays === 7, JSON.stringify(r.j));
+r = await api("GET", "/api/authcfg");
+ck("session days persisted", r.j.sessionDays === 7);
+r = await api("POST", "/api/authcfg", { sessionDays: 0 });
+ck("days = 0 rejected", r.status === 400, JSON.stringify(r.j));
+r = await api("POST", "/api/authcfg", { sessionDays: 400 });
+ck("days = 400 rejected", r.status === 400, JSON.stringify(r.j));
+cookie = "";
+r = await api("POST", "/api/login", { username: "alice2", password: "Forgot999A" });
+const bobCookieSaved = cookie; cookie = "";
+ck("login after setting still ok", r.status === 200);
+cookie = bobCookieSaved;
+r = await api("GET", "/api/authcfg");
+ck("normal user cannot read authcfg", r.status === 403, "got " + r.status);
+r = await api("POST", "/api/authcfg", { sessionDays: 90 });
+ck("normal user cannot set authcfg", r.status === 403, "got " + r.status);
+cookie = bossCookie;
+r = await api("POST", "/api/authcfg", { sessionDays: 30 });
+ck("restore 30 days", r.status === 200);
 
 console.log("\n[管理员 all-data]");
 cookie = bossCookie;

@@ -1090,6 +1090,7 @@
 
   /* ============ 设置页 Tab 切换 ============ */
   let activeSetPane = "general";
+  let setPaneShown = null; // 上次渲染的面板，用于仅在真正切换时播放动画
   const SET_PANE_PERM = { general:"set_general", presets:"set_presets", update:"set_update", data:"set_account" };
   function renderSetTabs(){
     document.querySelectorAll("#setTabs button").forEach(b => {
@@ -1104,6 +1105,15 @@
     document.querySelectorAll(".set-pane").forEach(p =>
       p.hidden = p.id !== "setp-" + activeSetPane
     );
+    if(setPaneShown !== activeSetPane){
+      const firstShow = setPaneShown === null;
+      setPaneShown = activeSetPane;
+      if(!firstShow) fx(g => {
+        const pane = $("setp-" + activeSetPane);
+        if(!pane || pane.hidden) return;
+        g.fromTo(pane, { autoAlpha:0, y:8 }, { autoAlpha:1, y:0, duration:0.22, ease:"power1.out", clearProps:"transform" });
+      });
+    }
     if(activeSetPane === "presets"){
       if(typeof renderPresets === "function") renderPresets();
     }
@@ -1115,6 +1125,7 @@
 
   /* ============ 设置 ============ */
   let activePresetPane = "matCategories";
+  let presetPaneShown = null;
   function renderSettings(){
     $("setCur").value = S.settings.currency;
     if($("setCur").selectedIndex === -1) $("setCur").selectedIndex = 0;
@@ -1182,6 +1193,15 @@
     ["matCategories","matBrands","matColors","priBrands"].forEach(k => {
       $("pane-" + k).hidden = k !== activePresetPane;
     });
+    if(presetPaneShown !== activePresetPane){
+      const firstShow = presetPaneShown === null;
+      presetPaneShown = activePresetPane;
+      if(!firstShow) fx(g => {
+        const pane = $("pane-" + activePresetPane);
+        if(!pane || pane.hidden) return;
+        g.fromTo(pane, { autoAlpha:0, y:8 }, { autoAlpha:1, y:0, duration:0.22, ease:"power1.out", clearProps:"transform" });
+      });
+    }
     if(activePresetPane === "matCategories") renderPresetCategories();
     else if(activePresetPane === "matBrands") renderPresetList("matBrands", "耗材品牌");
     else if(activePresetPane === "matColors") renderPresetList("matColors", "颜色名", true);
@@ -1865,7 +1885,10 @@
       : "管理自己的账号：可修改登录密码。";
     $("addUserSection").hidden = !isAdmin;
     hideEditUser();
-    if(isAdmin) loadSmtpCard(); // 邮件服务配置（仅管理员）
+    if(isAdmin){
+      loadSmtpCard(); // 邮件服务配置（仅管理员）
+      loadSessionCard(); // 登录安全（仅管理员）
+    }
     try{
       let users;
       if(isAdmin){
@@ -2054,6 +2077,33 @@
       loadUserMgmt();
     }catch(e){ toast("删除失败：" + e.message); }
   }
+
+  /* ---------- 登录安全：会话有效期（仅管理员） ---------- */
+  async function loadSessionCard(){
+    const card = $("sessionCard");
+    if(!card) return;
+    card.hidden = false;
+    try{
+      const cfg = await S.authCfgGet();
+      $("sessionDays").value = cfg.sessionDays;
+      $("sessionMsg").textContent = "当前设置：" + cfg.sessionDays + " 天后登录过期。修改只对之后的新登录生效。";
+    }catch(e){ card.hidden = true; }
+  }
+  $("sessionSave").addEventListener("click", async () => {
+    const days = Number($("sessionDays").value);
+    if(!(days >= 1 && days <= 365)){ $("sessionMsg").textContent = "请输入 1-365 的整数天"; $("sessionMsg").style.color = "var(--danger)"; return; }
+    const btn = $("sessionSave");
+    btn.disabled = true;
+    try{
+      await S.authCfgSave(days);
+      $("sessionMsg").textContent = "已保存：" + days + " 天后登录过期（对之后的新登录生效）。";
+      $("sessionMsg").style.color = "var(--ok)";
+      toast("会话有效期已更新为 " + days + " 天");
+    }catch(e){
+      $("sessionMsg").textContent = e.message || "保存失败";
+      $("sessionMsg").style.color = "var(--danger)";
+    }finally{ btn.disabled = false; }
+  });
 
   /* ---------- 邮件服务（SMTP）配置：仅管理员，存服务端 ---------- */
   function smtpMsg(msg, isErr){

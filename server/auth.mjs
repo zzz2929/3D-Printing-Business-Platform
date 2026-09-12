@@ -88,9 +88,14 @@ export function createAuth(store, mailer){
     return users.find(u => u.username.toLowerCase() === username.toLowerCase());
   }
 
-  /* 签发 30 天会话令牌：exp.HMAC(secret, "pf:"+exp) */
+  /* 会话有效期（天）：管理员可在设置页配置，默认 30 天（范围 1-365） */
+  async function sessionDays(){
+    const cfg = await store.get("authcfg");
+    const d = Number(cfg && cfg.sessionDays);
+    return (d >= 1 && d <= 365) ? d : 30;
+  }
   async function signToken(user){
-    const exp = Date.now() + 30 * 86400 * 1000;
+    const exp = Date.now() + (await sessionDays()) * 86400 * 1000;
     return exp + "." + (await hmacHex(user.secret, "pf:" + exp));
   }
 
@@ -369,10 +374,10 @@ export function createAuth(store, mailer){
       const users = await loadUsers();
       const user = users.find(u => u.username.toLowerCase() === String(username || "").trim().toLowerCase());
       if(!user) return { error:"验证码错误或已过期" };
+      const pwErr = validatePassword(newPassword);
+      if(pwErr) return { error:pwErr }; // 先校验密码格式，不消费验证码
       const err = checkCode("reset:" + user.id, code);
       if(err) return { error:err };
-      const pwErr = validatePassword(newPassword);
-      if(pwErr) return { error:pwErr };
       user.salt = randomHex(16);
       user.passwordHash = await hashPassword(newPassword, user.salt);
       user.secret = randomHex(32);
@@ -386,7 +391,8 @@ export function createAuth(store, mailer){
       const user = users.find(u => u.id === userId);
       if(!user) return null;
       return { id:user.id, username:user.username, role:user.role, createdAt:user.createdAt };
-    }
+    },
+    sessionDays
   };
 }
 
@@ -399,7 +405,8 @@ export function getCookie(req, name){
   }
   return null;
 }
-export function tokenCookie(token){
-  return "pf_token=" + encodeURIComponent(token) + "; HttpOnly; Path=/; Max-Age=" + 30 * 86400 + "; SameSite=Lax";
+export function tokenCookie(token, days){
+  const maxAge = (Number(days) >= 1 && Number(days) <= 365 ? Number(days) : 30) * 86400;
+  return "pf_token=" + encodeURIComponent(token) + "; HttpOnly; Path=/; Max-Age=" + maxAge + "; SameSite=Lax";
 }
 export const CLEAR_COOKIE = "pf_token=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax";
