@@ -7,6 +7,11 @@ export const APP_VERSION = "1.0.0";
 export const BUILD_DATE = "2026-09-12";
 
 export const CHANGELOG = [
+  { 
+    v:"1.0.1", date:"2026-09-12", items:[
+      "修复登录鉴权问题",
+    ]
+  },
   {
     v:"1.0.0", date:"2026-09-12", items:[
       "3D打印业务平台 正式发布：面向个人的 3D 打印接单经营台，前后端分离，数据存服务端、多设备访问即共享",

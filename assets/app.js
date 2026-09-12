@@ -1711,7 +1711,7 @@
   });
 
   Store.ready.then(mode => {
-    if(mode === "auth"){ showLoginGate(); return; } // 服务端要求登录，先解锁
+    if(mode === "auth" || S.auth.setup){ showLoginGate(); return; } // 服务端要求登录，或首次部署等待设置密码
     appStart();
   });
   if("serviceWorker" in navigator){
