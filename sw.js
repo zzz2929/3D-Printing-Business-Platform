@@ -1,5 +1,5 @@
 /* 3D打印业务平台 — 离线缓存（应用壳）；/api 一律走网络，不缓存 */
-const CACHE = "3d-printing-business-v13";
+const CACHE = "3d-printing-business-v18";
 const ASSETS = [
   "./",
   "index.html",
@@ -12,7 +12,8 @@ const ASSETS = [
 
 self.addEventListener("install", (e) => {
   e.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(ASSETS).catch(() => {})).then(() => self.skipWaiting())
+    // cache:"reload" 绕过 HTTP 缓存取最新文件——否则长 max-age 的 /assets 会被原样复制进新版本缓存，导致更新失效
+    caches.open(CACHE).then((c) => c.addAll(ASSETS.map(u => new Request(u, { cache: "reload" }))).catch(() => {})).then(() => self.skipWaiting())
   );
 });
 

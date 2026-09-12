@@ -322,9 +322,6 @@
   $("dashTo").addEventListener("change", () => { dashSel = { from:$("dashFrom").value, to:$("dashTo").value }; dashMarkActive(); renderDash(); });
   $("dashClear").addEventListener("click", () => { dashSel = { preset:"month" }; const r = dashRange(); $("dashFrom").value = r.from; $("dashTo").value = r.to; dashMarkActive(); renderDash(); });
 
-  function inRange(o, r){ const d = String(o.date || ""); return d >= r.from && d <= r.to; }
-  function orderProfit(o){ return S.num(o.received) - S.num(o.totalCost); }
-
   /* 趋势序列：按区间跨度自动选粒度（≤31天按日，≤2年按月，更长按年） */
   function trendSeries(from, to){
     const d1 = new Date(from + "T00:00:00"), d2 = new Date(to + "T00:00:00");
@@ -1017,10 +1014,13 @@
     download("3d-printing-business_records_" + S.today() + ".csv", csv, "text/csv;charset=utf-8");
     toast("CSV 已导出");
   });
-  $("expBtn").addEventListener("click", () => {
-    download("3d-printing-business_backup_" + S.today() + ".json", JSON.stringify(S.exportPayload(), null, 2), "application/json"); S.setSettings({ lastExportAt:Date.now() }); renderSettings();
+  /* 备份导出（记录页与设置页共用） */
+  function exportBackup(){
+    download("3d-printing-business_backup_" + S.today() + ".json", JSON.stringify(S.exportPayload(), null, 2), "application/json");
+    S.setSettings({ lastExportAt:Date.now() }); renderSettings();
     toast("备份已导出");
-  });
+  }
+  $("expBtn").addEventListener("click", exportBackup);
   $("impBtn").addEventListener("click", () => $("impFile").click());
   $("impFile").addEventListener("change", e => {
     const f = e.target.files[0]; if(!f) return;
@@ -1048,7 +1048,6 @@
       p.hidden = p.id !== "setp-" + activeSetPane
     );
     if(activeSetPane === "presets"){
-      console.log("[renderSetTabs] presets clicked, renderPresets type:", typeof renderPresets);
       if(typeof renderPresets === "function") renderPresets();
     }
   }
@@ -1085,10 +1084,7 @@
     S.setSettings({ theme:$("setTheme").value });
     applyTheme(); updateMeta();
   });
-  $("setExp").addEventListener("click", () => {
-    download("3d-printing-business_backup_" + S.today() + ".json", JSON.stringify(S.exportPayload(), null, 2), "application/json"); S.setSettings({ lastExportAt:Date.now() }); renderSettings();
-    toast("备份已导出");
-  });
+  $("setExp").addEventListener("click", exportBackup);
   $("setImp").addEventListener("click", () => $("impFile").click());
   $("setDemo").addEventListener("click", async () => {
     if(await confirmBox("载入演示数据会覆盖现有数据，继续？")){ S.loadDemo(); refreshAll(); toast("演示数据已载入 " + randFace()); }
@@ -1661,15 +1657,9 @@
     return "";
   }
   function showLoginGate(){
-    const setup = S.auth.setup;
-    $("loginTitle").textContent = setup ? "创建管理员账号" : "登录";
-    $("loginSub").textContent = setup
-      ? "首次使用：创建管理员账号，之后查看和操作数据都需要它。"
-      : "输入用户名和密码登录。";
-    $("loginUser").hidden = false;
-    $("loginPw2").hidden = !setup;
-    $("pwdHint").hidden = !setup;
-    $("loginUser").value = ""; $("loginPw2").value = ""; $("loginPw").value = "";
+    $("loginTitle").textContent = "登录";
+    $("loginSub").textContent = "输入用户名和密码登录。";
+    $("loginUser").value = ""; $("loginPw").value = "";
     loginErr(""); $("loginGate").hidden = false;
     $("loginUser").focus();
   }
@@ -1678,19 +1668,13 @@
     const pw = $("loginPw").value;
     if(!user){ loginErr("请输入用户名"); return; }
     if(!pw){ loginErr("请输入密码"); return; }
-    const setup = S.auth.setup;
-    if(setup){
-      if(user.length < 2){ loginErr("用户名至少 2 个字符"); return; }
-      const pwdErr = validatePassword(pw);
-      if(pwdErr){ loginErr(pwdErr); return; }
-      if(pw !== $("loginPw2").value){ loginErr("两次输入的密码不一致"); return; }
-    }
     $("loginBtn").disabled = true; loginErr("");
     try{
-      if(setup) await S.setupAuth(user, pw); else await S.login(user, pw);
+      await S.login(user, pw);
       $("loginGate").hidden = true;
       toast("已解锁 " + randFace());
       appStart();
+      loadUserMgmt();
     }catch(e){
       loginErr(e.message || "登录失败");
       $("loginPw").value = ""; $("loginPw").focus();
@@ -1701,10 +1685,9 @@
   $("loginBtn").addEventListener("click", doLogin);
   $("loginUser").addEventListener("keydown", e => { if(e.key === "Enter") doLogin(); });
   $("loginPw").addEventListener("keydown", e => { if(e.key === "Enter") doLogin(); });
-  $("loginPw2").addEventListener("keydown", e => { if(e.key === "Enter") doLogin(); });
   $("logoutBtn").addEventListener("click", () => S.logout());
   
-  // 账号设置 - 修改密码
+  // 账号设置 - 修改密码（服务端接口：POST /api/change-password）
   $("savePwBtn").addEventListener("click", async () => {
     const cur = $("curPw").value, neu = $("newPw").value, con = $("newPw2").value;
     if(!cur && !neu){ toast("请填写密码"); return; }
@@ -1714,36 +1697,40 @@
       if(pwdErr){ toast(pwdErr); return; }
     }
     try{
-      const r = await fetch("/api/auth/password", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ current:cur, next:neu })
+      const r = await fetch("/api/change-password", {
+        method:"POST", headers:{ "content-type":"application/json" },
+        body: JSON.stringify({ currentPassword:cur, newPassword:neu })
       });
-      const j = await r.json();
-      if(j.ok){ toast("密码已更新"); $("curPw").value = ""; $("newPw").value = ""; $("newPw2").value = ""; }
+      const j = await r.json().catch(() => ({}));
+      if(r.ok && j.ok){ toast("密码已更新，其他设备的旧登录已失效"); $("curPw").value = ""; $("newPw").value = ""; $("newPw2").value = ""; }
       else toast(j.error || "修改失败");
     }catch(e){ toast("修改失败：" + e.message); }
   });
 
-  /* 用户管理 */
-  let isAdmin = false;
+  /* 用户管理（仅登录态下的管理员可见；开放模式下隐藏） */
   async function loadUserMgmt(){
+    const openCard = $("openModeCard");
+    if(openCard) openCard.hidden = !(S.mode === "server" && S.auth.openMode); // 开放模式提示卡
+    const acctCard = $("accountCard");
+    if(acctCard) acctCard.hidden = S.mode === "server" && S.auth.openMode;   // 开放模式没有账号可改
+    if(!S.auth.required || S.auth.role !== "admin"){ $("userMgmtCard").hidden = true; return; }
     try{
-      const [users, authInfo] = await Promise.all([S.apiUsers(), fetch("/api/auth").then(r => r.json())]);
-      isAdmin = authInfo.role === "admin";
-      $("userMgmtCard").hidden = !isAdmin;
-      if(!isAdmin) return;
+      const users = await S.apiUsers();
+      if(!users || users.error || !Array.isArray(users)){ $("userMgmtCard").hidden = true; return; }
+      $("userMgmtCard").hidden = false;
       renderUserList(users);
     }catch(e){ console.warn("加载用户列表失败", e); }
   }
   function renderUserList(users){
-    if(!users || !users.length){ $("userList").innerHTML = '<p class="muted">暂无用户</p>'; return; }
-    const me = S._me || "";
-    $("userList").innerHTML = users.map(u => {
+    const box = $("userList");
+    if(!users || !users.length){ box.innerHTML = '<p class="muted">暂无用户</p>'; return; }
+    const me = S.auth.userId || "";
+    box.innerHTML = users.map(u => {
       const isMe = u.id === me;
       const roleBadge = u.role === "admin" ? '<span class="pill" style="background:var(--accent)">管理员</span>' : '<span class="pill">普通用户</span>';
       const actions = isMe ? '<span class="muted">当前账号</span>' : [
-        `<button class="btn ghost sm" onclick="toggleRole('${u.id}','${u.username}','${u.role}')">${u.role === "admin" ? "降为普通" : "升为管理"}</button>`,
-        `<button class="btn danger sm" onclick="deleteUser('${u.id}','${u.username}')">删除</button>`
+        `<button class="btn ghost sm" data-toggle="${u.id}" data-name="${S.esc(u.username)}" data-cur="${u.role}">${u.role === "admin" ? "降为普通" : "升为管理"}</button>`,
+        `<button class="btn danger sm" data-delu="${u.id}" data-name="${S.esc(u.username)}">删除</button>`
       ].join(" ");
       return `<div class="user-item">
         <span class="user-name">${S.esc(u.username)}</span>
@@ -1751,23 +1738,25 @@
         <span class="user-actions">${actions}</span>
       </div>`;
     }).join("");
+    box.querySelectorAll("[data-delu]").forEach(b => b.addEventListener("click", () => deleteUser(b.getAttribute("data-delu"), b.getAttribute("data-name"))));
+    box.querySelectorAll("[data-toggle]").forEach(b => b.addEventListener("click", () => toggleRole(b.getAttribute("data-toggle"), b.getAttribute("data-name"), b.getAttribute("data-cur"))));
   }
-  window.deleteUser = async function(id, name){
+  async function deleteUser(id, name){
     if(!await confirmBox("确定删除用户「" + name + "」？")) return;
     try{
       await S.apiDeleteUser(id);
       toast("已删除「" + name + "」");
       loadUserMgmt();
     }catch(e){ toast("删除失败：" + e.message); }
-  };
-  window.toggleRole = async function(id, name, currentRole){
+  }
+  async function toggleRole(id, name, currentRole){
     const newRole = currentRole === "admin" ? "normal" : "admin";
     try{
       await S.apiUpdateUser(id, { role: newRole });
       toast("已将「" + name + "」设为" + (newRole === "admin" ? "管理员" : "普通用户"));
       loadUserMgmt();
     }catch(e){ toast("操作失败：" + e.message); }
-  };
+  }
   $("addUserBtn").addEventListener("click", async () => {
     const name = $("newUserName").value.trim();
     const pw = $("newUserPw").value;
@@ -1784,8 +1773,25 @@
     }catch(e){ toast(e.message || "添加失败"); }
   });
 
+  /* 开放模式 → 启用密码保护：创建第一个管理员（服务端自动授予 admin 角色） */
+  $("createAdminBtn").addEventListener("click", async () => {
+    const name = $("admUserName").value.trim(), pw = $("admUserPw").value;
+    if(name.length < 2){ toast("用户名至少 2 个字符"); return; }
+    if(!/^[a-zA-Z0-9_]+$/.test(name)){ toast("用户名只能包含字母、数字和下划线"); return; }
+    const pwdErr = validatePassword(pw);
+    if(pwdErr){ toast(pwdErr); return; }
+    try{
+      await S.createAdmin(name, pw);
+      $("openModeCard").hidden = true;
+      $("accountCard").hidden = false;
+      $("logoutBtn").style.display = "";
+      loadUserMgmt();
+      toast("管理员已创建，本站已启用密码保护，其他设备需重新登录");
+    }catch(e){ toast(e.message || "创建失败"); }
+  });
+
   Store.ready.then(mode => {
-    if(mode === "auth" || S.auth.setup){ showLoginGate(); return; } // 服务端要求登录，或首次部署等待设置密码
+    if(mode === "auth"){ showLoginGate(); return; } // 服务端要求登录
     appStart();
     loadUserMgmt();
   });

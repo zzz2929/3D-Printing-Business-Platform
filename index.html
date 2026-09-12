@@ -443,7 +443,7 @@
             </div>
             <div class="hint" style="margin-top:8px" id="backupInfo">尚未导出过备份。</div>
           </div>
-          <div class="card">
+          <div class="card" id="accountCard">
             <div class="card-head"><h2>账号设置</h2></div>
             <p class="muted" style="margin-top:0">管理你的账号密码和安全设置。</p>
             <div style="margin-top:12px">
@@ -461,6 +461,22 @@
             <div class="row" style="margin-top:12px">
               <button class="btn" id="savePwBtn">保存密码</button>
               <button class="btn ghost" id="logoutBtn" style="display:none">退出登录</button>
+            </div>
+          </div>
+          <!-- 开放模式提示：创建第一个管理员即启用密码保护 -->
+          <div class="card" id="openModeCard" hidden>
+            <div class="card-head"><h2>启用密码保护</h2><span class="pill">开放模式</span></div>
+            <p class="muted" style="margin-top:0">当前为开放模式：任何能访问本站的人都可以查看和修改数据。创建管理员账号后，所有访问都需要登录。</p>
+            <div style="margin-top:12px">
+              <label>管理员用户名</label>
+              <input type="text" id="admUserName" placeholder="2 位以上，字母 / 数字 / 下划线" style="width:100%;margin-top:4px" autocomplete="username" />
+            </div>
+            <div style="margin-top:10px">
+              <label>密码</label>
+              <input type="password" id="admUserPw" placeholder="8 位以上，包含大小写字母和数字" style="width:100%;margin-top:4px" autocomplete="new-password" />
+            </div>
+            <div class="row" style="margin-top:12px">
+              <button class="btn" id="createAdminBtn">创建管理员并启用保护</button>
             </div>
           </div>
         </div>
@@ -527,8 +543,6 @@
     <p id="loginSub">数据受密码保护，验证通过后才能查看与操作。</p>
     <input type="text" id="loginUser" class="dlg-input" placeholder="用户名" autocomplete="username" />
     <input type="password" id="loginPw" class="dlg-input" placeholder="密码" autocomplete="current-password" />
-    <input type="password" id="loginPw2" class="dlg-input" placeholder="再输入一次确认" autocomplete="new-password" hidden />
-    <p class="pwd-hint" id="pwdHint">密码要求：8位以上，包含大小写字母和数字</p>
     <div id="loginErr" class="login-err" hidden></div>
     <div class="row" style="justify-content:center;margin-top:16px">
       <button class="btn" id="loginBtn">解锁</button>

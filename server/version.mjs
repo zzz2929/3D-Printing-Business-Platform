@@ -3,11 +3,23 @@
    前端通过 GET /api/version 获取；「检查更新」则拉取用户配置的远程 version.json
    并与 APP_VERSION 做比较。远程 version.json 建议格式：
    { "version":"2.5.0", "date":"2026-10-01", "notes":["xxx"], "downloadUrl":"https://…" } */
-export const APP_VERSION = "1.0.1";
-export const BUILD_DATE = "2026-09-12";
+export const APP_VERSION = "1.0.2";
+export const BUILD_DATE = "2026-09-13";
 
 export const CHANGELOG = [
-  { 
+  {
+    v:"1.0.2", date:"2026-09-13", items:[
+      "安全修复：静态资源改为白名单提供，/data 数据文件不再可被直接下载",
+      "安全修复：会话签名密钥改为用户内随机会话密钥（旧用户自动迁移，改密码即轮换并使所有旧登录失效）",
+      "多用户修复：设置页用户管理卡片恢复显示（管理员可见）",
+      "多用户修复：设置页「修改密码」恢复可用",
+      "多用户修复：开放模式下可在设置页一键创建管理员并启用密码保护",
+      "修复 Docker 健康检查（改用无需登录的 /api/version）与 Vercel 部署登录态丢失（透传 Cookie）",
+      "移除失效的 APP_PASSWORD 环境变量与首次注册死流程，清理重复路由与死代码",
+      "请求体增加 10MB 上限"
+    ]
+  },
+  {
     v:"1.0.1", date:"2026-09-12", items:[
       "修复登录鉴权问题",
     ]

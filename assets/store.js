@@ -364,7 +364,7 @@ const Store = (function(){
   }
 
   /* ---------- 初始化：连接服务端（含登录门） ---------- */
-  let auth = { required:false, ok:true, setup:false }; // 服务端鉴权状态
+  let auth = { required:false, ok:true, openMode:false }; // 服务端鉴权状态
   async function tryLoad(){
     const r = await fetch("/api/data", { headers:{ "accept":"application/json" } });
     if(!r.ok) throw new Error("HTTP " + r.status);
@@ -386,13 +386,14 @@ const Store = (function(){
     try{
       const st = await fetch("/api/auth", { headers:{ "accept":"application/json" } }).then(r => r.json());
       mode = "server";
-      auth = { required:!!st.required, setup:!!st.setup, ok:!!st.ok, role:st.role, userId:st.userId, username:st.username };
+      const u = st.user || {};
+      auth = { required:!!st.required, ok:!!st.ok, openMode:!!st.openMode, role:u.role, userId:u.id, username:u.username };
       if(auth.required && !auth.ok){ readyResolve("auth"); return; } // 等待登录，app.js 弹登录门
       await tryLoad();
     }catch(e){
       // 服务端不可达 → 本地模式（双击 index.html 也能用）
       mode = "local";
-      auth = { required:false, ok:true, setup:false };
+      auth = { required:false, ok:true, openMode:false };
       materials = lsGet(LEGACY.mat, []); printers = lsGet(LEGACY.pri, []);
       records = lsGet(LEGACY.rec, []); orders = lsGet(LEGACY.ord, []);
       Object.assign(settings, lsGet(LEGACY.set, {}));
@@ -402,22 +403,25 @@ const Store = (function(){
       emit("saved");
     }
   }
-  /* 登录 / 首次设置密码 / 登出（登录成功后自动加载数据） */
+  /* 登录 / 登出（登录成功后自动加载数据） */
   async function login(username, pw){
     const r = await fetch("/api/login", { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify({ username, password:pw }) });
     const d = await r.json().catch(() => ({}));
     if(!r.ok) throw new Error(d.error || "登录失败");
-    auth.ok = true; auth.setup = false;
-    auth.role = d.role; auth.userId = d.userId; auth.username = d.username;
+    auth.ok = true;
+    const u = d.user || {};
+    auth.role = u.role; auth.userId = u.id; auth.username = u.username;
     await tryLoad();
   }
-  async function setupAuth(username, pw){
-    const r = await fetch("/api/setup", { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify({ username, password:pw }) });
+  /* 开放模式下创建第一个管理员（服务端首个注册用户自动为 admin），成功后整站转为密码保护 */
+  async function createAdmin(username, pw){
+    const r = await fetch("/api/register", { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify({ username, password:pw }) });
     const d = await r.json().catch(() => ({}));
-    if(!r.ok) throw new Error(d.error || "设置失败");
-    auth.ok = true; auth.setup = false;
-    auth.role = d.role; auth.userId = d.userId; auth.username = d.username;
-    await tryLoad();
+    if(!r.ok) throw new Error(d.error || "创建失败");
+    auth.ok = true; auth.required = true; auth.openMode = false;
+    const u = d.user || {};
+    auth.role = u.role; auth.userId = u.id; auth.username = u.username;
+    return d;
   }
   /* 用户管理 API */
   async function apiUsers(){ return fetch("/api/users", { headers:{ "accept":"application/json" } }).then(r => r.json()); }
@@ -613,7 +617,7 @@ const Store = (function(){
     get mode(){ return mode; },
     get auth(){ return auth; },
     ready, onSync,
-    login, setupAuth, logout,
+    login, logout, createAdmin,
     setSettings(p){ Object.assign(settings, p); push("settings"); },
     setAchKeys(s){ achKeys = s; push("achievements"); },
     saveMat(){ push("materials"); }, savePri(){ push("printers"); },

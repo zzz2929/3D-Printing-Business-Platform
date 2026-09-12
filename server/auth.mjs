@@ -1,14 +1,14 @@
 /* 3D打印业务平台 认证核心 · 多用户版
    - 密码：PBKDF2-SHA256 加盐哈希（WebCrypto，120k 迭代）
-   - 会话：HMAC-SHA256 签名的过期时间戳令牌（Cookie，默认 30 天）
-   - 用户：存储在 users 集合，字段：id, username, passwordHash, salt, role, createdAt
+   - 会话：HMAC-SHA256 签名的过期时间戳令牌（Cookie，默认 30 天），
+     签名密钥为用户记录内的随机 secret（改密码时轮换，与密码哈希解耦）
+   - 用户：存储在 users 集合，字段：id, username, passwordHash, salt, secret, role, createdAt
    - 角色：admin（管理员）/ normal（普通用户）
    - 开放模式：未配置用户时进入开放模式 */
 
 const enc = new TextEncoder();
 
 function toHex(buf){ return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join(""); }
-async function sha256hex(s){ return toHex(await crypto.subtle.digest("SHA-256", enc.encode(s))); }
 async function hmacHex(secret, msg){
   const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name:"HMAC", hash:"SHA-256" }, false, ["sign"]);
   return toHex(await crypto.subtle.sign("HMAC", key, enc.encode(msg)));
@@ -30,7 +30,7 @@ export function validatePassword(pw){
   return null; // null = 验证通过
 }
 
-export function createAuth(store, envPw){
+export function createAuth(store){
   let usersCache = null;
   let usersArr = null;
 
@@ -38,6 +38,12 @@ export function createAuth(store, envPw){
     if(usersCache !== null) return usersCache;
     const raw = await store.get("users");
     usersArr = raw && Array.isArray(raw) ? raw : [];
+    /* 老数据迁移：补随机会话密钥（此前由 passwordHash 派生，存在泄露即伪造会话的风险） */
+    let dirty = false;
+    for(const u of usersArr){
+      if(!u.secret || typeof u.secret !== "string"){ u.secret = randomHex(32); dirty = true; }
+    }
+    if(dirty) await store.set("users", usersArr);
     usersCache = usersArr;
     return usersCache;
   }
@@ -52,10 +58,15 @@ export function createAuth(store, envPw){
     return users.find(u => u.username.toLowerCase() === username.toLowerCase());
   }
 
+  /* 签发 30 天会话令牌：exp.HMAC(secret, "pf:"+exp) */
+  async function signToken(user){
+    const exp = Date.now() + 30 * 86400 * 1000;
+    return exp + "." + (await hmacHex(user.secret, "pf:" + exp));
+  }
+
   return {
     /* 检查是否启用认证（有任何用户时启用） */
     async configured(){
-      if(envPw) return true;
       const users = await loadUsers();
       return users.length > 0;
     },
@@ -63,18 +74,14 @@ export function createAuth(store, envPw){
     /* 验证登录 */
     async login(username, pw){
       if(!username || !pw) return { error:"用户名和密码不能为空" };
-      if(!(await this.configured())) return { error:"系统未配置，请先注册管理员" };
+      if(!(await this.configured())) return { error:"系统未配置，请先在设置页创建管理员" };
       const user = await findUser(username);
       if(!user) return { error:"用户名或密码错误" };
       const hash = await hashPassword(pw, user.salt);
       if(hash !== user.passwordHash) return { error:"用户名或密码错误" };
-      // 生成用户专属密钥
-      const userSecret = await sha256hex("user:" + user.id + ":" + user.passwordHash);
-      const exp = Date.now() + 30 * 86400 * 1000;
-      const token = exp + "." + (await hmacHex(userSecret, "pf:" + exp));
-      return { 
-        ok:true, 
-        user: { id:user.id, username:user.username, role:user.role } 
+      return {
+        ok:true,
+        user: { id:user.id, username:user.username, role:user.role }
       };
     },
 
@@ -86,12 +93,11 @@ export function createAuth(store, envPw){
       if(i <= 0) return null;
       const exp = Number(t.slice(0, i)), sig = t.slice(i + 1);
       if(!Number.isFinite(exp) || exp < Date.now()) return null;
-      
-      // 尝试所有用户密钥验证
+
+      // 逐用户比对签名密钥
       const users = await loadUsers();
       for(const user of users){
-        const userSecret = await sha256hex("user:" + user.id + ":" + user.passwordHash);
-        if((await hmacHex(userSecret, "pf:" + exp)) === sig){
+        if((await hmacHex(user.secret, "pf:" + exp)) === sig){
           return { id:user.id, username:user.username, role:user.role };
         }
       }
@@ -103,10 +109,7 @@ export function createAuth(store, envPw){
       const users = await loadUsers();
       const u = users.find(x => x.id === user.id);
       if(!u) throw new Error("用户不存在");
-      const userSecret = await sha256hex("user:" + u.id + ":" + u.passwordHash);
-      const exp = Date.now() + 30 * 86400 * 1000;
-      const token = exp + "." + (await hmacHex(userSecret, "pf:" + exp));
-      return token;
+      return signToken(u);
     },
 
     /* 注册用户（开放模式或管理员可操作） */
@@ -136,7 +139,7 @@ export function createAuth(store, envPw){
       const id = randomHex(16);
       const salt = randomHex(16);
       const passwordHash = await hashPassword(password, salt);
-      const user = { id, username, passwordHash, salt, role: finalRole, createdAt: Date.now() };
+      const user = { id, username, passwordHash, salt, secret:randomHex(32), role: finalRole, createdAt: Date.now() };
       users.push(user);
       await saveUsers();
       return { ok:true, user:{ id, username, role:finalRole } };
@@ -183,6 +186,7 @@ export function createAuth(store, envPw){
 
       user.salt = randomHex(16);
       user.passwordHash = await hashPassword(newPw, user.salt);
+      user.secret = randomHex(32); // 轮换会话密钥，使该用户所有旧令牌失效
       await saveUsers();
       return { ok:true };
     },

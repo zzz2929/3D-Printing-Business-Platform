@@ -350,15 +350,15 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 .seg button.on{background:var(--accent-dim);color:var(--accent);font-weight:600}
 .color-row{display:flex;gap:6px;align-items:center}
 .color-row input[type="color"]{flex:0 0 46px;height:42px;padding:4px;cursor:pointer}
-/* 耗材表单：品牌(1) | 类型(跨2) | 颜色(1列含取色框+名称) | 价格(第2行占1列) */
-.mat-grid{grid-template-columns:1fr 1fr 1fr 0.9fr}
+/* 颜色名输入框被 attachCombo 包进 span.combo，让它占据取色器旁的剩余宽度，箭头贴着输入框右缘 */
+.color-row .combo{flex:1;min-width:0}
+/* 耗材表单：品牌(1) | 类型(跨2，收窄) | 颜色(加宽，保证名称输入完整显示) | 价格(第2行占1列) */
+.mat-grid{grid-template-columns:1fr 0.9fr 0.9fr 1.4fr}
 @media(max-width:760px){.mat-grid{grid-template-columns:1fr 1fr;grid-template-rows:auto}}
 @media(max-width:520px){.mat-grid{grid-template-columns:1fr}}
 /* 类型框撑满跨2列，确保下拉面板够宽 */
 .mat-grid .span2{grid-column:span 2}
 .mat-grid .span2 input{width:100%}
-/* 颜色行里的名称输入不要太长 */
-.color-row input:not([type="color"]){max-width:110px}
 .sw-p{width:24px;height:24px;border-radius:6px;border:1px solid var(--line2);cursor:pointer;padding:0;transition:transform .12s}
 .sw-p:hover{transform:scale(1.15)}
 .sw-p.on{outline:2px solid var(--accent);outline-offset:1px}
@@ -459,14 +459,14 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 
 /* ---------- 二级选择器（耗材类型用：左大类 / 右小类 + 灰色说明） ---------- */
 .casc-pop{
-  position:absolute;top:calc(100% + 4px);left:0;right:0;
+  position:absolute;top:calc(100% + 4px);left:0;right:0; /* 面板与触发框严格同宽，不外溢 */
   background:var(--panel);border:1px solid var(--line2);border-radius:10px;
   box-shadow:0 16px 40px rgba(0,0,0,.4);z-index:56;display:none;
   max-height:380px;overflow:hidden;
 }
 [data-theme="light"] .casc-pop{box-shadow:0 16px 40px rgba(30,40,60,.18)}
 .casc-pop.open{display:block}
-.casc-grid{display:grid;grid-template-columns:130px 1fr;max-height:380px;overflow:auto}
+.casc-grid{display:grid;grid-template-columns:104px 1fr;max-height:380px;overflow:auto}
 /* 两列等高 + 整体滚动（滚轮直接作用于面板） */
 .casc-left{
   background:var(--panel2);border-right:1px solid var(--line);

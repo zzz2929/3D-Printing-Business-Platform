@@ -1,7 +1,7 @@
 /* 3D打印业务平台 后端核心 · 多用户版 API 路由
    存储适配器只需实现：{ get(col) -> any, set(col, val) }
    集合：materials / printers / records / orders / settings / achievements / users
-   鉴权：createAuth(store, envPw)；已配置用户时，除 auth/* 外的所有 /api/* 都需要有效会话
+   鉴权：createAuth(store)；已配置用户时，除 auth/* 外的所有 /api/* 都需要有效会话
    用户数据隔离：通过 users/{userId}/ 前缀区分 */
 
 import { createAuth, tokenCookie, CLEAR_COOKIE } from "./auth.mjs";
@@ -20,8 +20,8 @@ async function readBody(req){
   try{ return await req.json(); }catch(e){ return null; }
 }
 
-export function createRouter(store, envPw){
-  const auth = createAuth(store, envPw);
+export function createRouter(store){
+  const auth = createAuth(store);
 
   return async function handle(req){
     const url = new URL(req.url);
@@ -108,17 +108,7 @@ export function createRouter(store, envPw){
       return json(result);
     }
 
-    if(path === "users" && req.method === "DELETE"){
-      const operator = await auth.verify(req);
-      if(!operator) return json({ error:"请先登录" }, 401);
-      const userId = url.searchParams.get("id");
-      if(!userId) return json({ error:"缺少用户ID" }, 400);
-      const result = await auth.deleteUser(userId, operator);
-      if(result.error) return json({ error:result.error }, 400);
-      return json(result);
-    }
-
-    // DELETE /api/users/:id — path-based（匹配前端 store.js）
+    // DELETE /api/users/:id — 删除用户（仅管理员）
     if(path.startsWith("users/") && req.method === "DELETE"){
       const operator = await auth.verify(req);
       if(!operator) return json({ error:"请先登录" }, 401);
@@ -144,7 +134,7 @@ export function createRouter(store, envPw){
     /* ---- 数据端点 ---- */
     // 开放模式：无需登录
     if(!(await auth.configured())){
-      return handleData(req, store, null);
+      return handleData(req, null);
     }
 
     // 需要登录
@@ -153,61 +143,50 @@ export function createRouter(store, envPw){
 
     // 管理员可访问所有用户数据
     if(user.role === "admin" && url.searchParams.has("allUsers")){
-      return handleAdminData(req, store, user);
+      return handleAdminData(req, user);
     }
 
-    return handleData(req, store, user);
+    return handleData(req, user);
   };
 
-  /* 处理用户数据 */
-  async function handleData(req, store, user){
+  /* 处理数据：开放模式用共享集合（无前缀），登录用户用 u_{id}_ 前缀 */
+  async function handleData(req, user){
+    return serveData(req, user ? "u_" + user.id + "_" : "");
+  }
+
+  async function serveData(req, prefix){
     const url = new URL(req.url);
-    let col = url.pathname.slice(5);
+    const col = url.pathname.slice(5);
 
-    // 未登录 -> 开放模式，使用默认数据
-    if(!user){
-      if(!DATA_COLS.includes(col)) return json({ error:"unknown collection" }, 404);
-      if(req.method === "GET") return json(await store.get(col));
-      if(req.method === "PUT"){
-        const body = await readBody(req);
-        if(body === null) return json({ error:"bad body" }, 400);
-        await store.set(col, body);
-        return json({ ok:true });
-      }
-      return json({ error:"method not allowed" }, 405);
-    }
-
-    // 登录用户 -> 使用用户专属数据
-    const userPrefix = "u_" + user.id + "_";
-    
+    // 聚合端点 /api/data：一次读写全部集合
     if(col === "data"){
       if(req.method === "GET"){
         const all = {};
-        for(const c of DATA_COLS) all[c] = await store.get(userPrefix + c);
+        for(const c of DATA_COLS) all[c] = await store.get(prefix + c);
         return json(all);
       }
       if(req.method === "PUT"){
         const body = await readBody(req);
         if(!body || typeof body !== "object") return json({ error:"bad body" }, 400);
-        for(const c of DATA_COLS) if(body[c] !== undefined) await store.set(userPrefix + c, body[c]);
+        for(const c of DATA_COLS) if(body[c] !== undefined) await store.set(prefix + c, body[c]);
         return json({ ok:true });
       }
       return json({ error:"method not allowed" }, 405);
     }
 
     if(!DATA_COLS.includes(col)) return json({ error:"unknown collection" }, 404);
-    if(req.method === "GET") return json(await store.get(userPrefix + col));
+    if(req.method === "GET") return json(await store.get(prefix + col));
     if(req.method === "PUT"){
       const body = await readBody(req);
       if(body === null) return json({ error:"bad body" }, 400);
-      await store.set(userPrefix + col, body);
+      await store.set(prefix + col, body);
       return json({ ok:true });
     }
     return json({ error:"method not allowed" }, 405);
   }
 
   /* 管理员查看所有用户数据 */
-  async function handleAdminData(req, store, admin){
+  async function handleAdminData(req, admin){
     const url = new URL(req.url);
     const col = url.pathname.slice(5);
 
@@ -215,6 +194,7 @@ export function createRouter(store, envPw){
     if(req.method !== "GET") return json({ error:"method not allowed" }, 405);
 
     const users = await auth.listUsers(admin);
+    if(users.error) return json(users, 403);
     const result = {};
     for(const u of users){
       const prefix = "u_" + u.id + "_";
