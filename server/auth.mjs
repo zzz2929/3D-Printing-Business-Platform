@@ -77,6 +77,7 @@ export function createAuth(store){
       if(!(await this.configured())) return { error:"系统未配置，请先在设置页创建管理员" };
       const user = await findUser(username);
       if(!user) return { error:"用户名或密码错误" };
+      if(user.disabled) return { error:"账号已被停用，请联系管理员" };
       const hash = await hashPassword(pw, user.salt);
       if(hash !== user.passwordHash) return { error:"用户名或密码错误" };
       return {
@@ -94,9 +95,10 @@ export function createAuth(store){
       const exp = Number(t.slice(0, i)), sig = t.slice(i + 1);
       if(!Number.isFinite(exp) || exp < Date.now()) return null;
 
-      // 逐用户比对签名密钥
+      // 逐用户比对签名密钥（已停用账号一律拒绝）
       const users = await loadUsers();
       for(const user of users){
+        if(user.disabled) continue;
         if((await hmacHex(user.secret, "pf:" + exp)) === sig){
           return { id:user.id, username:user.username, role:user.role };
         }
@@ -161,7 +163,7 @@ export function createAuth(store){
     async listUsers(operator){
       if(operator?.role !== "admin") return { error:"只有管理员可以查看用户列表" };
       const users = await loadUsers();
-      return users.map(u => ({ id:u.id, username:u.username, role:u.role, createdAt:u.createdAt }));
+      return users.map(u => ({ id:u.id, username:u.username, role:u.role, disabled:!!u.disabled, createdAt:u.createdAt }));
     },
 
     /* 修改密码 */
@@ -177,6 +179,7 @@ export function createAuth(store){
       
       // 非管理员改密码需要验证原密码
       if(operator?.role !== "admin"){
+        if(typeof currentPw !== "string" || !currentPw) return { error:"请输入当前密码" };
         const hash = await hashPassword(currentPw, user.salt);
         if(hash !== user.passwordHash) return { error:"当前密码错误" };
       }
@@ -191,24 +194,53 @@ export function createAuth(store){
       return { ok:true };
     },
 
-    /* 更新用户信息（用户名或角色） */
+    /* 更新用户信息（管理员）：用户名 / 密码重置 / 角色 / 停用 */
     async updateUser(userId, updates, operator){
-      if(operator?.role !== "admin") return { error:"只有管理员可以修改用户角色" };
-      if(userId === operator.id) return { error:"不能修改自己的角色" };
+      if(operator?.role !== "admin") return { error:"只有管理员可以修改用户" };
+      if(!updates || typeof updates !== "object") return { error:"没有要修改的内容" };
       const users = await loadUsers();
       const user = users.find(u => u.id === userId);
       if(!user) return { error:"用户不存在" };
 
-      // 修改角色
-      if(updates.role){
+      // 改用户名：校验格式与唯一性（会话按用户 id 签发，改名不影响登录态）
+      if(updates.username !== undefined){
+        const nu = String(updates.username).trim();
+        if(nu.length < 2 || !/^[a-zA-Z0-9_]+$/.test(nu)){
+          return { error:"用户名至少2个字符，只能包含字母、数字和下划线" };
+        }
+        if(users.some(u => u.id !== userId && u.username.toLowerCase() === nu.toLowerCase())){
+          return { error:"用户名已存在" };
+        }
+        user.username = nu;
+      }
+
+      // 重置密码：轮换 salt 与会话密钥，该账号所有旧会话立即失效
+      if(updates.password !== undefined && updates.password !== ""){
+        if(typeof updates.password !== "string") return { error:"密码格式不正确" };
+        const pwErr = validatePassword(updates.password);
+        if(pwErr) return { error:pwErr };
+        user.salt = randomHex(16);
+        user.passwordHash = await hashPassword(updates.password, user.salt);
+        user.secret = randomHex(32);
+      }
+
+      // 改角色：不能改自己（避免管理员把自己降级后无人管理）
+      if(updates.role !== undefined){
+        if(userId === operator.id) return { error:"不能修改自己的角色" };
         if(!["admin","normal"].includes(updates.role)){
           return { error:"角色只能是 admin 或 normal" };
         }
         user.role = updates.role;
       }
 
+      // 停用 / 启用：不能停用自己（登录与已有会话同时失效）
+      if(updates.disabled !== undefined){
+        if(userId === operator.id) return { error:"不能停用自己" };
+        user.disabled = !!updates.disabled;
+      }
+
       await saveUsers();
-      return { ok:true, user:{ id:user.id, username:user.username, role:user.role } };
+      return { ok:true, user:{ id:user.id, username:user.username, role:user.role, disabled:!!user.disabled } };
     },
 
     /* 获取当前用户信息 */

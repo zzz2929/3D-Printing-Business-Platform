@@ -221,6 +221,8 @@ select::after{
 .lcd-lines .line.cb-line{cursor:pointer;align-items:center;user-select:none}
 .lcd-lines .line.cb-line:hover{color:var(--ink)}
 .lcd-lines .line.cb-line input{width:15px;height:15px;flex:0 0 15px;margin:0;accent-color:var(--accent);cursor:pointer}
+/* 用户编辑表单里的「停用」复选框：不被全局 input width:100% 拉伸 */
+#editDisabledBox input[type="checkbox"]{width:15px;height:15px;flex:0 0 15px;margin:0;accent-color:var(--accent);cursor:pointer}
 .lcd-lines .line.cb-line .cb-txt{flex:1}
 .lcd-lines .line.off{opacity:.42}
 .lcd-lines .line.off span:last-child{text-decoration:line-through}

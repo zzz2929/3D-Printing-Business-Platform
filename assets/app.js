@@ -1642,8 +1642,6 @@
     if(!S.settings.onboarded) obShow(); // 初次使用自动引导
     const sp = S.settings.startPage;    // 启动页
     if(sp && PAGE_TITLES[sp] && !location.hash) goto(sp);
-    const lb = $("logoutBtn");
-    if(S.auth && S.auth.required) lb.style.display = ""; // 服务端密码模式下显示登出
   }
   function loginErr(msg){
     const e = $("loginErr"); e.textContent = msg; e.hidden = !msg;
@@ -1686,61 +1684,141 @@
   $("loginUser").addEventListener("keydown", e => { if(e.key === "Enter") doLogin(); });
   $("loginPw").addEventListener("keydown", e => { if(e.key === "Enter") doLogin(); });
   $("logoutBtn").addEventListener("click", () => S.logout());
-  
-  // 账号设置 - 修改密码（服务端接口：POST /api/change-password）
-  $("savePwBtn").addEventListener("click", async () => {
-    const cur = $("curPw").value, neu = $("newPw").value, con = $("newPw2").value;
-    if(!cur && !neu){ toast("请填写密码"); return; }
-    if(neu && neu !== con){ toast("两次新密码不一致"); return; }
-    if(neu){
-      const pwdErr = validatePassword(neu);
-      if(pwdErr){ toast(pwdErr); return; }
-    }
-    try{
-      const r = await fetch("/api/change-password", {
-        method:"POST", headers:{ "content-type":"application/json" },
-        body: JSON.stringify({ currentPassword:cur, newPassword:neu })
-      });
-      const j = await r.json().catch(() => ({}));
-      if(r.ok && j.ok){ toast("密码已更新，其他设备的旧登录已失效"); $("curPw").value = ""; $("newPw").value = ""; $("newPw2").value = ""; }
-      else toast(j.error || "修改失败");
-    }catch(e){ toast("修改失败：" + e.message); }
-  });
 
-  /* 用户管理（仅登录态下的管理员可见；开放模式下隐藏） */
+  /* ---------- 用户管理（账号设置已合并于此） ----------
+     管理员：表格列出全部用户，可编辑（用户名/密码/角色/停用）、删除、添加；
+     普通用户：只看到自己一行，可改用户名？否——仅可改自己的密码（需验证当前密码）。 */
   async function loadUserMgmt(){
     const openCard = $("openModeCard");
     if(openCard) openCard.hidden = !(S.mode === "server" && S.auth.openMode); // 开放模式提示卡
-    const acctCard = $("accountCard");
-    if(acctCard) acctCard.hidden = S.mode === "server" && S.auth.openMode;   // 开放模式没有账号可改
-    if(!S.auth.required || S.auth.role !== "admin"){ $("userMgmtCard").hidden = true; return; }
+    const card = $("userMgmtCard");
+    if(!card) return;
+    if(!S.auth.required || !S.auth.ok){ card.hidden = true; return; } // 未登录 / 开放模式不显示
+    const isAdmin = S.auth.role === "admin";
+    card.hidden = false;
+    $("userMgmtScope").textContent = isAdmin ? "管理员" : "当前账号";
+    $("userMgmtDesc").textContent = isAdmin
+      ? "管理账号：编辑用户名、重置密码、分配角色、停用或删除。"
+      : "管理自己的账号：可修改登录密码。";
+    $("addUserSection").hidden = !isAdmin;
+    hideEditUser();
     try{
-      const users = await S.apiUsers();
-      if(!users || users.error || !Array.isArray(users)){ $("userMgmtCard").hidden = true; return; }
-      $("userMgmtCard").hidden = false;
-      renderUserList(users);
+      let users;
+      if(isAdmin){
+        users = await S.apiUsers();
+        if(!users || users.error || !Array.isArray(users)){
+          $("userList").innerHTML = '<p class="muted">用户列表加载失败</p>';
+          return;
+        }
+      }else{
+        // 普通用户：只渲染自己这一行
+        users = [{ id:S.auth.userId, username:S.auth.username, role:S.auth.role, disabled:false }];
+      }
+      renderUserList(users, isAdmin);
     }catch(e){ console.warn("加载用户列表失败", e); }
   }
-  function renderUserList(users){
+
+  function renderUserList(users, isAdmin){
     const box = $("userList");
-    if(!users || !users.length){ box.innerHTML = '<p class="muted">暂无用户</p>'; return; }
     const me = S.auth.userId || "";
-    box.innerHTML = users.map(u => {
-      const isMe = u.id === me;
-      const roleBadge = u.role === "admin" ? '<span class="pill" style="background:var(--accent)">管理员</span>' : '<span class="pill">普通用户</span>';
-      const actions = isMe ? '<span class="muted">当前账号</span>' : [
-        `<button class="btn ghost sm" data-toggle="${u.id}" data-name="${S.esc(u.username)}" data-cur="${u.role}">${u.role === "admin" ? "降为普通" : "升为管理"}</button>`,
-        `<button class="btn danger sm" data-delu="${u.id}" data-name="${S.esc(u.username)}">删除</button>`
-      ].join(" ");
-      return `<div class="user-item">
-        <span class="user-name">${S.esc(u.username)}</span>
-        ${roleBadge}
-        <span class="user-actions">${actions}</span>
-      </div>`;
-    }).join("");
+    box.innerHTML = `<table><thead><tr><th>用户名</th><th>角色</th><th>状态</th><th style="white-space:nowrap">操作</th></tr></thead><tbody>` +
+      users.map(u => {
+        const isMe = u.id === me;
+        const rolePill = u.role === "admin"
+          ? '<span class="pill" style="background:var(--accent)">管理员</span>'
+          : '<span class="pill">普通用户</span>';
+        const statePill = u.disabled
+          ? '<span class="pill" style="background:var(--danger)">已停用</span>'
+          : '<span class="pill">已启用</span>';
+        const delBtn = isAdmin && !isMe
+          ? `<button class="btn danger ghost sm" data-delu="${u.id}" data-name="${S.esc(u.username)}">删除</button>` : "";
+        return `<tr>
+          <td>${S.esc(u.username)}${isMe ? ' <span class="pill">当前账号</span>' : ""}</td>
+          <td>${rolePill}</td>
+          <td>${statePill}</td>
+          <td style="white-space:nowrap"><button class="btn ghost sm" data-editu="${u.id}">编辑</button> ${delBtn}</td>
+        </tr>`;
+      }).join("") + "</tbody></table>";
     box.querySelectorAll("[data-delu]").forEach(b => b.addEventListener("click", () => deleteUser(b.getAttribute("data-delu"), b.getAttribute("data-name"))));
-    box.querySelectorAll("[data-toggle]").forEach(b => b.addEventListener("click", () => toggleRole(b.getAttribute("data-toggle"), b.getAttribute("data-name"), b.getAttribute("data-cur"))));
+    box.querySelectorAll("[data-editu]").forEach(b => b.addEventListener("click", () => {
+      const u = users.find(x => x.id === b.getAttribute("data-editu"));
+      if(u) showEditUser(u, isAdmin);
+    }));
   }
+
+  /* 编辑表单：参考“用户名 / 新密码 / 角色 / 停用”；不加基本路径 */
+  let editTarget = null; // { id, isAdmin, isMe, orig }
+  function showEditUser(u, isAdmin){
+    const isMe = u.id === S.auth.userId;
+    editTarget = { id:u.id, isAdmin, isMe, orig:u };
+    $("editUserTitle").textContent = "编辑 · " + u.username + (isMe ? "（当前账号）" : "");
+    $("editUserName").value = u.username;
+    $("editUserName").disabled = !isAdmin;      // 普通用户只能改密码
+    $("editUserPw").value = "";
+    const canRole = isAdmin && !isMe;
+    $("editRoleBox").hidden = !canRole;
+    if(canRole) $("editUserRole").value = u.role;
+    $("editSelfPwBox").hidden = isAdmin;        // 普通用户改自己密码需验证当前密码
+    const canDisable = isAdmin && !isMe;
+    $("editDisabledBox").hidden = !canDisable;
+    $("editUserDisabled").checked = !!u.disabled;
+    $("editUserBox").hidden = false;
+    $("editUserName").focus();
+  }
+  function hideEditUser(){
+    editTarget = null;
+    const box = $("editUserBox");
+    if(box) box.hidden = true;
+  }
+  $("cancelEditUser").addEventListener("click", hideEditUser);
+  $("saveEditUser").addEventListener("click", async () => {
+    if(!editTarget) return;
+    const { id, isAdmin, isMe, orig } = editTarget;
+    const username = $("editUserName").value.trim();
+    const pw = $("editUserPw").value;
+    if(pw){
+      const pwdErr = validatePassword(pw);
+      if(pwdErr){ toast(pwdErr); return; }
+    }
+    try{
+      if(isAdmin){
+        const updates = {};
+        if(username && username !== orig.username) updates.username = username;
+        if(pw) updates.password = pw;
+        if(!isMe){
+          if($("editUserRole").value !== orig.role) updates.role = $("editUserRole").value;
+          if($("editUserDisabled").checked !== !!orig.disabled) updates.disabled = $("editUserDisabled").checked;
+        }
+        if(!Object.keys(updates).length){ toast("没有修改"); return; }
+        await S.apiUpdateUser(id, updates);
+        hideEditUser();
+        if(pw && isMe){
+          // 改自己的密码后旧会话已失效，回登录门
+          toast("密码已更新，请重新登录");
+          setTimeout(() => location.reload(), 900);
+          return;
+        }
+        toast("已保存");
+      }else{
+        // 普通用户：仅改自己的密码
+        const cur = $("editUserCurPw").value;
+        if(!pw){ toast("请填写新密码"); return; }
+        if(!cur){ toast("请输入当前密码"); return; }
+        const r = await fetch("/api/change-password", {
+          method:"POST", headers:{ "content-type":"application/json" },
+          body: JSON.stringify({ currentPassword:cur, newPassword:pw })
+        });
+        const j = await r.json().catch(() => ({}));
+        if(!r.ok || !j.ok) throw new Error(j.error || "修改失败");
+        hideEditUser();
+        toast("密码已更新，请重新登录");
+        setTimeout(() => location.reload(), 900);
+        return;
+      }
+      loadUserMgmt();
+    }catch(e){ toast(e.message || "保存失败"); }
+  });
+
   async function deleteUser(id, name){
     if(!await confirmBox("确定删除用户「" + name + "」？")) return;
     try{
@@ -1748,14 +1826,6 @@
       toast("已删除「" + name + "」");
       loadUserMgmt();
     }catch(e){ toast("删除失败：" + e.message); }
-  }
-  async function toggleRole(id, name, currentRole){
-    const newRole = currentRole === "admin" ? "normal" : "admin";
-    try{
-      await S.apiUpdateUser(id, { role: newRole });
-      toast("已将「" + name + "」设为" + (newRole === "admin" ? "管理员" : "普通用户"));
-      loadUserMgmt();
-    }catch(e){ toast("操作失败：" + e.message); }
   }
   $("addUserBtn").addEventListener("click", async () => {
     const name = $("newUserName").value.trim();
@@ -1783,8 +1853,6 @@
     try{
       await S.createAdmin(name, pw);
       $("openModeCard").hidden = true;
-      $("accountCard").hidden = false;
-      $("logoutBtn").style.display = "";
       loadUserMgmt();
       toast("管理员已创建，本站已启用密码保护，其他设备需重新登录");
     }catch(e){ toast(e.message || "创建失败"); }

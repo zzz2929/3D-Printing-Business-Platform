@@ -623,6 +623,7 @@ const Store = (function(){
     saveMat(){ push("materials"); }, savePri(){ push("printers"); },
     saveRec(){ push("records"); }, saveOrd(){ push("orders"); },
     num, esc, fmt, today, uid, money,
+    apiUsers, apiRegister, apiDeleteUser, apiUpdateUser,
     computePrint, machineRate, laborCost, sumPayments, orderDue, matById, priById, orderStats, monthly, byCustomer,
     matLabel, priLabel,
     buildAchStats, exportPayload, importPayload, wipeAll, loadDemo,
