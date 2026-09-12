@@ -4,7 +4,7 @@ services:
     container_name: 3d-printing-business
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "2929:2929"
     volumes:
       - 3d-printing-business-data:/data
     # 标记此容器由Watchtower管理

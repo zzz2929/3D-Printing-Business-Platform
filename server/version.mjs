@@ -3,7 +3,7 @@
    前端通过 GET /api/version 获取；「检查更新」则拉取用户配置的远程 version.json
    并与 APP_VERSION 做比较。远程 version.json 建议格式：
    { "version":"2.5.0", "date":"2026-10-01", "notes":["xxx"], "downloadUrl":"https://…" } */
-export const APP_VERSION = "1.0.0";
+export const APP_VERSION = "1.0.1";
 export const BUILD_DATE = "2026-09-12";
 
 export const CHANGELOG = [

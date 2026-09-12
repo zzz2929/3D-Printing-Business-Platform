@@ -386,7 +386,7 @@ const Store = (function(){
     try{
       const st = await fetch("/api/auth", { headers:{ "accept":"application/json" } }).then(r => r.json());
       mode = "server";
-      auth = { required:!!st.required, setup:!!st.setup, ok:!!st.ok };
+      auth = { required:!!st.required, setup:!!st.setup, ok:!!st.ok, role:st.role, userId:st.userId, username:st.username };
       if(auth.required && !auth.ok){ readyResolve("auth"); return; } // 等待登录，app.js 弹登录门
       await tryLoad();
     }catch(e){
@@ -403,19 +403,41 @@ const Store = (function(){
     }
   }
   /* 登录 / 首次设置密码 / 登出（登录成功后自动加载数据） */
-  async function login(pw){
-    const r = await fetch("/api/login", { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify({ password:pw }) });
+  async function login(username, pw){
+    const r = await fetch("/api/login", { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify({ username, password:pw }) });
     const d = await r.json().catch(() => ({}));
     if(!r.ok) throw new Error(d.error || "登录失败");
     auth.ok = true; auth.setup = false;
+    auth.role = d.role; auth.userId = d.userId; auth.username = d.username;
     await tryLoad();
   }
-  async function setupAuth(pw){
-    const r = await fetch("/api/setup", { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify({ password:pw }) });
+  async function setupAuth(username, pw){
+    const r = await fetch("/api/setup", { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify({ username, password:pw }) });
     const d = await r.json().catch(() => ({}));
     if(!r.ok) throw new Error(d.error || "设置失败");
     auth.ok = true; auth.setup = false;
+    auth.role = d.role; auth.userId = d.userId; auth.username = d.username;
     await tryLoad();
+  }
+  /* 用户管理 API */
+  async function apiUsers(){ return fetch("/api/users", { headers:{ "accept":"application/json" } }).then(r => r.json()); }
+  async function apiRegister(username, password, role){
+    const r = await fetch("/api/users", { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify({ username, password, role }) });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(d.error || "注册失败");
+    return d;
+  }
+  async function apiDeleteUser(userId){
+    const r = await fetch("/api/users/" + encodeURIComponent(userId), { method:"DELETE" });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(d.error || "删除失败");
+    return d;
+  }
+  async function apiUpdateUser(userId, updates){
+    const r = await fetch("/api/users/" + encodeURIComponent(userId), { method:"PATCH", headers:{ "content-type":"application/json" }, body:JSON.stringify(updates) });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(d.error || "更新失败");
+    return d;
   }
   async function logout(){
     try{ await fetch("/api/logout", { method:"POST" }); }catch(e){}

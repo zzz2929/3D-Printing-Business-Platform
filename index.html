@@ -452,7 +452,7 @@
             </div>
             <div style="margin-top:10px">
               <label>新密码</label>
-              <input type="password" id="newPw" placeholder="设置新密码" style="width:100%;margin-top:4px" />
+              <input type="password" id="newPw" placeholder="设置新密码（8位以上，大小写+数字）" style="width:100%;margin-top:4px" />
             </div>
             <div style="margin-top:10px">
               <label>确认新密码</label>
@@ -461,6 +461,28 @@
             <div class="row" style="margin-top:12px">
               <button class="btn" id="savePwBtn">保存密码</button>
               <button class="btn ghost" id="logoutBtn" style="display:none">退出登录</button>
+            </div>
+          </div>
+        </div>
+        <!-- 用户管理（仅管理员可见） -->
+        <div class="card" id="userMgmtCard" hidden>
+          <div class="card-head"><h2>用户管理</h2><span class="pill">仅管理员</span></div>
+          <p class="muted" style="margin-top:0">添加、删除用户，分配管理员或普通用户角色。</p>
+          <div id="userList" style="margin-top:12px"></div>
+          <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+            <h3 style="margin:0 0 8px;font-size:13px">添加用户</h3>
+            <div class="grid g3" style="gap:8px">
+              <div><input type="text" id="newUserName" placeholder="用户名" /></div>
+              <div><input type="password" id="newUserPw" placeholder="密码（8位+大小写+数字）" /></div>
+              <div>
+                <select id="newUserRole" style="width:100%">
+                  <option value="normal">普通用户</option>
+                  <option value="admin">管理员</option>
+                </select>
+              </div>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <button class="btn" id="addUserBtn">添加用户</button>
             </div>
           </div>
         </div>
@@ -503,8 +525,10 @@
     <div class="ob-icon">🔒</div>
     <h2 id="loginTitle">验证身份</h2>
     <p id="loginSub">数据受密码保护，验证通过后才能查看与操作。</p>
-    <input type="password" id="loginPw" class="dlg-input" placeholder="管理密码" autocomplete="current-password" />
+    <input type="text" id="loginUser" class="dlg-input" placeholder="用户名" autocomplete="username" />
+    <input type="password" id="loginPw" class="dlg-input" placeholder="密码" autocomplete="current-password" />
     <input type="password" id="loginPw2" class="dlg-input" placeholder="再输入一次确认" autocomplete="new-password" hidden />
+    <p class="pwd-hint" id="pwdHint">密码要求：8位以上，包含大小写字母和数字</p>
     <div id="loginErr" class="login-err" hidden></div>
     <div class="row" style="justify-content:center;margin-top:16px">
       <button class="btn" id="loginBtn">解锁</button>

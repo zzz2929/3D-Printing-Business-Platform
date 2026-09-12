@@ -1,14 +1,13 @@
-/* 3D打印业务平台 后端核心 · 与运行时无关的 API 路由
+/* 3D打印业务平台 后端核心 · 多用户版 API 路由
    存储适配器只需实现：{ get(col) -> any, set(col, val) }
-   集合：materials / printers / records / orders / settings / achievements
-   特殊集合：data（读写全部）、auth（密码记录，仅服务端内部使用，不对外暴露）
-   鉴权：createAuth(store, envPw)（server/auth.mjs）；已配置密码时，除
-   auth/login/logout/setup 外的所有 /api/* 都需要有效会话 Cookie */
+   集合：materials / printers / records / orders / settings / achievements / users
+   鉴权：createAuth(store, envPw)；已配置用户时，除 auth/* 外的所有 /api/* 都需要有效会话
+   用户数据隔离：通过 users/{userId}/ 前缀区分 */
 
-import { createAuth, verifyToken, issueToken, tokenCookie, CLEAR_COOKIE } from "./auth.mjs";
+import { createAuth, verifyToken, tokenCookie, CLEAR_COOKIE } from "./auth.mjs";
 import { appVersion } from "./version.mjs";
 
-const COLS = ["materials", "printers", "records", "orders", "settings", "achievements"];
+const DATA_COLS = ["materials", "printers", "records", "orders", "settings", "achievements"];
 
 function json(obj, status = 200, headers){
   return new Response(JSON.stringify(obj), {
@@ -27,75 +26,205 @@ export function createRouter(store, envPw){
   return async function handle(req){
     const url = new URL(req.url);
     if(!url.pathname.startsWith("/api/")) return null;
-    const col = url.pathname.slice(5);
+    const path = url.pathname.slice(5);
 
     /* ---- 版本信息（无需会话） ---- */
-    if(col === "version" && req.method === "GET"){
+    if(path === "version" && req.method === "GET"){
       return json(appVersion());
     }
 
-    /* ---- 鉴权相关端点（无需会话） ---- */
-    if(col === "auth" && req.method === "GET"){
+    /* ---- 认证相关端点（无需会话） ---- */
+    if(path === "auth" && req.method === "GET"){
       const configured = await auth.configured();
-      const ok = configured ? await verifyToken(auth, req) : true;
-      return json({ required:configured, ok, setup:!configured });
+      if(!configured){
+        return json({ required:false, ok:false, setup:false, openMode:true });
+      }
+      const user = await auth.verify(req);
+      return json({ required:true, ok:!!user, setup:false, openMode:false, user: user || null });
     }
-    if(col === "login" && req.method === "POST"){
+
+    // 注册（开放模式或首个管理员）
+    if(path === "register" && req.method === "POST"){
       const body = await readBody(req);
-      if(!(await auth.configured())) return json({ error:"未配置密码，请先完成初始设置" }, 400);
-      if(!(await auth.verify(body && body.password))) return json({ error:"密码错误" }, 401);
-      return json({ ok:true }, 200, { "set-cookie": tokenCookie(await issueToken(auth)) });
+      const { username, password, role } = body || {};
+      if(!await auth.configured()){
+        // 开放模式，首个注册的是管理员
+        const result = await auth.register(username, password, "admin");
+        if(result.error) return json({ error:result.error }, 400);
+        const token = await auth.issueTokenForUser(result.user);
+        return json(result, 200, { "set-cookie": tokenCookie(token) });
+      }else{
+        // 已配置，需要管理员权限
+        const operator = await auth.verify(req);
+        if(!operator) return json({ error:"请先登录" }, 401);
+        const result = await auth.register(username, password, role || "normal", operator);
+        if(result.error) return json({ error:result.error }, 400);
+        return json(result);
+      }
     }
-    if(col === "logout" && req.method === "POST"){
+
+    // 登录
+    if(path === "login" && req.method === "POST"){
+      const body = await readBody(req);
+      const { username, password } = body || {};
+      const result = await auth.login(username, password);
+      if(result.error) return json({ error:result.error }, result.error.includes("未配置") ? 400 : 401);
+      const token = await auth.issueTokenForUser(result.user);
+      return json(result, 200, { "set-cookie": tokenCookie(token) });
+    }
+
+    // 登出
+    if(path === "logout" && req.method === "POST"){
       return json({ ok:true }, 200, { "set-cookie": CLEAR_COOKIE });
     }
-    if(col === "setup" && req.method === "POST"){
-      if(await auth.configured()) return json({ error:"密码已配置，无法重复设置" }, 403);
+
+    // 修改密码
+    if(path === "change-password" && req.method === "POST"){
+      const user = await auth.verify(req);
+      if(!user) return json({ error:"请先登录" }, 401);
       const body = await readBody(req);
-      try{ await auth.setup(body && body.password); }
-      catch(e){ return json({ error:e.message }, 400); }
-      return json({ ok:true }, 200, { "set-cookie": tokenCookie(await issueToken(auth)) });
-    }
-    if(col === "change-password" && req.method === "POST"){
-      if(await auth.configured() && !(await verifyToken(auth, req))) return json({ error:"未登录" }, 401);
-      const body = await readBody(req);
-      try{ await auth.changePassword(body && body.current, body && body.next); }
-      catch(e){ return json({ error:e.message }, 400); }
-      return json({ ok:true });
+      const { currentPassword, newPassword } = body || {};
+      const result = await auth.changePassword(user.id, currentPassword, newPassword, user);
+      if(result.error) return json({ error:result.error }, 400);
+      return json(result);
     }
 
-    /* ---- 会话守卫：已配置密码时拦截全部数据端点 ---- */
-    if((await auth.configured()) && !(await verifyToken(auth, req))){
-      return json({ error:"未登录或会话已过期" }, 401, { "www-authenticate": "Session" });
+    // 用户管理（仅管理员）
+    if(path === "users" && req.method === "GET"){
+      const operator = await auth.verify(req);
+      if(!operator) return json({ error:"请先登录" }, 401);
+      const result = await auth.listUsers(operator);
+      if(result.error) return json({ error:result.error }, 403);
+      return json(result);
     }
 
-    /* ---- 全量读写 ---- */
-    if(col === "data"){
-      if(req.method === "GET"){
-        const all = {};
-        for(const c of COLS) all[c] = await store.get(c);
-        return json(all);
-      }
+    if(path === "users" && req.method === "POST"){
+      const operator = await auth.verify(req);
+      if(!operator) return json({ error:"请先登录" }, 401);
+      const body = await readBody(req);
+      const { username, password, role } = body || {};
+      const result = await auth.register(username, password, role || "normal", operator);
+      if(result.error) return json({ error:result.error }, 400);
+      return json(result);
+    }
+
+    if(path === "users" && req.method === "DELETE"){
+      const operator = await auth.verify(req);
+      if(!operator) return json({ error:"请先登录" }, 401);
+      const userId = url.searchParams.get("id");
+      if(!userId) return json({ error:"缺少用户ID" }, 400);
+      const result = await auth.deleteUser(userId, operator);
+      if(result.error) return json({ error:result.error }, 400);
+      return json(result);
+    }
+
+    // DELETE /api/users/:id — path-based（匹配前端 store.js）
+    if(path.startsWith("users/") && req.method === "DELETE"){
+      const operator = await auth.verify(req);
+      if(!operator) return json({ error:"请先登录" }, 401);
+      const userId = decodeURIComponent(path.slice(6));
+      if(!userId) return json({ error:"缺少用户ID" }, 400);
+      const result = await auth.deleteUser(userId, operator);
+      if(result.error) return json({ error:result.error }, 400);
+      return json(result);
+    }
+
+    // PATCH /api/users/:id — 修改用户角色（仅管理员）
+    if(path.startsWith("users/") && req.method === "PATCH"){
+      const operator = await auth.verify(req);
+      if(!operator) return json({ error:"请先登录" }, 401);
+      const userId = decodeURIComponent(path.slice(6));
+      if(!userId) return json({ error:"缺少用户ID" }, 400);
+      const body = await readBody(req);
+      const result = await auth.updateUser(userId, body || {}, operator);
+      if(result.error) return json({ error:result.error }, 400);
+      return json(result);
+    }
+
+    /* ---- 数据端点 ---- */
+    // 开放模式：无需登录
+    if(!(await auth.configured())){
+      return handleData(req, store, null);
+    }
+
+    // 需要登录
+    const user = await auth.verify(req);
+    if(!user) return json({ error:"未登录或会话已过期" }, 401, { "www-authenticate": "Session" });
+
+    // 管理员可访问所有用户数据
+    if(user.role === "admin" && url.searchParams.has("allUsers")){
+      return handleAdminData(req, store, user);
+    }
+
+    return handleData(req, store, user);
+  };
+
+  /* 处理用户数据 */
+  async function handleData(req, store, user){
+    const url = new URL(req.url);
+    let col = url.pathname.slice(5);
+
+    // 未登录 -> 开放模式，使用默认数据
+    if(!user){
+      if(!DATA_COLS.includes(col)) return json({ error:"unknown collection" }, 404);
+      if(req.method === "GET") return json(await store.get(col));
       if(req.method === "PUT"){
         const body = await readBody(req);
-        if(!body || typeof body !== "object") return json({ error:"bad body" }, 400);
-        for(const c of COLS) if(body[c] !== undefined) await store.set(c, body[c]);
+        if(body === null) return json({ error:"bad body" }, 400);
+        await store.set(col, body);
         return json({ ok:true });
       }
       return json({ error:"method not allowed" }, 405);
     }
 
-    if(!COLS.includes(col)) return json({ error:"unknown collection" }, 404);
+    // 登录用户 -> 使用用户专属数据
+    const userPrefix = "u_" + user.id + "_";
+    
+    if(col === "data"){
+      if(req.method === "GET"){
+        const all = {};
+        for(const c of DATA_COLS) all[c] = await store.get(userPrefix + c);
+        return json(all);
+      }
+      if(req.method === "PUT"){
+        const body = await readBody(req);
+        if(!body || typeof body !== "object") return json({ error:"bad body" }, 400);
+        for(const c of DATA_COLS) if(body[c] !== undefined) await store.set(userPrefix + c, body[c]);
+        return json({ ok:true });
+      }
+      return json({ error:"method not allowed" }, 405);
+    }
 
-    if(req.method === "GET") return json(await store.get(col));
+    if(!DATA_COLS.includes(col)) return json({ error:"unknown collection" }, 404);
+    if(req.method === "GET") return json(await store.get(userPrefix + col));
     if(req.method === "PUT"){
       const body = await readBody(req);
       if(body === null) return json({ error:"bad body" }, 400);
-      await store.set(col, body);
+      await store.set(userPrefix + col, body);
       return json({ ok:true });
     }
     return json({ error:"method not allowed" }, 405);
-  };
+  }
+
+  /* 管理员查看所有用户数据 */
+  async function handleAdminData(req, store, admin){
+    const url = new URL(req.url);
+    const col = url.pathname.slice(5);
+
+    if(col !== "all-data") return json({ error:"unknown collection" }, 404);
+    if(req.method !== "GET") return json({ error:"method not allowed" }, 405);
+
+    const users = await auth.listUsers(admin);
+    const result = {};
+    for(const u of users){
+      const prefix = "u_" + u.id + "_";
+      result[u.id] = { user: u, data: {} };
+      for(const c of DATA_COLS){
+        result[u.id].data[c] = await store.get(prefix + c);
+      }
+    }
+    return json(result);
+  }
 }
 
-export { COLS };
+export { DATA_COLS };

@@ -1656,28 +1656,42 @@
   function loginErr(msg){
     const e = $("loginErr"); e.textContent = msg; e.hidden = !msg;
   }
+  /* 密码强度验证：8位以上，包含大小写字母和数字 */
+  function validatePassword(pw){
+    if(pw.length < 8) return "密码至少 8 位";
+    if(!/[A-Z]/.test(pw)) return "密码需包含大写字母";
+    if(!/[a-z]/.test(pw)) return "密码需包含小写字母";
+    if(!/\d/.test(pw)) return "密码需包含数字";
+    return "";
+  }
   function showLoginGate(){
     const setup = S.auth.setup;
-    $("loginTitle").textContent = setup ? "设置管理密码" : "验证身份";
+    $("loginTitle").textContent = setup ? "创建管理员账号" : "登录";
     $("loginSub").textContent = setup
-      ? "首次使用：为经营台设置一个管理密码（至少 4 位），之后查看和操作数据都需要它。"
-      : "数据受密码保护，验证通过后才能查看与操作。";
+      ? "首次使用：创建管理员账号，之后查看和操作数据都需要它。"
+      : "输入用户名和密码登录。";
+    $("loginUser").hidden = false;
     $("loginPw2").hidden = !setup;
-    $("loginPw2").value = ""; $("loginPw").value = "";
+    $("pwdHint").hidden = !setup;
+    $("loginUser").value = ""; $("loginPw2").value = ""; $("loginPw").value = "";
     loginErr(""); $("loginGate").hidden = false;
-    $("loginPw").focus();
+    $("loginUser").focus();
   }
   async function doLogin(){
+    const user = $("loginUser").value.trim();
     const pw = $("loginPw").value;
+    if(!user){ loginErr("请输入用户名"); return; }
     if(!pw){ loginErr("请输入密码"); return; }
     const setup = S.auth.setup;
     if(setup){
-      if(pw.length < 4){ loginErr("密码至少 4 位"); return; }
+      if(user.length < 2){ loginErr("用户名至少 2 个字符"); return; }
+      const pwdErr = validatePassword(pw);
+      if(pwdErr){ loginErr(pwdErr); return; }
       if(pw !== $("loginPw2").value){ loginErr("两次输入的密码不一致"); return; }
     }
     $("loginBtn").disabled = true; loginErr("");
     try{
-      if(setup) await S.setupAuth(pw); else await S.login(pw);
+      if(setup) await S.setupAuth(user, pw); else await S.login(user, pw);
       $("loginGate").hidden = true;
       toast("已解锁 " + randFace());
       appStart();
@@ -1689,6 +1703,7 @@
     }
   }
   $("loginBtn").addEventListener("click", doLogin);
+  $("loginUser").addEventListener("keydown", e => { if(e.key === "Enter") doLogin(); });
   $("loginPw").addEventListener("keydown", e => { if(e.key === "Enter") doLogin(); });
   $("loginPw2").addEventListener("keydown", e => { if(e.key === "Enter") doLogin(); });
   $("logoutBtn").addEventListener("click", () => S.logout());
@@ -1698,7 +1713,10 @@
     const cur = $("curPw").value, neu = $("newPw").value, con = $("newPw2").value;
     if(!cur && !neu){ toast("请填写密码"); return; }
     if(neu && neu !== con){ toast("两次新密码不一致"); return; }
-    if(neu && neu.length < 4){ toast("新密码至少 4 位"); return; }
+    if(neu){
+      const pwdErr = validatePassword(neu);
+      if(pwdErr){ toast(pwdErr); return; }
+    }
     try{
       const r = await fetch("/api/auth/password", {
         method:"POST", headers:{"Content-Type":"application/json"},
@@ -1710,9 +1728,70 @@
     }catch(e){ toast("修改失败：" + e.message); }
   });
 
+  /* 用户管理 */
+  let isAdmin = false;
+  async function loadUserMgmt(){
+    try{
+      const [users, authInfo] = await Promise.all([S.apiUsers(), fetch("/api/auth").then(r => r.json())]);
+      isAdmin = authInfo.role === "admin";
+      $("userMgmtCard").hidden = !isAdmin;
+      if(!isAdmin) return;
+      renderUserList(users);
+    }catch(e){ console.warn("加载用户列表失败", e); }
+  }
+  function renderUserList(users){
+    if(!users || !users.length){ $("userList").innerHTML = '<p class="muted">暂无用户</p>'; return; }
+    const me = S._me || "";
+    $("userList").innerHTML = users.map(u => {
+      const isMe = u.id === me;
+      const roleBadge = u.role === "admin" ? '<span class="pill" style="background:var(--accent)">管理员</span>' : '<span class="pill">普通用户</span>';
+      const actions = isMe ? '<span class="muted">当前账号</span>' : [
+        `<button class="btn ghost sm" onclick="toggleRole('${u.id}','${u.username}','${u.role}')">${u.role === "admin" ? "降为普通" : "升为管理"}</button>`,
+        `<button class="btn danger sm" onclick="deleteUser('${u.id}','${u.username}')">删除</button>`
+      ].join(" ");
+      return `<div class="user-item">
+        <span class="user-name">${S.esc(u.username)}</span>
+        ${roleBadge}
+        <span class="user-actions">${actions}</span>
+      </div>`;
+    }).join("");
+  }
+  window.deleteUser = async function(id, name){
+    if(!await confirmBox("确定删除用户「" + name + "」？")) return;
+    try{
+      await S.apiDeleteUser(id);
+      toast("已删除「" + name + "」");
+      loadUserMgmt();
+    }catch(e){ toast("删除失败：" + e.message); }
+  };
+  window.toggleRole = async function(id, name, currentRole){
+    const newRole = currentRole === "admin" ? "normal" : "admin";
+    try{
+      await S.apiUpdateUser(id, { role: newRole });
+      toast("已将「" + name + "」设为" + (newRole === "admin" ? "管理员" : "普通用户"));
+      loadUserMgmt();
+    }catch(e){ toast("操作失败：" + e.message); }
+  };
+  $("addUserBtn").addEventListener("click", async () => {
+    const name = $("newUserName").value.trim();
+    const pw = $("newUserPw").value;
+    const role = $("newUserRole").value;
+    if(!name){ toast("请输入用户名"); return; }
+    if(!pw){ toast("请输入密码"); return; }
+    const pwdErr = validatePassword(pw);
+    if(pwdErr){ toast(pwdErr); return; }
+    try{
+      await S.apiRegister(name, pw, role);
+      toast("已添加用户「" + name + "」");
+      $("newUserName").value = ""; $("newUserPw").value = "";
+      loadUserMgmt();
+    }catch(e){ toast(e.message || "添加失败"); }
+  });
+
   Store.ready.then(mode => {
     if(mode === "auth" || S.auth.setup){ showLoginGate(); return; } // 服务端要求登录，或首次部署等待设置密码
     appStart();
+    loadUserMgmt();
   });
   if("serviceWorker" in navigator){
     window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));

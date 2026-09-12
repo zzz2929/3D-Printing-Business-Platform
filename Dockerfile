@@ -7,9 +7,9 @@ COPY assets /app/assets
 COPY server /app/server
 COPY api /app/api
 
-ENV PORT=8080 DATA_DIR=/data
+ENV PORT=2929 DATA_DIR=/data
 VOLUME /data
-EXPOSE 8080
+EXPOSE 2929
 HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1:8080/api/settings >/dev/null 2>&1 || exit 1
 
 CMD ["node", "server/index.mjs"]

@@ -1,8 +1,10 @@
-/* 3D打印业务平台 认证核心 · 跨运行时（Node / Workers / Vercel）
+/* 3D打印业务平台 认证核心 · 多用户版
    - 密码：PBKDF2-SHA256 加盐哈希（WebCrypto，120k 迭代）
    - 会话：HMAC-SHA256 签名的过期时间戳令牌（Cookie，默认 30 天）
-   - 密码来源：环境变量 APP_PASSWORD，或服务端存储中的 auth 记录（首次访问时设置）
-   - 均未配置时进入开放模式（不拦截），并允许通过 /api/setup 设置密码 */
+   - 用户：存储在 users 集合，字段：id, username, passwordHash, salt, role, createdAt
+   - 角色：admin（管理员）/ normal（普通用户）
+   - 开放模式：未配置用户时进入开放模式 */
+
 const enc = new TextEncoder();
 
 function toHex(buf){ return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join(""); }
@@ -18,52 +20,199 @@ async function hashPassword(pw, salt){
 }
 function randomHex(bytes){ const a = new Uint8Array(bytes); crypto.getRandomValues(a); return toHex(a); }
 
+/* 密码强度验证：至少8位，包含大小写字母和数字 */
+export function validatePassword(pw){
+  if(!pw || typeof pw !== "string") return "密码不能为空";
+  if(pw.length < 8) return "密码至少8位";
+  if(!/[A-Z]/.test(pw)) return "密码必须包含大写字母";
+  if(!/[a-z]/.test(pw)) return "密码必须包含小写字母";
+  if(!/[0-9]/.test(pw)) return "密码必须包含数字";
+  return null; // null = 验证通过
+}
+
 export function createAuth(store, envPw){
-  let record;            // undefined = 未加载；null = 无记录
-  async function rec(){
-    if(record === undefined) record = envPw ? null : (await store.get("auth"));
-    return record;
+  let usersCache = null;
+  let usersArr = null;
+
+  async function loadUsers(){
+    if(usersCache !== null) return usersCache;
+    const raw = await store.get("users");
+    usersArr = raw && Array.isArray(raw) ? raw : [];
+    usersCache = usersArr;
+    return usersCache;
   }
+
+  async function saveUsers(){
+    usersCache = usersArr;
+    await store.set("users", usersArr);
+  }
+
+  async function findUser(username){
+    const users = await loadUsers();
+    return users.find(u => u.username.toLowerCase() === username.toLowerCase());
+  }
+
   return {
-    /* 是否已配置密码（配置后即启用拦截） */
+    /* 检查是否启用认证（有任何用户时启用） */
     async configured(){
       if(envPw) return true;
-      return !!(await rec());
+      const users = await loadUsers();
+      return users.length > 0;
     },
-    /* 校验密码 */
-    async verify(pw){
-      if(!pw) return false;
-      if(envPw) return pw === envPw;
-      const r = await rec();
-      if(!r) return false;
-      return (await hashPassword(pw, r.salt)) === r.hash;
+
+    /* 验证登录 */
+    async login(username, pw){
+      if(!username || !pw) return { error:"用户名和密码不能为空" };
+      if(!(await this.configured())) return { error:"系统未配置，请先注册管理员" };
+      const user = await findUser(username);
+      if(!user) return { error:"用户名或密码错误" };
+      const hash = await hashPassword(pw, user.salt);
+      if(hash !== user.passwordHash) return { error:"用户名或密码错误" };
+      // 生成用户专属密钥
+      const userSecret = await sha256hex("user:" + user.id + ":" + user.passwordHash);
+      const exp = Date.now() + 30 * 86400 * 1000;
+      const token = exp + "." + (await hmacHex(userSecret, "pf:" + exp));
+      return { 
+        ok:true, 
+        user: { id:user.id, username:user.username, role:user.role } 
+      };
     },
-    /* 首次设置密码（仅在未配置时允许） */
-    async setup(pw){
-      if(await this.configured()) throw new Error("已配置密码，请通过环境变量或删除 auth 记录后重设");
-      if(!pw || String(pw).length < 4) throw new Error("密码至少 4 位");
+
+    /* 验证会话令牌 */
+    async verify(req){
+      const t = getCookie(req, "pf_token");
+      if(!t) return null;
+      const i = t.indexOf(".");
+      if(i <= 0) return null;
+      const exp = Number(t.slice(0, i)), sig = t.slice(i + 1);
+      if(!Number.isFinite(exp) || exp < Date.now()) return null;
+      
+      // 尝试所有用户密钥验证
+      const users = await loadUsers();
+      for(const user of users){
+        const userSecret = await sha256hex("user:" + user.id + ":" + user.passwordHash);
+        if((await hmacHex(userSecret, "pf:" + exp)) === sig){
+          return { id:user.id, username:user.username, role:user.role };
+        }
+      }
+      return null;
+    },
+
+    /* 签发令牌（给当前用户） */
+    async issueTokenForUser(user){
+      const users = await loadUsers();
+      const u = users.find(x => x.id === user.id);
+      if(!u) throw new Error("用户不存在");
+      const userSecret = await sha256hex("user:" + u.id + ":" + u.passwordHash);
+      const exp = Date.now() + 30 * 86400 * 1000;
+      const token = exp + "." + (await hmacHex(userSecret, "pf:" + exp));
+      return token;
+    },
+
+    /* 注册用户（开放模式或管理员可操作） */
+    async register(username, password, role = "normal", operator){
+      if(!username || username.trim().length < 2) return { error:"用户名至少2个字符" };
+      username = username.trim();
+      if(!/^[a-zA-Z0-9_]+$/.test(username)) return { error:"用户名只能包含字母、数字和下划线" };
+      const pwErr = validatePassword(password);
+      if(pwErr) return { error:pwErr };
+
+      const users = await loadUsers();
+      
+      // 检查是否已有用户（第一个注册的是管理员）
+      const isFirstUser = users.length === 0;
+      const finalRole = isFirstUser ? "admin" : role;
+      
+      // 非管理员不能创建管理员
+      if(!isFirstUser && role === "admin" && operator?.role !== "admin"){
+        return { error:"只有管理员可以创建管理员账号" };
+      }
+
+      // 检查用户名是否已存在
+      if(users.some(u => u.username.toLowerCase() === username.toLowerCase())){
+        return { error:"用户名已存在" };
+      }
+
+      const id = randomHex(16);
       const salt = randomHex(16);
-      const r = { salt, hash:await hashPassword(String(pw), salt), secret:randomHex(32), createdAt:Date.now() };
-      await store.set("auth", r);
-      record = r;
+      const passwordHash = await hashPassword(password, salt);
+      const user = { id, username, passwordHash, salt, role: finalRole, createdAt: Date.now() };
+      users.push(user);
+      await saveUsers();
+      return { ok:true, user:{ id, username, role:finalRole } };
     },
-    /* 令牌签名密钥 */
-    async secret(){
-      if(envPw) return sha256hex("3d-printing-business:" + envPw);
-      const r = await rec();
-      return r ? r.secret : "3d-printing-business-insecure";
+
+    /* 删除用户 */
+    async deleteUser(userId, operator){
+      if(operator?.role !== "admin") return { error:"只有管理员可以删除用户" };
+      if(userId === operator.id) return { error:"不能删除自己" };
+      const users = await loadUsers();
+      const idx = users.findIndex(u => u.id === userId);
+      if(idx === -1) return { error:"用户不存在" };
+      users.splice(idx, 1);
+      await saveUsers();
+      return { ok:true };
     },
-    /* 修改密码（仅在服务端存储密码时允许，环境变量密码不支持） */
-    async changePassword(currentPw, newPw){
-      if(envPw) throw new Error("环境变量密码不支持在线修改");
-      const r = await rec();
-      if(!r) throw new Error("未配置密码");
-      if((await hashPassword(currentPw, r.salt)) !== r.hash) throw new Error("当前密码错误");
-      if(!newPw || String(newPw).length < 4) throw new Error("新密码至少 4 位");
-      const salt = randomHex(16);
-      const newRec = { salt, hash:await hashPassword(newPw, salt), secret:randomHex(32), createdAt:Date.now() };
-      await store.set("auth", newRec);
-      record = newRec;
+
+    /* 获取用户列表 */
+    async listUsers(operator){
+      if(operator?.role !== "admin") return { error:"只有管理员可以查看用户列表" };
+      const users = await loadUsers();
+      return users.map(u => ({ id:u.id, username:u.username, role:u.role, createdAt:u.createdAt }));
+    },
+
+    /* 修改密码 */
+    async changePassword(userId, currentPw, newPw, operator){
+      const users = await loadUsers();
+      const user = users.find(u => u.id === userId);
+      if(!user) return { error:"用户不存在" };
+      
+      // 非管理员只能改自己的密码
+      if(operator?.role !== "admin" && operator?.id !== userId){
+        return { error:"无权操作" };
+      }
+      
+      // 非管理员改密码需要验证原密码
+      if(operator?.role !== "admin"){
+        const hash = await hashPassword(currentPw, user.salt);
+        if(hash !== user.passwordHash) return { error:"当前密码错误" };
+      }
+
+      const pwErr = validatePassword(newPw);
+      if(pwErr) return { error:pwErr };
+
+      user.salt = randomHex(16);
+      user.passwordHash = await hashPassword(newPw, user.salt);
+      await saveUsers();
+      return { ok:true };
+    },
+
+    /* 更新用户信息（用户名或角色） */
+    async updateUser(userId, updates, operator){
+      if(operator?.role !== "admin") return { error:"只有管理员可以修改用户角色" };
+      if(userId === operator.id) return { error:"不能修改自己的角色" };
+      const users = await loadUsers();
+      const user = users.find(u => u.id === userId);
+      if(!user) return { error:"用户不存在" };
+
+      // 修改角色
+      if(updates.role){
+        if(!["admin","normal"].includes(updates.role)){
+          return { error:"角色只能是 admin 或 normal" };
+        }
+        user.role = updates.role;
+      }
+
+      await saveUsers();
+      return { ok:true, user:{ id:user.id, username:user.username, role:user.role } };
+    },
+
+    /* 获取当前用户信息 */
+    async getUserInfo(userId){
+      const users = await loadUsers();
+      const user = users.find(u => u.id === userId);
+      if(!user) return null;
+      return { id:user.id, username:user.username, role:user.role, createdAt:user.createdAt };
     }
   };
 }
@@ -81,18 +230,3 @@ export function tokenCookie(token){
   return "pf_token=" + encodeURIComponent(token) + "; HttpOnly; Path=/; Max-Age=" + 30 * 86400 + "; SameSite=Lax";
 }
 export const CLEAR_COOKIE = "pf_token=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax";
-
-/* 令牌签发 / 校验：格式 exp.sig（HMAC(secret, "pf:"+exp)），默认 30 天 */
-export async function issueToken(auth){
-  const exp = Date.now() + 30 * 86400 * 1000;
-  return exp + "." + (await hmacHex(await auth.secret(), "pf:" + exp));
-}
-export async function verifyToken(auth, req){
-  const t = getCookie(req, "pf_token");
-  if(!t) return false;
-  const i = t.indexOf(".");
-  if(i <= 0) return false;
-  const exp = Number(t.slice(0, i)), sig = t.slice(i + 1);
-  if(!Number.isFinite(exp) || exp < Date.now()) return false;
-  return (await hmacHex(await auth.secret(), "pf:" + exp)) === sig;
-}
