@@ -20,8 +20,8 @@ async function readBody(req){
   try{ return await req.json(); }catch(e){ return null; }
 }
 
-export function createRouter(store){
-  const auth = createAuth(store);
+export function createRouter(store, mailer){
+  const auth = createAuth(store, mailer);
 
   return async function handle(req){
     const url = new URL(req.url);
@@ -76,6 +76,81 @@ export function createRouter(store){
     // 登出
     if(path === "logout" && req.method === "POST"){
       return json({ ok:true }, 200, { "set-cookie": CLEAR_COOKIE });
+    }
+
+    /* ---- 邮箱绑定与忘记密码 ---- */
+    // 请求绑定邮箱验证码（需登录）
+    if(path === "mail/code" && req.method === "POST"){
+      const user = await auth.verify(req);
+      if(!user) return json({ error:"请先登录" }, 401);
+      const body = await readBody(req);
+      const result = await auth.requestBindCode(user, (body || {}).email);
+      return result.error ? json(result, 400) : json(result);
+    }
+    // 提交验证码完成绑定（需登录）
+    if(path === "mail/bind" && req.method === "POST"){
+      const user = await auth.verify(req);
+      if(!user) return json({ error:"请先登录" }, 401);
+      const body = await readBody(req);
+      const result = await auth.bindEmail(user, (body || {}).email, (body || {}).code);
+      return result.error ? json(result, 400) : json(result);
+    }
+    // 忘记密码：发送重置验证码（无需登录；响应恒为 ok，防枚举）
+    if(path === "forgot" && req.method === "POST"){
+      const body = await readBody(req);
+      const result = await auth.requestResetCode((body || {}).username);
+      return result.error ? json(result, 400) : json(result);
+    }
+    // 忘记密码：验证码 + 新密码重置（无需登录）
+    if(path === "forgot/reset" && req.method === "POST"){
+      const body = await readBody(req);
+      const { username, code, newPassword } = body || {};
+      const result = await auth.resetWithCode(username, code, newPassword);
+      return result.error ? json(result, 400) : json(result);
+    }
+
+    /* ---- SMTP 配置（仅管理员；存于 "smtp" 集合，密码不回传前端） ---- */
+    if(path === "smtp" && req.method === "GET"){
+      const user = await auth.verify(req);
+      if(!user) return json({ error:"请先登录" }, 401);
+      if(user.role !== "admin") return json({ error:"只有管理员可以查看 SMTP 配置" }, 403);
+      const saved = await store.get("smtp") || {};
+      const desc = await mailer.describe();
+      return json({ configured:desc.configured, debug:desc.debug, host:saved.host || "", port:saved.port || "", secure:!!saved.secure, user:saved.user || "", from:saved.from || "", hasPass:!!saved.pass });
+    }
+    if(path === "smtp" && req.method === "POST"){
+      const user = await auth.verify(req);
+      if(!user) return json({ error:"请先登录" }, 401);
+      if(user.role !== "admin") return json({ error:"只有管理员可以修改 SMTP 配置" }, 403);
+      const body = await readBody(req) || {};
+      const host = String(body.host || "").trim();
+      if(!host) return json({ error:"SMTP 服务器地址不能为空" }, 400);
+      const prev = await store.get("smtp") || {};
+      await store.set("smtp", {
+        host,
+        port: Number(body.port) || "",
+        secure: !!body.secure,
+        user: String(body.user || "").trim(),
+        pass: String(body.pass || "").trim() || prev.pass || "", // 留空 = 保留原密码
+        from: String(body.from || "").trim()
+      });
+      return json({ ok:true });
+    }
+    // 发送测试邮件（可先用未保存的表单配置试发）
+    if(path === "mail/test" && req.method === "POST"){
+      const user = await auth.verify(req);
+      if(!user) return json({ error:"请先登录" }, 401);
+      if(user.role !== "admin") return json({ error:"只有管理员可以发送测试邮件" }, 403);
+      const body = await readBody(req) || {};
+      const to = String(body.to || "").trim();
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return json({ error:"收件邮箱格式不正确" }, 400);
+      try{
+        const formCfg = (body.host !== undefined) ? body : null; // 传了表单配置就用表单的（含未保存的密码）
+        await mailer.sendWith(formCfg || await store.get("smtp") || {}, to, "测试邮件", "这是一封来自 3D打印业务平台 的测试邮件，收到即说明 SMTP 配置成功。");
+        return json({ ok:true });
+      }catch(e){
+        return json({ error:"发送失败：" + e.message }, 400);
+      }
     }
 
     // 修改密码

@@ -1,0 +1,21 @@
+# 依赖
+node_modules/
+
+# 用户与业务数据（含密码哈希、邮箱、订单等，绝不上传）
+data/
+
+# 环境变量与密钥（SMTP 授权码等）
+.env
+.env.*
+.dev.vars
+
+# 日志与运行/构建产物
+*.log
+.wrangler/
+
+# 编辑器与系统文件
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini

@@ -2,11 +2,32 @@
    - 密码：PBKDF2-SHA256 加盐哈希（WebCrypto，120k 迭代）
    - 会话：HMAC-SHA256 签名的过期时间戳令牌（Cookie，默认 30 天），
      签名密钥为用户记录内的随机 secret（改密码时轮换，与密码哈希解耦）
-   - 用户：存储在 users 集合，字段：id, username, passwordHash, salt, secret, role, createdAt
-   - 角色：admin（管理员）/ normal（普通用户）
+   - 用户：存储在 users 集合，字段：id, username, passwordHash, salt, secret, email, perms, role, disabled, createdAt
+   - 角色：admin（管理员）/ normal（普通用户）；perms：页面权限（null = 全部允许）
+   - 邮箱：用于忘记密码验证码；自助绑定需邮箱验证码，管理员可直接设置
    - 开放模式：未配置用户时进入开放模式 */
 
 const enc = new TextEncoder();
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/* 邮箱验证码：key -> { code, exp, next, tries }（内存态，重启即清，瞬时用途足够） */
+const mailCodes = new Map();
+const CODE_TTL = 15 * 60000, CODE_COOLDOWN = 60 * 1000, CODE_MAX_TRIES = 5;
+function issueCode(key){
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  mailCodes.set(key, { code, exp: Date.now() + CODE_TTL, next: Date.now() + CODE_COOLDOWN, tries: 0 });
+  return code;
+}
+function checkCode(key, code){
+  const c = mailCodes.get(key);
+  if(!c) return "验证码已过期，请重新获取";
+  if(Date.now() > c.exp){ mailCodes.delete(key); return "验证码已过期，请重新获取"; }
+  c.tries++;
+  if(c.tries > CODE_MAX_TRIES){ mailCodes.delete(key); return "尝试次数过多，请重新获取验证码"; }
+  if(String(code) !== c.code) return "验证码错误";
+  mailCodes.delete(key);
+  return null;
+}
 
 function toHex(buf){ return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join(""); }
 async function hmacHex(secret, msg){
@@ -39,7 +60,7 @@ export function validatePassword(pw){
   return null; // null = 验证通过
 }
 
-export function createAuth(store){
+export function createAuth(store, mailer){
   let usersCache = null;
   let usersArr = null;
 
@@ -73,6 +94,12 @@ export function createAuth(store){
     return exp + "." + (await hmacHex(user.secret, "pf:" + exp));
   }
 
+  const mail = mailer || { configured: () => false, send: async () => { throw new Error("邮件服务未配置"); } };
+  const debugMail = process.env.MAIL_DEBUG === "1";
+  function userPublic(u){
+    return { id:u.id, username:u.username, role:u.role, disabled:!!u.disabled, email:u.email || "", perms:u.perms || null };
+  }
+
   return {
     /* 检查是否启用认证（有任何用户时启用） */
     async configured(){
@@ -89,10 +116,7 @@ export function createAuth(store){
       if(user.disabled) return { error:"账号已被停用，请联系管理员" };
       const hash = await hashPassword(pw, user.salt);
       if(hash !== user.passwordHash) return { error:"用户名或密码错误" };
-      return {
-        ok:true,
-        user: { id:user.id, username:user.username, role:user.role, perms:user.perms || null }
-      };
+      return { ok:true, user: userPublic(user) };
     },
 
     /* 验证会话令牌 */
@@ -109,7 +133,7 @@ export function createAuth(store){
       for(const user of users){
         if(user.disabled) continue;
         if((await hmacHex(user.secret, "pf:" + exp)) === sig){
-          return { id:user.id, username:user.username, role:user.role, perms:user.perms || null };
+          return userPublic(user);
         }
       }
       return null;
@@ -172,7 +196,7 @@ export function createAuth(store){
     async listUsers(operator){
       if(operator?.role !== "admin") return { error:"只有管理员可以查看用户列表" };
       const users = await loadUsers();
-      return users.map(u => ({ id:u.id, username:u.username, role:u.role, disabled:!!u.disabled, perms:u.perms || null, createdAt:u.createdAt }));
+      return users.map(u => ({ id:u.id, username:u.username, role:u.role, disabled:!!u.disabled, perms:u.perms || null, email:u.email || "", createdAt:u.createdAt }));
     },
 
     /* 修改密码 */
@@ -261,8 +285,99 @@ export function createAuth(store){
         user.perms = perms;
       }
 
+      // 邮箱：管理员直接设置（可信操作），校验格式与唯一性
+      if(updates.email !== undefined){
+        const em = String(updates.email || "").trim();
+        if(em){
+          if(!EMAIL_RE.test(em)) return { error:"邮箱格式不正确" };
+          if(users.some(u => u.id !== userId && (u.email || "").toLowerCase() === em.toLowerCase())){
+            return { error:"该邮箱已被其他账号绑定" };
+          }
+        }
+        user.email = em || "";
+      }
+
       await saveUsers();
-      return { ok:true, user:{ id:user.id, username:user.username, role:user.role, disabled:!!user.disabled, perms:user.perms || null } };
+      return { ok:true, user: userPublic(user) };
+    },
+
+    /* ---------- 邮箱绑定与忘记密码 ---------- */
+
+    /* 用户请求绑定邮箱验证码（需登录） */
+    async requestBindCode(user, email){
+      email = String(email || "").trim();
+      if(!EMAIL_RE.test(email)) return { error:"邮箱格式不正确" };
+      const users = await loadUsers();
+      if(users.some(u => u.id !== user.id && (u.email || "").toLowerCase() === email.toLowerCase())){
+        return { error:"该邮箱已被其他账号绑定" };
+      }
+      if(!(await mail.configured())) return { error:"邮件服务未配置，请联系管理员在服务端设置 SMTP" };
+      const key = "bind:" + user.id;
+      const prev = mailCodes.get(key);
+      if(prev && Date.now() < prev.next) return { error:"发送太频繁，请 1 分钟后再试" };
+      const code = issueCode(key);
+      const debugCode = debugMail ? code : undefined; // MAIL_DEBUG=1 时随响应返回，供联调/测试
+      try{
+        await mail.send(email, "绑定邮箱验证码", "你正在绑定 3D打印业务平台 账号邮箱。\n验证码：" + code + "\n15 分钟内有效。如非本人操作请忽略。");
+      }catch(e){
+        mailCodes.delete(key);
+        return { error:"邮件发送失败：" + e.message };
+      }
+      return debugCode ? { ok:true, debugCode } : { ok:true };
+    },
+
+    /* 用户提交验证码完成绑定 */
+    async bindEmail(user, email, code){
+      email = String(email || "").trim();
+      if(!EMAIL_RE.test(email)) return { error:"邮箱格式不正确" };
+      const err = checkCode("bind:" + user.id, code);
+      if(err) return { error:err };
+      const users = await loadUsers();
+      const u = users.find(x => x.id === user.id);
+      if(!u) return { error:"用户不存在" };
+      if(users.some(x => x.id !== user.id && (x.email || "").toLowerCase() === email.toLowerCase())){
+        return { error:"该邮箱已被其他账号绑定" };
+      }
+      u.email = email;
+      await saveUsers();
+      return { ok:true, email };
+    },
+
+    /* 忘记密码：发送重置验证码（不暴露用户是否存在/是否绑定邮箱） */
+    async requestResetCode(username){
+      const users = await loadUsers();
+      const user = users.find(u => u.username.toLowerCase() === String(username || "").trim().toLowerCase());
+      if(user && !user.disabled && user.email && (await mail.configured())){
+        const key = "reset:" + user.id;
+        const prev = mailCodes.get(key);
+        if(!(prev && Date.now() < prev.next)){
+          const code = issueCode(key);
+          try{
+            await mail.send(user.email, "重置密码验证码", "你正在重置 3D打印业务平台 账号（" + user.username + "）的密码。\n验证码：" + code + "\n15 分钟内有效。如非本人操作请忽略。");
+          }catch(e){
+            mailCodes.delete(key);
+            return { error:"邮件发送失败：" + e.message };
+          }
+          if(debugMail) return { ok:true, debugCode:code };
+        }
+      }
+      return { ok:true }; // 一律 ok，避免枚举
+    },
+
+    /* 忘记密码：验证码 + 新密码完成重置（轮换 salt/secret，旧会话全部失效） */
+    async resetWithCode(username, code, newPassword){
+      const users = await loadUsers();
+      const user = users.find(u => u.username.toLowerCase() === String(username || "").trim().toLowerCase());
+      if(!user) return { error:"验证码错误或已过期" };
+      const err = checkCode("reset:" + user.id, code);
+      if(err) return { error:err };
+      const pwErr = validatePassword(newPassword);
+      if(pwErr) return { error:pwErr };
+      user.salt = randomHex(16);
+      user.passwordHash = await hashPassword(newPassword, user.salt);
+      user.secret = randomHex(32);
+      await saveUsers();
+      return { ok:true };
     },
 
     /* 获取当前用户信息 */

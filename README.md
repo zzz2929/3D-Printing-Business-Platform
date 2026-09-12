@@ -53,7 +53,7 @@
 │   ├── app.js            # 页面逻辑与渲染
 │   ├── store.js          # 前端数据层（REST API 封装）
 │   └── style.css         # 样式（深浅主题）
-├── server/               # Node 宿主（零 npm 依赖）
+├── server/               # Node 宿主
 │   ├── index.mjs         # HTTP 服务：静态文件 + REST API
 │   ├── router.mjs        # 与运行时无关的 API 路由核心
 │   ├── auth.mjs          # PBKDF2 密码鉴权 + HMAC 会话 Cookie
@@ -68,9 +68,10 @@
 
 ## 本地运行
 
-要求 Node ≥ 18，无需 `npm install`：
+要求 Node ≥ 18。首次运行需安装依赖（邮件功能使用 nodemailer）：
 
 ```bash
+npm install          # 安装依赖（nodemailer）
 npm start            # 等价于 node server/index.mjs
 # → http://localhost:2929
 ```
@@ -145,8 +146,18 @@ DATA_DIR=/vol1/3d-printing-business-data PORT=2929 node server/index.mjs
 | ---------------------------- | ---------- | ---------------------------------------- | ------------- |
 | `PORT`                     | `2929`   | HTTP 监听端口                            | Node / Docker |
 | `DATA_DIR`                 | `./data` | JSON 数据目录                            | Node / Docker |
+| `SMTP_HOST`                | 未设置     | SMTP 服务器地址；不设置 = 邮件功能关闭    | 全部          |
+| `SMTP_PORT`                | 自动       | 端口（465 自动启用 TLS）                 | 全部          |
+| `SMTP_SECURE`              | —          | 设为 `1` 使用 TLS 直连                   | 全部          |
+| `SMTP_USER` / `SMTP_PASS`  | —          | SMTP 认证账号（AUTH LOGIN）              | 全部          |
+| `MAIL_FROM`                | SMTP_USER  | 发件人地址                               | 全部          |
+| `MAIL_DEBUG`               | —          | 设为 `1` 时验证码打印到服务端日志（联调用）| 全部          |
 | `UPSTASH_REDIS_REST_URL`   | —         | Upstash Redis REST 地址                  | Vercel        |
 | `UPSTASH_REDIS_REST_TOKEN` | —         | Upstash Redis REST Token                 | Vercel        |
+
+### 邮箱与忘记密码
+
+SMTP 在管理员的「设置 → 数据与账号 → 邮件服务（SMTP）」卡片中直接配置（保存到服务端数据目录，改完即生效，支持发送测试邮件）；`SMTP_*` 环境变量仅作为兜底。配置后，用户在「用户管理 → 编辑」中绑定邮箱（自助绑定需输入发送到邮箱的验证码；管理员可直接设置他人邮箱），登录页的「忘记密码？」即可通过邮箱验证码重置密码。验证码 15 分钟有效、60 秒冷却、最多 5 次尝试。未配置 SMTP 时相关功能会提示"邮件服务未配置"。`MAIL_DEBUG=1` 时验证码打印到服务端日志（联调用）。
 
 ## 登录鉴权
 

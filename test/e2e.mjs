@@ -194,6 +194,73 @@ const allOn = {}; PERM_ALL.forEach(k => allOn[k] = true);
 r = await api("PATCH", "/api/users/" + alice2id, { perms: allOn });
 ck("restore all perms", r.status === 200 && r.j.user.perms.page_calc === true);
 
+console.log("\n[邮箱绑定与忘记密码]");
+// MAIL_DEBUG=1：验证码随响应返回，可走完整流程；未开 debug 且未配 SMTP 时应得到明确错误
+cookie = aliceCookie2;
+r = await api("POST", "/api/mail/code", { email: "alice2@example.com" });
+const debugMode = r.j && r.j.debugCode;
+if(debugMode){
+  r = await api("POST", "/api/mail/bind", { email: "alice2@example.com", code: debugMode });
+  ck("bind email with debug code", r.status === 200 && r.j.ok === true, JSON.stringify(r.j));
+  r = await api("POST", "/api/mail/bind", { email: "alice2@example.com", code: "000000" });
+  ck("wrong code rejected", r.status === 400, JSON.stringify(r.j));
+}else{
+  ck("mail unconfigured → clear error", r.status === 400 && (r.j.error || "").includes("未配置"), JSON.stringify(r.j));
+}
+// 管理员可直接设置他人邮箱
+cookie = bossCookie;
+r = await api("PATCH", "/api/users/" + alice2id, { email: "alice2@example.com" });
+ck("admin sets email directly", r.status === 200 && r.j.user.email === "alice2@example.com", JSON.stringify(r.j));
+r = await api("PATCH", "/api/users/" + alice2id, { email: "not-an-email" });
+ck("bad email rejected", r.j && !!r.j.error);
+r = await api("PATCH", "/api/users/" + boss.id, { email: "alice2@example.com" });
+ck("duplicate email rejected", r.j && !!r.j.error, JSON.stringify(r.j));
+cookie = "";
+r = await api("POST", "/api/login", { username: "alice2", password: "ResetPass9" });
+ck("auth user has email", r.j.user && r.j.user.email === "alice2@example.com", JSON.stringify(r.j.user));
+
+// 忘记密码全流程（依赖 MAIL_DEBUG；无 debug 环境只验证防枚举）
+r = await api("POST", "/api/forgot", { username: "alice2" });
+ck("forgot always ok", r.status === 200 && r.j.ok === true, JSON.stringify(r.j));
+r = await api("POST", "/api/forgot", { username: "ghost-user" });
+ck("forgot unknown user also ok (anti-enum)", r.status === 200 && r.j.ok === true);
+if(r.j && r.j.debugCode){
+  const code = r.j.debugCode;
+  r = await api("POST", "/api/forgot/reset", { username: "alice2", code: "000000", newPassword: "Xx9ooo99" });
+  ck("wrong reset code rejected", r.status === 400, JSON.stringify(r.j));
+  r = await api("POST", "/api/forgot/reset", { username: "alice2", code, newPassword: "weak" });
+  ck("weak new password rejected", r.status === 400, JSON.stringify(r.j));
+  r = await api("POST", "/api/forgot/reset", { username: "alice2", code, newPassword: "Forgot999A" });
+  ck("reset with code ok", r.status === 200 && r.j.ok === true, JSON.stringify(r.j));
+  r = await api("POST", "/api/login", { username: "alice2", password: "Forgot999A" });
+  ck("login with reset password", r.status === 200, JSON.stringify(r.j));
+  const alice2CookieNew = cookie;
+  cookie = aliceCookie2;
+  r = await api("GET", "/api/auth");
+  ck("old session dead after forgot-reset", r.j && r.j.ok === false, JSON.stringify(r.j));
+  cookie = alice2CookieNew;
+}
+
+console.log("\n[SMTP 配置管理]");
+cookie = aliceCookie2;
+r = await api("GET", "/api/smtp");
+ck("normal user cannot read smtp", r.status === 403, "got " + r.status);
+cookie = bossCookie;
+r = await api("GET", "/api/smtp");
+ck("admin reads smtp config", r.status === 200 && r.j && typeof r.j.hasPass === "boolean", JSON.stringify(r.j));
+ck("password never returned", r.j.pass === undefined);
+r = await api("POST", "/api/smtp", { host: "" });
+ck("empty host rejected", r.status === 400, JSON.stringify(r.j));
+r = await api("POST", "/api/smtp", { host: "smtp.invalid", port: 465, secure: true, user: "test@invalid", pass: "secret123", from: "test@invalid" });
+ck("admin saves smtp config", r.status === 200 && r.j.ok === true, JSON.stringify(r.j));
+r = await api("GET", "/api/smtp");
+ck("config persisted with masked pass", r.j.host === "smtp.invalid" && r.j.hasPass === true && r.j.pass === undefined, JSON.stringify(r.j));
+r = await api("POST", "/api/mail/test", { to: "dest@example.invalid", host: "smtp.invalid", port: 465, secure: true, user: "test@invalid", pass: "secret123" });
+ck("test mail surfaces smtp error", r.status === 400 && (r.j.error || "").startsWith("发送失败"), JSON.stringify(r.j));
+cookie = aliceCookie2;
+r = await api("POST", "/api/mail/test", { to: "dest@example.invalid" });
+ck("normal user cannot send test mail", r.status === 403, "got " + r.status);
+
 console.log("\n[管理员 all-data]");
 cookie = bossCookie;
 r = await api("GET", "/api/all-data?allUsers=1");

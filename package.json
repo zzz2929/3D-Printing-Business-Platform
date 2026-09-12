@@ -3,11 +3,14 @@
   "version": "1.0.2",
   "private": true,
   "type": "module",
-  "description": "3D 打印经营台 · 前后端分离，零 npm 依赖",
+  "description": "3D 打印经营台 · 前后端分离",
   "scripts": {
     "start": "node server/index.mjs"
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "nodemailer": "^10.0.9"
   }
 }

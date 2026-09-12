@@ -1701,8 +1701,62 @@
     $("loginSub").textContent = "输入用户名和密码登录。";
     $("loginUser").value = ""; $("loginPw").value = "";
     loginErr(""); $("loginGate").hidden = false;
+    $("loginMain").hidden = false; $("forgotBox").hidden = true;
     $("loginUser").focus();
   }
+  /* ---- 忘记密码：邮箱验证码重置 ---- */
+  function fpErr(msg){ const e = $("fpErr"); e.textContent = msg; e.hidden = !msg; }
+  function showForgot(show){
+    $("loginMain").hidden = show;
+    $("forgotBox").hidden = !show;
+    $("loginTitle").textContent = show ? "找回密码" : "登录";
+    $("loginSub").textContent = show ? "通过绑定邮箱验证码重置密码。" : "输入用户名和密码登录。";
+    fpErr("");
+  }
+  $("forgotLink").addEventListener("click", () => {
+    $("fpUser").value = $("loginUser").value.trim();
+    $("fpCode").value = ""; $("fpNew").value = "";
+    showForgot(true);
+    $("fpUser").focus();
+  });
+  $("fpBack").addEventListener("click", () => showForgot(false));
+  $("fpSend").addEventListener("click", async () => {
+    const user = $("fpUser").value.trim();
+    if(!user){ fpErr("请输入用户名"); return; }
+    const btn = $("fpSend");
+    btn.disabled = true;
+    try{
+      await S.forgotRequest(user);
+      fpErr("");
+      toast("若该账号绑定了邮箱，验证码已发送");
+      let left = 60;
+      btn.textContent = left + "s";
+      const timer = setInterval(() => {
+        btn.textContent = (--left) + "s";
+        if(left < 0){ clearInterval(timer); btn.textContent = "获取验证码"; btn.disabled = false; }
+      }, 1000);
+    }catch(e){
+      btn.disabled = false;
+      fpErr(e.message || "发送失败");
+    }
+  });
+  $("fpReset").addEventListener("click", async () => {
+    const user = $("fpUser").value.trim(), code = $("fpCode").value.trim(), pw = $("fpNew").value;
+    if(!user){ fpErr("请输入用户名"); return; }
+    if(!code){ fpErr("请输入验证码"); return; }
+    if(!pw){ fpErr("请填写新密码"); return; }
+    const pwdErr = validatePassword(pw);
+    if(pwdErr){ fpErr(pwdErr); return; }
+    $("fpReset").disabled = true;
+    try{
+      await S.forgotReset(user, code, pw);
+      fpErr("");
+      showForgot(false);
+      $("fpUser").value = ""; $("fpCode").value = ""; $("fpNew").value = "";
+      toast("密码已重置，请登录");
+    }catch(e){ fpErr(e.message || "重置失败"); }
+    finally{ $("fpReset").disabled = false; }
+  });
   async function doLogin(){
     const user = $("loginUser").value.trim();
     const pw = $("loginPw").value;
@@ -1751,6 +1805,7 @@
       : "管理自己的账号：可修改登录密码。";
     $("addUserSection").hidden = !isAdmin;
     hideEditUser();
+    if(isAdmin) loadSmtpCard(); // 邮件服务配置（仅管理员）
     try{
       let users;
       if(isAdmin){
@@ -1761,7 +1816,7 @@
         }
       }else{
         // 普通用户：只渲染自己这一行
-        users = [{ id:S.auth.userId, username:S.auth.username, role:S.auth.role, disabled:false }];
+        users = [{ id:S.auth.userId, username:S.auth.username, role:S.auth.role, disabled:false, email:S.auth.email || "" }];
       }
       renderUserList(users, isAdmin);
     }catch(e){ console.warn("加载用户列表失败", e); }
@@ -1814,6 +1869,11 @@
     const canPerms = isAdmin && !isMe;
     $("editPermsBox").hidden = !canPerms;
     if(canPerms) renderPermsGrid(u.perms);
+    // 邮箱：自己改需验证码；管理员改他人可直接设置
+    $("editUserEmail").value = u.email || "";
+    $("editMailCode").value = "";
+    $("editMailSend").hidden = !isMe;
+    $("editMailCode").hidden = !isMe;
     $("editUserBox").hidden = false;
     $("editUserName").focus();
   }
@@ -1832,16 +1892,47 @@
     if(box) box.hidden = true;
   }
   $("cancelEditUser").addEventListener("click", hideEditUser);
+  /* 自己绑定邮箱：发送验证码（60s 冷却） */
+  let mailBtnTimer = null;
+  $("editMailSend").addEventListener("click", async () => {
+    const email = $("editUserEmail").value.trim();
+    if(!email){ toast("请先填写邮箱"); return; }
+    const btn = $("editMailSend");
+    btn.disabled = true;
+    try{
+      await S.mailCode(email);
+      $("editMailCode").hidden = false;
+      toast("验证码已发送至该邮箱");
+      let left = 60;
+      btn.textContent = left + "s";
+      mailBtnTimer = setInterval(() => {
+        btn.textContent = (--left) + "s";
+        if(left < 0){ clearInterval(mailBtnTimer); btn.textContent = "发送验证码"; btn.disabled = false; }
+      }, 1000);
+    }catch(e){
+      btn.disabled = false;
+      toast(e.message || "发送失败");
+    }
+  });
   $("saveEditUser").addEventListener("click", async () => {
     if(!editTarget) return;
     const { id, isAdmin, isMe, orig } = editTarget;
     const username = $("editUserName").value.trim();
     const pw = $("editUserPw").value;
+    const email = $("editUserEmail").value.trim();
+    const emailChanged = email !== (orig.email || "");
     if(pw){
       const pwdErr = validatePassword(pw);
       if(pwdErr){ toast(pwdErr); return; }
     }
+    if(emailChanged && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ toast("邮箱格式不正确"); return; }
     try{
+      // 自己改邮箱：需要邮箱验证码（管理员与普通用户一致，防绑错/绑他人邮箱）
+      if(emailChanged && isMe){
+        const mcode = $("editMailCode").value.trim();
+        if(!mcode){ toast("请输入邮箱验证码"); return; }
+        await S.mailBind(email, mcode);
+      }
       if(isAdmin){
         const updates = {};
         if(username && username !== orig.username) updates.username = username;
@@ -1849,6 +1940,7 @@
         if(!isMe){
           if($("editUserRole").value !== orig.role) updates.role = $("editUserRole").value;
           if($("editUserDisabled").checked !== !!orig.disabled) updates.disabled = $("editUserDisabled").checked;
+          if(emailChanged) updates.email = email; // 管理员可直接设置他人邮箱
           // 权限勾选（总是收集，便于把“全开”显式落库）
           const perms = {};
           let anyPage = false;
@@ -1860,7 +1952,10 @@
           if(!anyPage){ toast("至少需要保留一个可访问页面"); return; }
           updates.perms = perms;
         }
-        if(!Object.keys(updates).length){ toast("没有修改"); return; }
+        if(!Object.keys(updates).length){
+          if(emailChanged){ hideEditUser(); toast("邮箱已更新"); loadUserMgmt(); return; }
+          toast("没有修改"); return;
+        }
         await S.apiUpdateUser(id, updates);
         hideEditUser();
         if(pw && isMe){
@@ -1871,20 +1966,21 @@
         }
         toast("已保存");
       }else{
-        // 普通用户：仅改自己的密码
-        const cur = $("editUserCurPw").value;
-        if(!pw){ toast("请填写新密码"); return; }
-        if(!cur){ toast("请输入当前密码"); return; }
-        const r = await fetch("/api/change-password", {
-          method:"POST", headers:{ "content-type":"application/json" },
-          body: JSON.stringify({ currentPassword:cur, newPassword:pw })
-        });
-        const j = await r.json().catch(() => ({}));
-        if(!r.ok || !j.ok) throw new Error(j.error || "修改失败");
+        // 普通用户：仅自己的邮箱（验证码绑定）与密码
+        if(!emailChanged && !pw){ toast("没有修改"); return; }
+        if(pw){
+          const cur = $("editUserCurPw").value;
+          if(!cur){ toast("请输入当前密码"); return; }
+          const r = await fetch("/api/change-password", {
+            method:"POST", headers:{ "content-type":"application/json" },
+            body: JSON.stringify({ currentPassword:cur, newPassword:pw })
+          });
+          const j = await r.json().catch(() => ({}));
+          if(!r.ok || !j.ok) throw new Error(j.error || "修改失败");
+        }
         hideEditUser();
-        toast("密码已更新，请重新登录");
-        setTimeout(() => location.reload(), 900);
-        return;
+        toast(pw ? "密码已更新，请重新登录" : "邮箱已更新");
+        if(pw){ setTimeout(() => location.reload(), 900); return; }
       }
       loadUserMgmt();
     }catch(e){ toast(e.message || "保存失败"); }
@@ -1898,6 +1994,64 @@
       loadUserMgmt();
     }catch(e){ toast("删除失败：" + e.message); }
   }
+
+  /* ---------- 邮件服务（SMTP）配置：仅管理员，存服务端 ---------- */
+  function smtpMsg(msg, isErr){
+    const el = $("smtpMsg");
+    el.textContent = msg;
+    el.style.color = isErr ? "var(--danger)" : "var(--ok)";
+  }
+  async function loadSmtpCard(){
+    const card = $("smtpCard");
+    if(!card) return;
+    card.hidden = false;
+    try{
+      const cfg = await S.smtpGet();
+      $("smtpHost").value = cfg.host || "";
+      $("smtpPort").value = cfg.port || "";
+      $("smtpSecure").checked = !!cfg.secure;
+      $("smtpUser").value = cfg.user || "";
+      $("smtpPass").value = "";
+      $("smtpPass").placeholder = cfg.hasPass ? "已保存，留空表示不修改" : "留空表示不修改";
+      $("smtpFrom").value = cfg.from || "";
+      $("smtpStatus").textContent = cfg.configured
+        ? (cfg.debug ? "邮件服务已启用（调试模式：验证码打印到服务端日志，不真实发信）。" : "邮件服务已启用。配置后用户可绑定邮箱并使用「忘记密码」。")
+        : "邮件服务未启用。配置并保存后，用户可绑定邮箱并使用「忘记密码」。";
+    }catch(e){
+      card.hidden = true; // 非 2929 旧服务端等场景没有该接口
+    }
+  }
+  function smtpFormCfg(){
+    return {
+      host: $("smtpHost").value.trim(),
+      port: $("smtpPort").value.trim(),
+      secure: $("smtpSecure").checked,
+      user: $("smtpUser").value.trim(),
+      pass: $("smtpPass").value,
+      from: $("smtpFrom").value.trim()
+    };
+  }
+  $("smtpSave").addEventListener("click", async () => {
+    const cfg = smtpFormCfg();
+    if(!cfg.host){ smtpMsg("请填写服务器地址", true); return; }
+    try{
+      await S.smtpSave(cfg);
+      smtpMsg("已保存，邮件服务即刻生效");
+      loadSmtpCard();
+    }catch(e){ smtpMsg(e.message || "保存失败", true); }
+  });
+  $("smtpTest").addEventListener("click", async () => {
+    const to = $("smtpTestTo").value.trim();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)){ smtpMsg("请填写测试收件邮箱", true); return; }
+    const btn = $("smtpTest");
+    btn.disabled = true; smtpMsg("发送中…");
+    try{
+      await S.smtpTest(smtpFormCfg(), to);
+      smtpMsg("测试邮件已发送至 " + to + "，请查收");
+    }catch(e){
+      smtpMsg(e.message || "发送失败", true);
+    }finally{ btn.disabled = false; }
+  });
   $("addUserBtn").addEventListener("click", async () => {
     const name = $("newUserName").value.trim();
     const pw = $("newUserPw").value;

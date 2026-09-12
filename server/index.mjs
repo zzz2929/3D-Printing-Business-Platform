@@ -6,13 +6,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRouter } from "./router.mjs";
 import { fileStore } from "./stores.mjs";
+import { createMailer } from "./mailer.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = Number(process.env.PORT) || 2929;
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, "data");
 
 const store = fileStore(DATA_DIR);
-const handle = createRouter(store);
+const handle = createRouter(store, createMailer(process.env, () => store.get("smtp")));
 
 /* 静态资源白名单：数据目录与源码一律不对外提供 */
 const STATIC_FILES = new Set(["/index.html", "/sw.js", "/manifest.webmanifest", "/icon.svg", "/version.json"]);

@@ -3,8 +3,10 @@
    UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN（Upstash Redis 控制台可免费创建） */
 import { createRouter } from "../server/router.mjs";
 import { upstashStore, memoryStore } from "../server/stores.mjs";
+import { createMailer } from "../server/mailer.mjs";
 
-const router = createRouter(upstashStore(process.env) || memoryStore());
+const store = upstashStore(process.env) || memoryStore();
+const router = createRouter(store, createMailer(process.env, () => store.get("smtp")));
 
 async function readBody(req){
   const chunks = [];

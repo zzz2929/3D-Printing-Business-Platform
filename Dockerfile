@@ -2,6 +2,8 @@
 FROM node:22-alpine
 
 WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 COPY index.html sw.js manifest.webmanifest icon.svg /app/
 COPY assets /app/assets
 COPY server /app/server

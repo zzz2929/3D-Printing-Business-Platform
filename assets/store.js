@@ -387,7 +387,7 @@ const Store = (function(){
       const st = await fetch("/api/auth", { headers:{ "accept":"application/json" } }).then(r => r.json());
       mode = "server";
       const u = st.user || {};
-      auth = { required:!!st.required, ok:!!st.ok, openMode:!!st.openMode, role:u.role, userId:u.id, username:u.username, perms:u.perms || null };
+      auth = { required:!!st.required, ok:!!st.ok, openMode:!!st.openMode, role:u.role, userId:u.id, username:u.username, perms:u.perms || null, email:u.email || "" };
       if(auth.required && !auth.ok){ readyResolve("auth"); return; } // 等待登录，app.js 弹登录门
       await tryLoad();
     }catch(e){
@@ -410,7 +410,7 @@ const Store = (function(){
     if(!r.ok) throw new Error(d.error || "登录失败");
     auth.ok = true;
     const u = d.user || {};
-    auth.role = u.role; auth.userId = u.id; auth.username = u.username; auth.perms = u.perms || null;
+    auth.role = u.role; auth.userId = u.id; auth.username = u.username; auth.perms = u.perms || null; auth.email = u.email || "";
     await tryLoad();
   }
   /* 开放模式下创建第一个管理员（服务端首个注册用户自动为 admin），成功后整站转为密码保护 */
@@ -420,9 +420,56 @@ const Store = (function(){
     if(!r.ok) throw new Error(d.error || "创建失败");
     auth.ok = true; auth.required = true; auth.openMode = false;
     const u = d.user || {};
-    auth.role = u.role; auth.userId = u.id; auth.username = u.username; auth.perms = u.perms || null;
+    auth.role = u.role; auth.userId = u.id; auth.username = u.username; auth.perms = u.perms || null; auth.email = u.email || "";
     return d;
   }
+  /* 邮箱绑定与忘记密码 */
+  async function forgotRequest(username){
+    const r = await fetch("/api/forgot", { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify({ username }) });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(d.error || "发送失败");
+    return d;
+  }
+  async function forgotReset(username, code, newPassword){
+    const r = await fetch("/api/forgot/reset", { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify({ username, code, newPassword }) });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(d.error || "重置失败");
+    return d;
+  }
+  async function mailCode(email){
+    const r = await fetch("/api/mail/code", { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify({ email }) });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(d.error || "发送失败");
+    return d;
+  }
+  async function mailBind(email, code){
+    const r = await fetch("/api/mail/bind", { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify({ email, code }) });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(d.error || "绑定失败");
+    auth.email = email; // 同步本地登录态
+    return d;
+  }
+
+  /* SMTP 配置（仅管理员） */
+  async function smtpGet(){
+    const r = await fetch("/api/smtp", { headers:{ "accept":"application/json" } });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(d.error || "读取失败");
+    return d;
+  }
+  async function smtpSave(cfg){
+    const r = await fetch("/api/smtp", { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify(cfg) });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(d.error || "保存失败");
+    return d;
+  }
+  async function smtpTest(cfg, to){
+    const r = await fetch("/api/mail/test", { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify(Object.assign({}, cfg, { to })) });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(d.error || "发送失败");
+    return d;
+  }
+
   /* 用户管理 API */
   async function apiUsers(){ return fetch("/api/users", { headers:{ "accept":"application/json" } }).then(r => r.json()); }
   async function apiRegister(username, password, role){
@@ -624,6 +671,8 @@ const Store = (function(){
     saveRec(){ push("records"); }, saveOrd(){ push("orders"); },
     num, esc, fmt, today, uid, money,
     apiUsers, apiRegister, apiDeleteUser, apiUpdateUser,
+    forgotRequest, forgotReset, mailCode, mailBind,
+    smtpGet, smtpSave, smtpTest,
     computePrint, machineRate, laborCost, sumPayments, orderDue, matById, priById, orderStats, monthly, byCustomer,
     matLabel, priLabel,
     buildAchStats, exportPayload, importPayload, wipeAll, loadDemo,

@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="apple-touch-icon" href="icon.svg" />
 <link rel="icon" href="icon.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="assets/style.css?v=24" />
+<link rel="stylesheet" href="assets/style.css?v=26" />
 </head>
 <body>
 
@@ -463,6 +463,25 @@
               <button class="btn" id="createAdminBtn">创建管理员并启用保护</button>
             </div>
           </div>
+          <!-- 邮件服务（SMTP）：仅管理员，配置存服务端 -->
+          <div class="card" id="smtpCard" hidden>
+            <div class="card-head"><h2>邮件服务（SMTP）</h2><span class="pill">仅管理员</span></div>
+            <p class="muted" id="smtpStatus" style="margin-top:0">配置后用户可绑定邮箱并使用「忘记密码」。配置保存在服务端数据目录。</p>
+            <div class="grid g3" style="gap:8px;margin-top:10px">
+              <div><label>服务器地址 *</label><input id="smtpHost" placeholder="如 smtp.qq.com" /></div>
+              <div><label>端口</label><input id="smtpPort" type="number" placeholder="465 / 587 / 25" /></div>
+              <div><label style="display:flex;align-items:center;gap:6px;margin-top:24px"><input type="checkbox" id="smtpSecure" /> TLS 直连（465 端口勾选）</label></div>
+              <div><label>认证用户名</label><input id="smtpUser" placeholder="通常为发件邮箱" autocomplete="off" /></div>
+              <div><label>认证密码 / 授权码</label><input id="smtpPass" type="password" placeholder="留空表示不修改" autocomplete="new-password" /></div>
+              <div><label>发件人地址</label><input id="smtpFrom" placeholder="默认取认证用户名" /></div>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;margin-top:10px">
+              <button class="btn" id="smtpSave">保存配置</button>
+              <input id="smtpTestTo" placeholder="测试收件邮箱" style="width:220px" />
+              <button class="btn ghost" id="smtpTest">发送测试邮件</button>
+            </div>
+            <div class="hint" id="smtpMsg" style="margin-top:8px"></div>
+          </div>
         </div>
         <!-- 用户管理：账号设置已合并到这里（管理员管理全部用户；普通用户管理自己的账号） -->
         <div class="card" id="userMgmtCard" hidden>
@@ -488,6 +507,14 @@
             <div id="editSelfPwBox" hidden style="margin-top:8px">
               <label>当前密码</label>
               <input type="password" id="editUserCurPw" placeholder="修改自己的密码需验证当前密码" style="width:100%;margin-top:4px" autocomplete="current-password" />
+            </div>
+            <div style="margin-top:10px">
+              <label>邮箱<span class="muted" style="font-weight:400"> · 用于忘记密码时接收验证码</span></label>
+              <div style="display:flex;gap:6px;margin-top:4px">
+                <input type="email" id="editUserEmail" placeholder="name@example.com" style="flex:1" autocomplete="email" />
+                <button class="btn ghost sm" id="editMailSend" type="button" hidden style="white-space:nowrap">发送验证码</button>
+              </div>
+              <input type="text" id="editMailCode" placeholder="邮箱验证码" hidden style="width:100%;margin-top:6px" inputmode="numeric" />
             </div>
             <label id="editDisabledBox" hidden style="display:flex;align-items:center;gap:6px;margin-top:10px">
               <input type="checkbox" id="editUserDisabled" /> 停用该账号（立即无法登录，已有会话一并失效）
@@ -559,11 +586,31 @@
     <div class="ob-icon">🔒</div>
     <h2 id="loginTitle">验证身份</h2>
     <p id="loginSub">数据受密码保护，验证通过后才能查看与操作。</p>
-    <input type="text" id="loginUser" class="dlg-input" placeholder="用户名" autocomplete="username" />
-    <input type="password" id="loginPw" class="dlg-input" placeholder="密码" autocomplete="current-password" />
-    <div id="loginErr" class="login-err" hidden></div>
-    <div class="row" style="justify-content:center;margin-top:16px">
-      <button class="btn" id="loginBtn">解锁</button>
+    <div id="loginMain">
+      <input type="text" id="loginUser" class="dlg-input" placeholder="用户名" autocomplete="username" />
+      <input type="password" id="loginPw" class="dlg-input" placeholder="密码" autocomplete="current-password" />
+      <div id="loginErr" class="login-err" hidden></div>
+      <div class="row" style="justify-content:center;margin-top:16px">
+        <button class="btn" id="loginBtn">解锁</button>
+      </div>
+      <div style="text-align:center;margin-top:10px">
+        <a href="javascript:void(0)" id="forgotLink" class="muted" style="font-size:12.5px;text-decoration:none">忘记密码？</a>
+      </div>
+    </div>
+    <!-- 忘记密码：邮箱验证码重置 -->
+    <div id="forgotBox" hidden>
+      <p class="muted" style="text-align:center;margin:4px 0 10px;font-size:12.5px">输入用户名，验证码将发送到该账号绑定的邮箱。</p>
+      <input type="text" id="fpUser" class="dlg-input" placeholder="用户名" autocomplete="username" />
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <input type="text" id="fpCode" class="dlg-input" placeholder="邮箱验证码" style="flex:1" inputmode="numeric" />
+        <button class="btn ghost sm" id="fpSend" type="button" style="white-space:nowrap">获取验证码</button>
+      </div>
+      <input type="password" id="fpNew" class="dlg-input" placeholder="新密码（8位以上，大小写+数字）" autocomplete="new-password" />
+      <div id="fpErr" class="login-err" hidden></div>
+      <div class="row" style="justify-content:center;margin-top:14px">
+        <button class="btn" id="fpReset">重置密码</button>
+        <button class="btn ghost" id="fpBack">返回登录</button>
+      </div>
     </div>
   </div>
 </div>
@@ -581,7 +628,7 @@
 
 <div class="toast" id="toast" role="status"></div>
 
-<script src="assets/store.js?v=24"></script>
-<script src="assets/app.js?v=24"></script>
+<script src="assets/store.js?v=26"></script>
+<script src="assets/app.js?v=26"></script>
 </body>
 </html>
