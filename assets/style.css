@@ -106,6 +106,8 @@ body{
 }
 .side-foot .side-icobtn:hover{color:var(--danger);border-color:var(--line2)}
 .side-foot #modeText{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+/* SMTP 卡片的 TLS 直连复选框：固定尺寸，不被全局 input width:100% 拉伸 */
+#smtpSecure{width:15px;height:15px;flex:0 0 15px;margin:0;accent-color:var(--accent);cursor:pointer}
 
 .led{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 6px var(--ok);animation:pulse 2.4s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
@@ -327,6 +329,10 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 .col2{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
 .col2>.card{margin-bottom:14px}
 @media(max-width:820px){.col2{grid-template-columns:1fr}}
+/* 设置页·数据与账号：瀑布式双列，卡片按内容高度自动均衡两列，避免等高网格的大片留白 */
+.set-cols{columns:2;column-gap:14px}
+.set-cols>.card{break-inside:avoid;margin:0 0 14px}
+@media(max-width:820px){.set-cols{columns:1}}
 
 .lcd-big.sub{font-size:19px;color:var(--ink);text-shadow:none;font-weight:700}
 .lcd-row{display:grid;grid-template-columns:1.05fr 1fr 0.85fr 1.15fr;gap:12px}
