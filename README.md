@@ -111,32 +111,6 @@ services:
       - "2929:2929"
     volumes:
       - 3d-printing-business-data:/data
-    # 标记此容器由Watchtower管理
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-
-  # 自动更新容器 - 检测到新镜像后自动重建
-  watchtower:
-    image: containrrr/watchtower
-    container_name: watchtower
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      # 时区
-      - TZ=Asia/Shanghai
-      # 检测间隔（秒），默认300秒(5分钟)，这里设30分钟
-      - WATCHTOWER_POLL_INTERVAL=1800
-      # 更新前清理旧镜像
-      - WATCHTOWER_CLEANUP=true
-      # 通知（可选，取消注释可启用邮件通知）
-      # - WATCHTOWER_NOTIFICATIONS=email
-      # - WATCHTOWER_NOTIFICATION_EMAIL_FROM=发件邮箱
-      # - WATCHTOWER_NOTIFICATION_EMAIL_TO=收件邮箱
-      # - WATCHTOWER_NOTIFICATION_EMAIL_SERVER=smtp.qq.com
-      # - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PORT=587
-      # - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_USER=你的邮箱
-      # - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PASSWORD=授权码
-    restart: unless-stopped
 
 volumes:
   3d-printing-business-data:
