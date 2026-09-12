@@ -9,6 +9,35 @@
 
   const PAGE_TITLES = { dash:"仪表盘", calc:"成本计算器", order:"开单", olist:"订单列表", mats:"耗材库房", printers:"打印机", records:"打印记录", settings:"设置" };
   const RENDERERS = {};
+
+  /* ---------- 页面权限 ----------
+     管理员不受限；普通用户按 perms 勾选（null / 缺失 = 全部允许）。
+     perms 由管理员在「用户管理 → 编辑」里勾选，存于服务端用户记录。 */
+  const PAGE_PERM = { dash:"page_dash", calc:"page_calc", order:"page_order", olist:"page_olist", mats:"page_mats", printers:"page_printers", records:"page_records", settings:"page_settings" };
+  const PERM_DEFS = [
+    { group:"页面", items:[
+      ["page_dash","仪表盘"],["page_calc","成本计算器"],["page_order","开单"],["page_olist","订单列表"],
+      ["page_mats","耗材库房"],["page_printers","打印机"],["page_records","打印记录"],["page_settings","设置"]
+    ]},
+    { group:"耗材页", items:[["mats_manage","耗材管理（表单）"],["mats_list","我的耗材（列表）"]]},
+    { group:"打印机页", items:[["pri_add","添加打印机（表单）"],["pri_list","我的打印机（列表）"]]},
+    { group:"设置页", items:[["set_general","常规"],["set_presets","预设管理"],["set_update","版本与更新"],["set_account","数据与账号"]]}
+  ];
+  function can(perm){
+    if(!perm) return true;
+    if(S.auth.role === "admin") return true;
+    const p = S.auth.perms;
+    return p ? p[perm] !== false : true;
+  }
+  function applyPerms(){
+    document.querySelectorAll("#nav button[data-tab]").forEach(b => {
+      b.style.display = can(PAGE_PERM[b.getAttribute("data-tab")]) ? "" : "none";
+    });
+    [["matFormCard","mats_manage"],["matListCard","mats_list"],["priFormCard","pri_add"],["priListCard","pri_list"]]
+      .forEach(([id, perm]) => { const el = $(id); if(el) el.hidden = !can(perm); });
+    renderSetTabs();
+  }
+
   /* 打印机品牌下拉改为 attachCombo 风格（在下方重新初始化），先清空原 select 内容 */
   $("pBrand").innerHTML = "";
 
@@ -261,6 +290,10 @@
   let currentTab = "dash";
   function goto(tab){
     if(!PAGE_TITLES[tab]) tab = "dash";
+    if(!can(PAGE_PERM[tab])){
+      const first = Object.keys(PAGE_PERM).find(t => can(PAGE_PERM[t]));
+      if(first && first !== tab) return goto(first);
+    }
     currentTab = tab;
     document.querySelectorAll(".page").forEach(p => p.classList.remove("on"));
     const page = $("page-" + tab); if(page) page.classList.add("on");
@@ -1040,10 +1073,17 @@
 
   /* ============ 设置页 Tab 切换 ============ */
   let activeSetPane = "general";
+  const SET_PANE_PERM = { general:"set_general", presets:"set_presets", update:"set_update", data:"set_account" };
   function renderSetTabs(){
-    document.querySelectorAll("#setTabs button").forEach(b =>
-      b.classList.toggle("on", b.getAttribute("data-p") === activeSetPane)
-    );
+    document.querySelectorAll("#setTabs button").forEach(b => {
+      b.hidden = !can(SET_PANE_PERM[b.getAttribute("data-p")]); // 无权限的标签直接隐藏
+      b.classList.toggle("on", b.getAttribute("data-p") === activeSetPane);
+    });
+    // 当前激活面板无权限时，切到第一个有权限的
+    if(!can(SET_PANE_PERM[activeSetPane])){
+      const first = [...document.querySelectorAll("#setTabs button")].find(b => !b.hidden);
+      if(first) activeSetPane = first.getAttribute("data-p");
+    }
     document.querySelectorAll(".set-pane").forEach(p =>
       p.hidden = p.id !== "setp-" + activeSetPane
     );
@@ -1638,7 +1678,9 @@
   let appStarted = false;
   function appStart(){
     if(appStarted) return; appStarted = true;
-    refreshAll(); render(currentTab);
+    refreshAll(); applyPerms();
+    // 按当前 hash 落页（goto 内部会拦下无权限的页面）
+    goto((location.hash.match(/^#\/(\w+)/) || [])[1] || currentTab || "dash");
     if(!S.settings.onboarded) obShow(); // 初次使用自动引导
     const sp = S.settings.startPage;    // 启动页
     if(sp && PAGE_TITLES[sp] && !location.hash) goto(sp);
@@ -1683,12 +1725,19 @@
   $("loginBtn").addEventListener("click", doLogin);
   $("loginUser").addEventListener("keydown", e => { if(e.key === "Enter") doLogin(); });
   $("loginPw").addEventListener("keydown", e => { if(e.key === "Enter") doLogin(); });
-  $("logoutBtn").addEventListener("click", () => S.logout());
+  /* 退出登录：侧栏底部 + 顶栏各一枚，登录态可见 */
+  const logoutEls = [$("logoutBtn"), $("logoutBtnTop")];
+  logoutEls.forEach(b => b && b.addEventListener("click", () => S.logout()));
+  function applyLogoutVisibility(){
+    const logged = S.mode === "server" && S.auth.required && S.auth.ok;
+    logoutEls.forEach(b => { if(b) b.style.display = logged ? "" : "none"; });
+  }
 
   /* ---------- 用户管理（账号设置已合并于此） ----------
      管理员：表格列出全部用户，可编辑（用户名/密码/角色/停用）、删除、添加；
      普通用户：只看到自己一行，可改用户名？否——仅可改自己的密码（需验证当前密码）。 */
   async function loadUserMgmt(){
+    applyLogoutVisibility();
     const openCard = $("openModeCard");
     if(openCard) openCard.hidden = !(S.mode === "server" && S.auth.openMode); // 开放模式提示卡
     const card = $("userMgmtCard");
@@ -1746,7 +1795,7 @@
     }));
   }
 
-  /* 编辑表单：参考“用户名 / 新密码 / 角色 / 停用”；不加基本路径 */
+  /* 编辑表单：参考“用户名 / 新密码 / 角色 / 停用 / 权限”；不加基本路径 */
   let editTarget = null; // { id, isAdmin, isMe, orig }
   function showEditUser(u, isAdmin){
     const isMe = u.id === S.auth.userId;
@@ -1762,8 +1811,20 @@
     const canDisable = isAdmin && !isMe;
     $("editDisabledBox").hidden = !canDisable;
     $("editUserDisabled").checked = !!u.disabled;
+    const canPerms = isAdmin && !isMe;
+    $("editPermsBox").hidden = !canPerms;
+    if(canPerms) renderPermsGrid(u.perms);
     $("editUserBox").hidden = false;
     $("editUserName").focus();
+  }
+  function renderPermsGrid(perms){
+    $("editPermsGrid").innerHTML = PERM_DEFS.map(g =>
+      '<div class="perm-group"><div class="perm-group-t">' + g.group + '</div><div class="perm-grid">' +
+      g.items.map(([k, label]) => {
+        const on = perms ? !!perms[k] : true; // 未设置过 = 全部允许
+        return '<label class="perm-item"><input type="checkbox" data-perm="' + k + '"' + (on ? " checked" : "") + " />" + label + "</label>";
+      }).join("") + "</div></div>"
+    ).join("");
   }
   function hideEditUser(){
     editTarget = null;
@@ -1788,6 +1849,16 @@
         if(!isMe){
           if($("editUserRole").value !== orig.role) updates.role = $("editUserRole").value;
           if($("editUserDisabled").checked !== !!orig.disabled) updates.disabled = $("editUserDisabled").checked;
+          // 权限勾选（总是收集，便于把“全开”显式落库）
+          const perms = {};
+          let anyPage = false;
+          document.querySelectorAll("#editPermsGrid input[data-perm]").forEach(i => {
+            const k = i.getAttribute("data-perm");
+            perms[k] = i.checked;
+            if(k.startsWith("page_") && i.checked) anyPage = true;
+          });
+          if(!anyPage){ toast("至少需要保留一个可访问页面"); return; }
+          updates.perms = perms;
         }
         if(!Object.keys(updates).length){ toast("没有修改"); return; }
         await S.apiUpdateUser(id, updates);

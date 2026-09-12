@@ -20,6 +20,15 @@ async function hashPassword(pw, salt){
 }
 function randomHex(bytes){ const a = new Uint8Array(bytes); crypto.getRandomValues(a); return toHex(a); }
 
+/* 页面权限键：perms 为 null / 缺失 = 全部允许；否则以 perms[k] 布尔值为准 */
+const PERM_KEYS = [
+  "page_dash", "page_calc", "page_order", "page_olist",
+  "page_mats", "mats_manage", "mats_list",
+  "page_printers", "pri_add", "pri_list",
+  "page_records", "page_settings",
+  "set_general", "set_presets", "set_update", "set_account"
+];
+
 /* 密码强度验证：至少8位，包含大小写字母和数字 */
 export function validatePassword(pw){
   if(!pw || typeof pw !== "string") return "密码不能为空";
@@ -82,7 +91,7 @@ export function createAuth(store){
       if(hash !== user.passwordHash) return { error:"用户名或密码错误" };
       return {
         ok:true,
-        user: { id:user.id, username:user.username, role:user.role }
+        user: { id:user.id, username:user.username, role:user.role, perms:user.perms || null }
       };
     },
 
@@ -100,7 +109,7 @@ export function createAuth(store){
       for(const user of users){
         if(user.disabled) continue;
         if((await hmacHex(user.secret, "pf:" + exp)) === sig){
-          return { id:user.id, username:user.username, role:user.role };
+          return { id:user.id, username:user.username, role:user.role, perms:user.perms || null };
         }
       }
       return null;
@@ -141,7 +150,7 @@ export function createAuth(store){
       const id = randomHex(16);
       const salt = randomHex(16);
       const passwordHash = await hashPassword(password, salt);
-      const user = { id, username, passwordHash, salt, secret:randomHex(32), role: finalRole, createdAt: Date.now() };
+      const user = { id, username, passwordHash, salt, secret:randomHex(32), role: finalRole, perms:null, disabled:false, createdAt: Date.now() };
       users.push(user);
       await saveUsers();
       return { ok:true, user:{ id, username, role:finalRole } };
@@ -163,7 +172,7 @@ export function createAuth(store){
     async listUsers(operator){
       if(operator?.role !== "admin") return { error:"只有管理员可以查看用户列表" };
       const users = await loadUsers();
-      return users.map(u => ({ id:u.id, username:u.username, role:u.role, disabled:!!u.disabled, createdAt:u.createdAt }));
+      return users.map(u => ({ id:u.id, username:u.username, role:u.role, disabled:!!u.disabled, perms:u.perms || null, createdAt:u.createdAt }));
     },
 
     /* 修改密码 */
@@ -239,8 +248,21 @@ export function createAuth(store){
         user.disabled = !!updates.disabled;
       }
 
+      // 页面权限：白名单键逐项布尔化；至少保留一个可访问页面（防锁死）
+      if(updates.perms !== undefined){
+        if(!updates.perms || typeof updates.perms !== "object" || Array.isArray(updates.perms)){
+          return { error:"权限格式不正确" };
+        }
+        const perms = {};
+        for(const k of PERM_KEYS) perms[k] = !!updates.perms[k];
+        if(!PERM_KEYS.some(k => k.startsWith("page_") && perms[k])){
+          return { error:"至少需要保留一个可访问页面" };
+        }
+        user.perms = perms;
+      }
+
       await saveUsers();
-      return { ok:true, user:{ id:user.id, username:user.username, role:user.role, disabled:!!user.disabled } };
+      return { ok:true, user:{ id:user.id, username:user.username, role:user.role, disabled:!!user.disabled, perms:user.perms || null } };
     },
 
     /* 获取当前用户信息 */

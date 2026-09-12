@@ -387,7 +387,7 @@ const Store = (function(){
       const st = await fetch("/api/auth", { headers:{ "accept":"application/json" } }).then(r => r.json());
       mode = "server";
       const u = st.user || {};
-      auth = { required:!!st.required, ok:!!st.ok, openMode:!!st.openMode, role:u.role, userId:u.id, username:u.username };
+      auth = { required:!!st.required, ok:!!st.ok, openMode:!!st.openMode, role:u.role, userId:u.id, username:u.username, perms:u.perms || null };
       if(auth.required && !auth.ok){ readyResolve("auth"); return; } // 等待登录，app.js 弹登录门
       await tryLoad();
     }catch(e){
@@ -410,7 +410,7 @@ const Store = (function(){
     if(!r.ok) throw new Error(d.error || "登录失败");
     auth.ok = true;
     const u = d.user || {};
-    auth.role = u.role; auth.userId = u.id; auth.username = u.username;
+    auth.role = u.role; auth.userId = u.id; auth.username = u.username; auth.perms = u.perms || null;
     await tryLoad();
   }
   /* 开放模式下创建第一个管理员（服务端首个注册用户自动为 admin），成功后整站转为密码保护 */
@@ -420,7 +420,7 @@ const Store = (function(){
     if(!r.ok) throw new Error(d.error || "创建失败");
     auth.ok = true; auth.required = true; auth.openMode = false;
     const u = d.user || {};
-    auth.role = u.role; auth.userId = u.id; auth.username = u.username;
+    auth.role = u.role; auth.userId = u.id; auth.username = u.username; auth.perms = u.perms || null;
     return d;
   }
   /* 用户管理 API */

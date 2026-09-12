@@ -97,6 +97,10 @@ body{
 }
 .ic{width:16px;height:16px;flex:0 0 16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .side-foot{margin-top:auto;display:flex;align-items:center;gap:7px;padding:0 8px;font-size:11px}
+/* 侧栏底部退出按钮：安静的文字样式，不换行、不挤压同步状态文字 */
+.side-foot #logoutBtn{flex:0 0 auto;white-space:nowrap;padding:3px 8px;font-size:11px;color:var(--sub);background:transparent;border-color:transparent;box-shadow:none}
+.side-foot #logoutBtn:hover{color:var(--danger);border-color:var(--line2)}
+.side-foot #modeText{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
 
 .led{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 6px var(--ok);animation:pulse 2.4s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
@@ -223,6 +227,13 @@ select::after{
 .lcd-lines .line.cb-line input{width:15px;height:15px;flex:0 0 15px;margin:0;accent-color:var(--accent);cursor:pointer}
 /* 用户编辑表单里的「停用」复选框：不被全局 input width:100% 拉伸 */
 #editDisabledBox input[type="checkbox"]{width:15px;height:15px;flex:0 0 15px;margin:0;accent-color:var(--accent);cursor:pointer}
+/* 用户编辑：页面权限勾选（块状 chip，参考 AList） */
+.perm-group{margin-top:8px}
+.perm-group-t{font-size:12px;color:var(--faint);margin-bottom:4px}
+.perm-grid{display:flex;flex-wrap:wrap;gap:6px}
+.perm-item{display:flex;align-items:center;gap:6px;border:1px solid var(--line2);border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer;user-select:none}
+.perm-item:hover{border-color:var(--accent)}
+.perm-item input{width:14px;height:14px;flex:0 0 14px;margin:0;accent-color:var(--accent);cursor:pointer}
 .lcd-lines .line.cb-line .cb-txt{flex:1}
 .lcd-lines .line.off{opacity:.42}
 .lcd-lines .line.off span:last-child{text-decoration:line-through}

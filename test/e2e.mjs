@@ -168,6 +168,32 @@ r = await api("PATCH", "/api/users/" + boss2id(boss), { username: "hax" });
 ck("normal user cannot PATCH others", r.j && !!r.j.error, JSON.stringify(r.j));
 function boss2id(b){ return b.id; }
 
+console.log("\n[页面权限 perms]");
+cookie = bossCookie;
+const alice2id = (await api("GET", "/api/users")).j.find(u => u.username === "alice2").id;
+const PERM_ALL = ["page_dash","page_calc","page_order","page_olist","page_mats","mats_manage","mats_list","page_printers","pri_add","pri_list","page_records","page_settings","set_general","set_presets","set_update","set_account"];
+const allOff = {}; PERM_ALL.forEach(k => allOff[k] = false);
+r = await api("PATCH", "/api/users/" + alice2id, { perms: allOff });
+ck("all pages off rejected", r.j && !!r.j.error, JSON.stringify(r.j));
+const limited = Object.assign({}, allOff, { page_dash: true, page_records: true });
+r = await api("PATCH", "/api/users/" + alice2id, { perms: limited });
+ck("admin sets limited perms", r.status === 200 && r.j.user && r.j.user.perms && r.j.user.perms.page_dash === true && r.j.user.perms.page_calc === false, JSON.stringify(r.j));
+cookie = "";
+r = await api("POST", "/api/login", { username: "alice2", password: "ResetPass9" });
+ck("login returns perms", r.j && r.j.user && r.j.user.perms && r.j.user.perms.page_dash === true, JSON.stringify(r.j && r.j.user));
+r = await api("GET", "/api/auth");
+ck("session verify returns perms", r.j && r.j.user && r.j.user.perms && r.j.user.perms.page_records === true && r.j.user.perms.page_calc === false, JSON.stringify(r.j.user));
+cookie = bossCookie;
+r = await api("PATCH", "/api/users/" + alice2id, { perms: { page_dash: true } });
+ck("partial perms object ok (unset = false)", r.status === 200 && r.j.user.perms.page_dash === true && r.j.user.perms.page_olist === false, JSON.stringify(r.j));
+cookie = aliceCookie2;
+r = await api("PATCH", "/api/users/" + alice2id, { perms: limited });
+ck("normal user cannot set perms", r.j && !!r.j.error, JSON.stringify(r.j));
+cookie = bossCookie;
+const allOn = {}; PERM_ALL.forEach(k => allOn[k] = true);
+r = await api("PATCH", "/api/users/" + alice2id, { perms: allOn });
+ck("restore all perms", r.status === 200 && r.j.user.perms.page_calc === true);
+
 console.log("\n[管理员 all-data]");
 cookie = bossCookie;
 r = await api("GET", "/api/all-data?allUsers=1");
