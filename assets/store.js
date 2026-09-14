@@ -318,8 +318,10 @@ const Store = (function(){
         saving--;
         if(saving <= 0){ saving = 0; emit("saved"); }
       }catch(e){
-        saving = 0; dirty.add(col); emit("error");
-        if(String(e.message).indexOf("401") >= 0){ location.reload(); return; } // 会话过期 → 回登录门
+        saving = Math.max(0, saving - 1); dirty.add(col); emit("error");
+        // 检测 401：支持 "HTTP 401" 格式（来自 throw Error("HTTP " + r.status)）
+        // 也支持直接返回 401 的 fetch 错误
+        if(e.message && (e.message.indexOf("401") >= 0 || e.status === 401)){ location.reload(); return; }
         console.warn("保存失败", col, e);
       }
     }
@@ -709,6 +711,7 @@ const Store = (function(){
     ready, onSync,
     login, logout, createAdmin,
     setSettings(p){ Object.assign(settings, p); push("settings"); },
+    getTheme(){ return settings.theme; },
     setAchKeys(s){ achKeys = s; push("achievements"); },
     saveMat(){ push("materials"); }, savePri(){ push("printers"); },
     saveRec(){ push("records"); }, saveOrd(){ push("orders"); },

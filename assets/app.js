@@ -110,6 +110,7 @@
     const btn = document.createElement("button"); btn.type = "button"; btn.className = "combo-caret"; btn.title = "展开选项";
     wrap.appendChild(btn);
     const pop = document.createElement("div"); pop.className = "combo-pop"; wrap.appendChild(pop);
+    let popInput = null; // 弹层面板内的输入框
     function renderList(q){
       const ql = String(q || "").trim().toLowerCase();
       const all = getOptions();
@@ -118,12 +119,44 @@
       const exists = !v || all.indexOf(v) >= 0;
       const addHtml = (!exists && v)
         ? `<button type="button" class="combo-item combo-add" data-add="${S.esc(v)}">＋ 把「<b>${S.esc(v)}</b>」加入预设</button>` : "";
-      pop.innerHTML = (list.length || addHtml)
-        ? addHtml + list.map(o => `<button type="button" class="combo-item${o === input.value ? " on" : ""}">${S.esc(o)}</button>`).join("")
-        : '<div class="combo-empty">无匹配项 — 输入新内容后可点下方「加入预设」</div>';
+      const itemsHtml = addHtml + list.map(o => `<button type="button" class="combo-item${o === input.value ? " on" : ""}">${S.esc(o)}</button>`).join("");
+      const inputHtml = `<div class="combo-input-row"><input type="text" class="combo-pop-input" placeholder="直接输入…" value="${S.esc(v)}" /><button type="button" class="combo-pop-confirm">确定</button></div>`;
+      pop.innerHTML = (list.length || addHtml || v)
+        ? itemsHtml + inputHtml
+        : '<div class="combo-empty">无匹配项 — 直接在下方输入新内容</div>' + inputHtml;
+      // 绑定弹层面板输入框事件
+      popInput = pop.querySelector(".combo-pop-input");
+      if(popInput){
+        popInput.addEventListener("keydown", e => { if(e.key === "Enter"){ e.preventDefault(); confirmPopInput(); }});
+        popInput.addEventListener("input", e => {
+          // 同步过滤列表
+          const val = e.target.value.trim().toLowerCase();
+          const filtered = all.filter(o => !val || o.toLowerCase().includes(val));
+          const items = pop.querySelectorAll(".combo-item:not(.combo-add)");
+          items.forEach(item => {
+            const txt = item.textContent.toLowerCase();
+            item.style.display = !val || txt.includes(val) ? "" : "none";
+          });
+        });
+      }
+      const confirmBtn = pop.querySelector(".combo-pop-confirm");
+      if(confirmBtn) confirmBtn.addEventListener("click", confirmPopInput);
+    }
+    function confirmPopInput(){
+      if(!popInput) return;
+      const v = popInput.value.trim();
+      if(!v){ close(); return; }
+      let ok = true;
+      if(typeof opts.onAdd === "function") ok = opts.onAdd(v);
+      else if(typeof opts.onFree === "function") ok = opts.onFree(v);
+      if(ok){
+        input.value = v; close();
+        input.dispatchEvent(new Event("input", { bubbles:true }));
+        input.dispatchEvent(new Event("change", { bubbles:true }));
+      }else close();
     }
     function open(full){ renderList(full ? "" : input.value); pop.classList.add("open"); btn.classList.add("open"); }
-    function close(){ pop.classList.remove("open"); btn.classList.remove("open"); }
+    function close(){ pop.classList.remove("open"); btn.classList.remove("open"); popInput = null; }
     btn.addEventListener("click", e => { e.stopPropagation(); pop.classList.contains("open") ? close() : open(true); });
     input.addEventListener("focus", () => open(true)); // 聚焦/再次点开都给完整列表
     input.addEventListener("input", () => open(false));
@@ -180,6 +213,7 @@
       refreshActive();
       const cur = cats.find(c => c.name === activeCat);
       const subs = cur ? getSubs(cur.name) : [];
+      const inputHtml = `<div class="casc-input-row"><input type="text" class="casc-pop-input" placeholder="直接输入…" value="${S.esc(input.value)}" /><button type="button" class="casc-pop-confirm">确定</button></div>`;
       pop.innerHTML =
         '<div class="casc-grid">' +
           '<div class="casc-left">' +
@@ -188,11 +222,27 @@
           '<div class="casc-right">' +
             (subs.length
               ? subs.map(s => `<button type="button" class="casc-sub" data-sub="${S.esc(s.name)}" data-cat="${S.esc(cur.name)}"><div class="casc-sub-n">${S.esc(s.name)}</div>${s.desc ? `<div class="casc-sub-d">${S.esc(s.desc)}</div>` : ""}</button>`).join("")
-              : '<div class="combo-empty">该大类下还没有小类</div>') +
-            (typeof opts.onAddSub === "function"
-              ? `<button type="button" class="casc-sub casc-add" data-addsub="1">＋ 在「${S.esc(cur.name)}」下新增小类</button>` : "") +
+              : '<div class="combo-empty">该大类下还没有小类，可直接输入</div>') +
+            inputHtml +
           '</div>' +
         '</div>';
+      // 绑定弹层面板输入框
+      const popInput = pop.querySelector(".casc-pop-input");
+      const confirmBtn = pop.querySelector(".casc-pop-confirm");
+      if(popInput && confirmBtn){
+        confirmBtn.addEventListener("click", () => {
+          const v = popInput.value.trim();
+          if(!v){ close(); return; }
+          if(typeof opts.onAddSub === "function"){
+            const ok = opts.onAddSub(activeCat, v, "");
+            if(ok){ input.value = v; close();
+              input.dispatchEvent(new Event("input", { bubbles:true }));
+              input.dispatchEvent(new Event("change", { bubbles:true }));
+            }else close();
+          }
+        });
+        popInput.addEventListener("keydown", e => { if(e.key === "Enter") confirmBtn.click(); });
+      }
     }
     function open(){ render(); pop.classList.add("open"); btn.classList.add("open"); }
     function close(){ pop.classList.remove("open"); btn.classList.remove("open"); }
@@ -554,7 +604,7 @@
     const d = document.createElement("div"); d.className = "extras-row";
     d.innerHTML = `<input class="el" type="text" value="${S.esc(label)}" placeholder="名目（建模/运费…）" />
       <input class="ea" type="number" min="0" step="0.01" value="${S.num(amount) || ""}" placeholder="金额" />
-      <button class="btn danger ghost tiny" type="button">✕</button>`;
+      <button class="row-btn danger" type="button" title="删除此行"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>`;
     d.querySelector("button").addEventListener("click", () => { d.remove(); orderCalc(); });
     d.querySelectorAll("input").forEach(i => i.addEventListener("input", orderCalc));
     return d;
@@ -571,7 +621,7 @@
     d.innerHTML = `<input class="pd" type="date" value="${S.esc(date)}" />
       <input class="pa" type="number" min="0" step="0.01" value="${S.num(amount) || ""}" placeholder="金额" />
       <input class="pn" type="text" value="${S.esc(note)}" placeholder="备注（定金/尾款…）" />
-      <button class="btn danger ghost tiny" type="button">✕</button>`;
+      <button class="row-btn danger" type="button" title="删除此行"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>`;
     d.querySelector("button").addEventListener("click", () => { d.remove(); orderCalc(); });
     d.querySelectorAll("input").forEach(i => i.addEventListener("input", orderCalc));
     return d;
@@ -1151,8 +1201,10 @@
   $("setOrdPrefix").addEventListener("change", () => { S.setSettings({ ordPrefix:$("setOrdPrefix").value.trim().toUpperCase() || "ORD" }); });
   $("setStart").addEventListener("change", () => { S.setSettings({ startPage:$("setStart").value }); });
   $("setTheme").addEventListener("change", () => {
-    S.setSettings({ theme:$("setTheme").value });
+    const val = $("setTheme").value;
+    S.settings.theme = val; // 直接赋值，确保立即生效
     applyTheme(); updateMeta();
+    S.setSettings({ theme: val }); // 异步保存到服务端
   });
   $("setFontSize").addEventListener("change", () => {
     S.setSettings({ fontScale:Number($("setFontSize").value) || 1 });
@@ -1227,13 +1279,11 @@
     // 生成大类列表 HTML
     const catListHtml = cats.map((cat, ci) => `
       <div class="cat-list-item${cat.name === selectedCat ? ' selected' : ''}" data-cat="${S.esc(cat.name)}" data-i="${ci}" draggable="true">
-        <div class="drag-handle" title="拖拽排序">☰</div>
-        ${ci === 0 ? '<span class="pin-badge" title="已置顶">📌</span>' : ""}
-        <div class="cat-name" contenteditable="true" spellcheck="false" title="点击编辑名称">${S.esc(cat.name)}</div>
+        <div class="drag-handle" title="拖拽排序">☰</div>        <div class="cat-name" contenteditable="true" spellcheck="false" title="点击编辑名称">${S.esc(cat.name)}</div>
         <span class="cat-count">${cat.subs.length}</span>
         <div class="edits">
-          ${ci > 0 ? `<button class="btn ghost tiny pin-cat-btn" data-pincat="${S.esc(cat.name)}" data-i="${ci}" type="button" title="置顶显示">📌</button>` : ""}
-          <button class="btn danger ghost tiny del-cat-btn" data-delcat="${S.esc(cat.name)}" type="button" title="删除该大类（含其下所有小类）">✕</button>
+          <button class="row-btn pin-cat-btn${ci === 0 ? " pinned" : ""}" data-pincat="${S.esc(cat.name)}" data-i="${ci}" type="button" title="置顶显示"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/></svg></button>
+          <button class="row-btn danger del-cat-btn" data-delcat="${S.esc(cat.name)}" type="button" title="删除该大类（含其下所有小类）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
         </div>
       </div>`).join("");
     
@@ -1250,15 +1300,13 @@
     if(selectedCategory){
       subListHtml = selectedCategory.subs.map((s, si) => `
         <div class="preset-sub-row" data-cat="${S.esc(selectedCat)}" data-sub="${S.esc(s.name)}" data-sub-i="${si}" draggable="true">
-          <div class="sub-drag-handle" title="拖拽排序">☰</div>
-          ${si === 0 ? '<span class="pin-badge" title="已置顶">📌</span>' : ""}
-          <div class="sub-body">
+          <div class="sub-drag-handle" title="拖拽排序">☰</div>          <div class="sub-body">
             <div class="sub-nm" contenteditable="true" spellcheck="false" title="点击编辑名称">${S.esc(s.name)}</div>
             <div class="sub-ds" contenteditable="true" spellcheck="false" data-placeholder="点此添加说明…">${S.esc(s.desc || "")}</div>
           </div>
           <div class="edits">
-            ${si > 0 ? `<button class="btn ghost tiny pin-sub-btn" data-pinsub="${si}" type="button" title="置顶显示">📌</button>` : ""}
-            <button class="btn danger ghost tiny del-sub-btn" data-sub="${S.esc(s.name)}" type="button" title="删除该小类">✕</button>
+            <button class="row-btn pin-sub-btn${si === 0 ? " pinned" : ""}" data-pinsub="${si}" type="button" title="置顶显示"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/></svg></button>
+            <button class="row-btn danger del-sub-btn" data-sub="${S.esc(s.name)}" type="button" title="删除该小类"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
           </div>
         </div>`).join("");
       subListHtml += `
@@ -1478,13 +1526,11 @@
           })() : "";
           return `
           <div class="preset-row" data-i="${i}" draggable="true">
-            <div class="drag-handle" title="拖拽排序">☰</div>
-            ${i === 0 ? '<span class="pin-badge" title="已置顶">📌</span>' : ""}
-            ${colorHtml}
+            <div class="drag-handle" title="拖拽排序">☰</div>            ${colorHtml}
             <div class="nm" contenteditable="true" spellcheck="false">${S.esc(v)}</div>
             <div class="edits">
-              ${i > 0 ? `<button class="btn ghost tiny" data-pin="${i}" type="button" title="置顶显示">📌</button>` : ""}
-              <button class="btn danger ghost tiny" data-del="${i}" type="button" title="删除">✕</button>
+              <button class="row-btn${i === 0 ? " pinned" : ""}" data-pin="${i}" type="button" title="置顶显示"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/></svg></button>
+              <button class="row-btn danger" data-del="${i}" type="button" title="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
           </div>`;
         }).join("") + '</div>'
@@ -1589,10 +1635,26 @@
     toast("已重置为默认");
   });
 
-  function applyTheme(){ document.documentElement.dataset.theme = S.settings.theme; }
+  /* 应用外观并写入本地缓存（供 index.html 首屏脚本使用，消除刷新时的主题闪烁） */
+  function persistUi(){
+    try{
+      localStorage.setItem("pf_ui", JSON.stringify({
+        theme:S.settings.theme, font:S.settings.font || "sys", fontScale:Number(S.settings.fontScale) || 1
+      }));
+    }catch(e){}
+  }
+  const VALID_THEMES = { dark:1, light:1, nord:1, matcha:1, sunset:1, rose:1, paper:1 };
+  function applyTheme(){
+    const t = S.settings.theme;
+    // 兜底：若主题无效，强制使用 dark
+    document.documentElement.dataset.theme = VALID_THEMES[t] ? t : "dark";
+    if(!VALID_THEMES[t]) S.settings.theme = "dark"; // 修正脏数据
+    persistUi();
+  }
   function applyFont(){
     document.documentElement.dataset.font = S.settings.font || "sys";
-    document.body.style.zoom = Number(S.settings.fontScale) || 1;
+    document.documentElement.style.zoom = Number(S.settings.fontScale) || 1;
+    persistUi();
   }
   function updateMeta(){
     const bgMap = { dark:"#0e1218", light:"#f2f4f7", nord:"#2e3440", matcha:"#101712", sunset:"#1a1210", rose:"#191218", paper:"#f6f1e7" };
@@ -1644,7 +1706,7 @@
   Object.assign(RENDERERS, { dash:renderDash, calc:calc, order:()=>{}, olist:renderOrders, mats:renderMaterials, printers:renderPrinters, records:renderRecords, settings:renderSettings });
 
   /* 数据同步状态 LED */
-  S.onSync(st => {
+  function updateSyncLed(st){
     const led = $("saveLed"), txt = $("modeText");
     if(st === "saving"){ led.style.background = "var(--accent)"; led.style.boxShadow = "0 0 6px var(--accent)"; txt.textContent = "保存中…"; }
     else if(st === "error"){ led.style.background = "var(--danger)"; led.style.boxShadow = "0 0 6px var(--danger)"; txt.textContent = "保存失败，请检查服务"; }
@@ -1653,7 +1715,10 @@
       led.style.background = ok; led.style.boxShadow = "0 0 6px " + ok;
       txt.textContent = S.mode === "server" ? "服务端存储 · 已同步" : "本地模式 · 服务未连接";
     }
-  });
+  }
+  S.onSync(updateSyncLed);
+  // init() 在 store.js 加载时已同步执行，onSync 回调可能已错过初始 emit，这里主动更新一次
+  updateSyncLed("saved");
 
   /* 时长下拉（闹钟样式） */
   (function fillDuration(){
@@ -1952,6 +2017,9 @@
     const canPerms = isAdmin && !isMe;
     $("editPermsBox").hidden = !canPerms;
     if(canPerms) renderPermsGrid(u.perms);
+    const canSession = isAdmin;
+    $("editSessionBox").hidden = !canSession;
+    if(canSession) $("editSessionDays").value = sessionDaysCache != null ? sessionDaysCache : 30;
     // 邮箱：自己改需验证码；管理员改他人可直接设置
     $("editUserEmail").value = u.email || "";
     $("editMailCode").value = "";
@@ -2035,11 +2103,17 @@
           if(!anyPage){ toast("至少需要保留一个可访问页面"); return; }
           updates.perms = perms;
         }
-        if(!Object.keys(updates).length){
+        // 会话有效期为全局设置，从编辑表单单独保存
+        const sdRaw = $("editSessionDays").value.trim();
+        const sd = Number(sdRaw);
+        const sdChanged = sessionDaysCache == null ? false : sd !== sessionDaysCache;
+        if(sdChanged && (!(sd >= 1 && sd <= 365))){ toast("会话有效期需为 1-365 的整数天"); return; }
+        if(!Object.keys(updates).length && !sdChanged){
           if(emailChanged){ hideEditUser(); toast("邮箱已更新"); loadUserMgmt(); return; }
           toast("没有修改"); return;
         }
-        await S.apiUpdateUser(id, updates);
+        if(Object.keys(updates).length) await S.apiUpdateUser(id, updates);
+        if(sdChanged) await S.authCfgSave(sd);
         hideEditUser();
         if(pw && isMe){
           // 改自己的密码后旧会话已失效，回登录门
@@ -2079,15 +2153,12 @@
   }
 
   /* ---------- 登录安全：会话有效期（仅管理员） ---------- */
+  let sessionDaysCache = null; // 全局会话有效期（天），编辑表单使用
   async function loadSessionCard(){
-    const card = $("sessionCard");
-    if(!card) return;
-    card.hidden = false;
     try{
       const cfg = await S.authCfgGet();
-      $("sessionDays").value = cfg.sessionDays;
-      $("sessionMsg").textContent = "当前设置：" + cfg.sessionDays + " 天后登录过期。修改只对之后的新登录生效。";
-    }catch(e){ card.hidden = true; }
+      sessionDaysCache = cfg.sessionDays;
+    }catch(e){ sessionDaysCache = null; }
   }
   $("sessionSave").addEventListener("click", async () => {
     const days = Number($("sessionDays").value);

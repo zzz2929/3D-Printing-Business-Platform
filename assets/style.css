@@ -409,6 +409,16 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 .combo-item.on{color:var(--accent);font-weight:600}
 .combo-empty{padding:10px 12px;color:var(--faint);font-size:12px}
 .combo-add{color:var(--accent)}
+.combo-input-row{display:flex;gap:6px;padding:8px 12px;border-top:1px solid var(--panel2);margin-top:4px}
+.combo-pop-input{flex:1;min-width:0;padding:6px 8px;font-size:13px;font-family:inherit;border:1px solid var(--panel2);border-radius:4px;background:var(--surface);color:var(--ink);outline:none}
+.combo-pop-input:focus{border-color:var(--accent)}
+.combo-pop-confirm{padding:6px 12px;font-size:13px;border:none;border-radius:4px;background:var(--accent);color:#fff;cursor:pointer;font-family:inherit;white-space:nowrap}
+.combo-pop-confirm:hover{opacity:.85}
+.casc-input-row{display:flex;gap:6px;padding:8px 0 4px;border-top:1px solid var(--panel2);margin-top:4px}
+.casc-pop-input{flex:1;min-width:0;padding:6px 8px;font-size:13px;font-family:inherit;border:1px solid var(--panel2);border-radius:4px;background:var(--surface);color:var(--ink);outline:none}
+.casc-pop-input:focus{border-color:var(--accent)}
+.casc-pop-confirm{padding:6px 12px;font-size:13px;border:none;border-radius:4px;background:var(--accent);color:#fff;cursor:pointer;font-family:inherit;white-space:nowrap}
+.casc-pop-confirm:hover{opacity:.85}
 
 /* ---------- 必填红点 / 筛选栏 / 闹钟时长 ---------- */
 .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--danger);margin-left:5px;vertical-align:2px;box-shadow:0 0 4px var(--danger-dim)}
@@ -686,6 +696,21 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 /* 颜色预设行：色块 + 色值输入 */
 .preset-row .sw{width:16px;height:16px;flex:0 0 16px;margin:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.25)}
 .preset-row .hex-in{flex:0 0 96px;width:96px;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;padding:4px 6px}
+
+/* 预设/开单行内图标按钮：默认淡灰，悬停显色（删除悬停变红） */
+.row-btn{
+  width:22px;height:22px;padding:0;flex:0 0 22px;
+  display:inline-flex;align-items:center;justify-content:center;
+  background:transparent;border:1px solid transparent;border-radius:6px;
+  color:var(--faint);cursor:pointer;transition:color .12s,background .12s,border-color .12s;
+}
+.row-btn svg{width:12px;height:12px}
+.row-btn:hover{color:var(--ink);background:var(--panel2);border-color:var(--line2)}
+.row-btn.danger:hover{color:var(--danger);background:var(--danger-dim);border-color:transparent}
+.row-btn.danger:hover svg{stroke:var(--danger)}
+/* 置顶按钮：已置顶的行高亮显示 */
+.row-btn.pinned{color:var(--accent);opacity:.95}
+.row-btn.pinned:hover{color:var(--accent);background:var(--accent-dim);border-color:transparent}
 /* 预设置顶标记 */
 .pin-badge{font-size:10px;margin:0 2px;cursor:default;opacity:.85}
 .preset-cat{
@@ -751,4 +776,10 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 @media(max-width:520px){
   .preset-sub-row{flex-wrap:wrap}
   .preset-sub-row .edits{width:100%;justify-content:flex-end}
+}
+
+/* ---------- 色块可见性：描边跟随主题文字色混合，深浅主题下都清晰 ---------- */
+.sw,.sw-p,.preset-row .sw,.preset-row .hex-in{
+  border:1px solid color-mix(in srgb,var(--ink) 28%,transparent) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.28) !important;
 }
