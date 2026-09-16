@@ -27,7 +27,7 @@
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="apple-touch-icon" href="icon.svg" />
 <link rel="icon" href="icon.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="assets/style.css?v=41" />
+<link rel="stylesheet" href="assets/style.css?v=44" />
 </head>
 <body>
 
@@ -359,8 +359,8 @@
       <div class="set-tabs" id="setTabs" role="tablist">
         <button data-p="general" class="on" type="button">常规</button>
         <button data-p="presets" type="button">预设管理</button>
-        <button data-p="update" type="button">版本与更新</button>
-        <button data-p="data" type="button">数据与账号</button>
+        <button data-p="data" type="button">数据与账号管理</button>
+        <button data-p="update" type="button">关于</button>
       </div>
       <div class="set-pane" id="setp-general">
         <div class="col2">
@@ -427,33 +427,6 @@
         </div>
       </div>
 
-      <div class="set-pane" id="setp-update" hidden>
-        <div class="card">
-          <div class="card-head"><h2>版本与更新</h2><span class="pill" id="verCur">…</span></div>
-          <div class="row" style="margin-top:8px">
-            <button class="btn" id="checkUpd">检查更新</button>
-            <button class="btn ghost" id="getUpd" style="display:none">获取更新</button>
-          </div>
-          <div id="updResult" class="upd-result" hidden></div>
-          <details style="margin-top:12px">
-            <summary class="muted" style="cursor:pointer">更新日志</summary>
-            <div id="changelogList" style="margin-top:8px"></div>
-          </details>
-          <details style="margin-top:10px">
-            <summary class="muted" style="cursor:pointer">高级选项 · 自定义更新源</summary>
-            <div style="margin-top:8px">
-              <label>更新源 URL</label>
-              <input id="setUpdateUrl" placeholder="留空使用默认源" style="margin-top:4px" />
-              <p class="muted" style="margin:6px 0 0;font-size:11px">填写远程 version.json 的 URL，如使用 GitHub Raw：https://raw.githubusercontent.com/你/仓库/main/version.json</p>
-            </div>
-          </details>
-        </div>
-        <div class="card">
-          <div class="card-head"><h2>关于</h2></div>
-          <p class="muted" style="margin:0 0 6px">3D打印业务平台 · 3D 打印经营台 — 前后端分离、零构建、零 npm 依赖。同一份静态文件配合 Node / Workers / Vercel 宿主，可部署到 Docker（含飞牛OS）、Cloudflare Workers、Vercel 等环境。</p>
-        </div>
-      </div>
-
       <div class="set-pane" id="setp-data" hidden>
         <div class="set-cols">
           <div class="card">
@@ -506,9 +479,9 @@
                   <option value="admin">管理员</option>
                 </select>
               </div>
-              <div id="editSessionBox" hidden><label>会话有效期（天）</label>
-                <input id="editSessionDays" type="number" min="1" max="365" step="1" style="width:100%" />
-                <div class="hint">全局设置，对所有用户的新登录生效</div>
+              <div id="editSessionBox" hidden><label>会话有效期（天，0 表示永久）</label>
+                <input id="editSessionDays" type="number" min="0" max="365" step="1" style="width:100%" />
+                <div class="hint">全局设置，对所有用户的新登录生效；填 0 表示永久有效</div>
               </div>
             </div>
             <div id="editSelfPwBox" hidden style="margin-top:8px">
@@ -587,6 +560,30 @@
               <button class="btn ghost" id="openModeSkipBtn">跳过，保持开放模式</button>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div class="set-pane" id="setp-update" hidden>
+        <div class="card">
+          <div class="card-head"><h2>关于</h2><span class="pill" id="verCur">…</span></div>
+          <p class="muted" style="margin:0 0 12px">3D打印业务平台 · 3D 打印经营台 — 前后端分离、零构建、零 npm 依赖。同一份静态文件配合 Node / Workers / Vercel 宿主，可部署到 Docker（含飞牛OS）、Cloudflare Workers、Vercel 等环境。</p>
+          <div class="row" style="margin-top:8px">
+            <button class="btn" id="checkUpd">检查更新</button>
+            <button class="btn ghost" id="getUpd" style="display:none">获取更新</button>
+          </div>
+          <div id="updResult" class="upd-result" hidden></div>
+          <details style="margin-top:12px">
+            <summary class="muted" style="cursor:pointer">更新日志</summary>
+            <div id="changelogList" style="margin-top:8px"></div>
+          </details>
+          <details style="margin-top:10px">
+            <summary class="muted" style="cursor:pointer">高级选项 · 自定义更新源</summary>
+            <div style="margin-top:8px">
+              <label>更新源 URL</label>
+              <input id="setUpdateUrl" placeholder="留空使用默认源" style="margin-top:4px" />
+              <p class="muted" style="margin:6px 0 0;font-size:11px">填写远程 version.json 的 URL，如使用 GitHub Raw：https://raw.githubusercontent.com/你/仓库/main/version.json</p>
+            </div>
+          </details>
         </div>
       </div>
     </section>
@@ -727,7 +724,7 @@
 <div class="toast" id="toast" role="status"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
-<script src="assets/store.js?v=41"></script>
-<script src="assets/app.js?v=41"></script>
+<script src="assets/store.js?v=44"></script>
+<script src="assets/app.js?v=44"></script>
 </body>
 </html>

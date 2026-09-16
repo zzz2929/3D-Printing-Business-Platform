@@ -86,7 +86,7 @@ export function createRouter(store, mailer){
       if(user.role !== "admin") return json({ error:"只有管理员可以修改登录安全设置" }, 403);
       const body = await readBody(req) || {};
       const days = Math.round(Number(body.sessionDays));
-      if(!(days >= 1 && days <= 365)) return json({ error:"会话有效期需为 1-365 的整数天" }, 400);
+      if(!(days >= 0 && days <= 365)) return json({ error:"会话有效期需为 0-365 的整数天（0 表示永久）" }, 400);
       const prev = await store.get("authcfg") || {};
       await store.set("authcfg", Object.assign(prev, { sessionDays:days }));
       return json({ ok:true, sessionDays:days });

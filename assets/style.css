@@ -419,6 +419,12 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 .casc-pop-input:focus{border-color:var(--accent)}
 .casc-pop-confirm{padding:6px 12px;font-size:13px;border:none;border-radius:4px;background:var(--accent);color:#fff;cursor:pointer;font-family:inherit;white-space:nowrap}
 .casc-pop-confirm:hover{opacity:.85}
+.combo-search-row{padding:8px 10px;border-bottom:1px solid var(--panel2);position:sticky;top:0;background:var(--panel);z-index:1}
+.combo-search-input{width:100%;padding:6px 10px;font-size:13px;font-family:inherit;border:1px solid var(--panel2);border-radius:6px;background:var(--surface);color:var(--ink);outline:none;box-sizing:border-box}
+.combo-search-input:focus{border-color:var(--accent)}
+.casc-search-row{padding:0 0 8px;border-bottom:1px solid var(--panel2);margin-bottom:4px}
+.casc-search-input{width:100%;padding:6px 10px;font-size:13px;font-family:inherit;border:1px solid var(--panel2);border-radius:6px;background:var(--surface);color:var(--ink);outline:none;box-sizing:border-box}
+.casc-search-input:focus{border-color:var(--accent)}
 
 /* ---------- 必填红点 / 筛选栏 / 闹钟时长 ---------- */
 .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--danger);margin-left:5px;vertical-align:2px;box-shadow:0 0 4px var(--danger-dim)}

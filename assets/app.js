@@ -76,9 +76,11 @@
       $("dlgInput").hidden = !opts.input;
       if(opts.input) $("dlgInput").value = opts.def || "";
       $("dlgOk").textContent = opts.okText || "确定";
-      $("dlg").hidden = false;
+      const dlg = $("dlg");
+      dlg.hidden = false;
+      dlg.style.opacity = ""; dlg.style.visibility = ""; // 清除 gsap 可能残留的 autoAlpha:0
       fx(g => {
-        g.from("#dlg", { autoAlpha:0, duration:0.18, ease:"power1.out" });
+        g.from(dlg, { autoAlpha:0, duration:0.18, ease:"power1.out", clearProps:"opacity,visibility" });
         g.from("#dlg .ob-card", { y:18, scale:0.96, autoAlpha:0, duration:0.3, ease:"power3.out", clearProps:"all" });
       });
       (opts.input ? $("dlgInput") : $("dlgOk")).focus();
@@ -110,56 +112,36 @@
     const btn = document.createElement("button"); btn.type = "button"; btn.className = "combo-caret"; btn.title = "展开选项";
     wrap.appendChild(btn);
     const pop = document.createElement("div"); pop.className = "combo-pop"; wrap.appendChild(pop);
-    let popInput = null; // 弹层面板内的输入框
-    function renderList(q){
-      const ql = String(q || "").trim().toLowerCase();
+    let searchVal = "";
+    function renderList(){
+      const ql = searchVal.trim().toLowerCase();
       const all = getOptions();
       const list = all.filter(o => !ql || o.toLowerCase().includes(ql));
-      const v = input.value.trim();
-      const exists = !v || all.indexOf(v) >= 0;
-      const addHtml = (!exists && v)
-        ? `<button type="button" class="combo-item combo-add" data-add="${S.esc(v)}">＋ 把「<b>${S.esc(v)}</b>」加入预设</button>` : "";
-      const itemsHtml = addHtml + list.map(o => `<button type="button" class="combo-item${o === input.value ? " on" : ""}">${S.esc(o)}</button>`).join("");
-      const inputHtml = `<div class="combo-input-row"><input type="text" class="combo-pop-input" placeholder="直接输入…" value="${S.esc(v)}" /><button type="button" class="combo-pop-confirm">确定</button></div>`;
-      pop.innerHTML = (list.length || addHtml || v)
-        ? itemsHtml + inputHtml
-        : '<div class="combo-empty">无匹配项 — 直接在下方输入新内容</div>' + inputHtml;
-      // 绑定弹层面板输入框事件
-      popInput = pop.querySelector(".combo-pop-input");
-      if(popInput){
-        popInput.addEventListener("keydown", e => { if(e.key === "Enter"){ e.preventDefault(); confirmPopInput(); }});
-        popInput.addEventListener("input", e => {
-          // 同步过滤列表
-          const val = e.target.value.trim().toLowerCase();
-          const filtered = all.filter(o => !val || o.toLowerCase().includes(val));
-          const items = pop.querySelectorAll(".combo-item:not(.combo-add)");
-          items.forEach(item => {
-            const txt = item.textContent.toLowerCase();
-            item.style.display = !val || txt.includes(val) ? "" : "none";
-          });
+      const searchHtml = `<div class="combo-search-row"><input type="text" class="combo-search-input" placeholder="搜索…" value="${S.esc(searchVal)}" /></div>`;
+      const addHtml = (ql && list.length === 0)
+        ? `<button type="button" class="combo-item combo-add" data-add="${S.esc(searchVal.trim())}">＋ 添加为新的预设「<b>${S.esc(searchVal.trim())}</b>」</button>` : "";
+      const itemsHtml = list.map(o => `<button type="button" class="combo-item${o === input.value ? " on" : ""}">${S.esc(o)}</button>`).join("");
+      const emptyHtml = (!ql && list.length === 0) ? '<div class="combo-empty">暂无预设，在上方搜索栏输入名称后添加</div>' : '';
+      pop.innerHTML = searchHtml + addHtml + itemsHtml + emptyHtml;
+      const si = pop.querySelector(".combo-search-input");
+      if(si){
+        si.addEventListener("input", e => {
+          searchVal = e.target.value;
+          const pos = e.target.selectionStart;
+          renderList();
+          const ni = pop.querySelector(".combo-search-input");
+          if(ni){ ni.focus(); ni.setSelectionRange(pos, pos); }
+        });
+        si.addEventListener("keydown", e => {
+          if(e.key === "Enter"){ e.preventDefault(); const ab = pop.querySelector("[data-add]"); if(ab) ab.click(); }
         });
       }
-      const confirmBtn = pop.querySelector(".combo-pop-confirm");
-      if(confirmBtn) confirmBtn.addEventListener("click", confirmPopInput);
     }
-    function confirmPopInput(){
-      if(!popInput) return;
-      const v = popInput.value.trim();
-      if(!v){ close(); return; }
-      let ok = true;
-      if(typeof opts.onAdd === "function") ok = opts.onAdd(v);
-      else if(typeof opts.onFree === "function") ok = opts.onFree(v);
-      if(ok){
-        input.value = v; close();
-        input.dispatchEvent(new Event("input", { bubbles:true }));
-        input.dispatchEvent(new Event("change", { bubbles:true }));
-      }else close();
-    }
-    function open(full){ renderList(full ? "" : input.value); pop.classList.add("open"); btn.classList.add("open"); }
-    function close(){ pop.classList.remove("open"); btn.classList.remove("open"); popInput = null; }
-    btn.addEventListener("click", e => { e.stopPropagation(); pop.classList.contains("open") ? close() : open(true); });
-    input.addEventListener("focus", () => open(true)); // 聚焦/再次点开都给完整列表
-    input.addEventListener("input", () => open(false));
+    function open(){ searchVal = input.value; renderList(); pop.classList.add("open"); btn.classList.add("open"); }
+    function close(){ pop.classList.remove("open"); btn.classList.remove("open"); searchVal = ""; }
+    btn.addEventListener("click", e => { e.stopPropagation(); pop.classList.contains("open") ? close() : open(); });
+    input.addEventListener("focus", () => open());
+    input.addEventListener("input", () => { searchVal = input.value; if(!pop.classList.contains("open")){ pop.classList.add("open"); btn.classList.add("open"); } renderList(); });
     pop.addEventListener("click", e => {
       const addBtn = e.target.closest("[data-add]");
       if(addBtn){
@@ -197,6 +179,7 @@
     const pop = document.createElement("div"); pop.className = "casc-pop";
     wrap.appendChild(pop);
     let activeCat = null;
+    let searchVal = "";
 
     function getCats(){ return opts.getCategories().slice(); }
     function getSubs(c){ return opts.getSubs(c).slice(); }
@@ -212,49 +195,49 @@
       }
       refreshActive();
       const cur = cats.find(c => c.name === activeCat);
-      const subs = cur ? getSubs(cur.name) : [];
-      const inputHtml = `<div class="casc-input-row"><input type="text" class="casc-pop-input" placeholder="直接输入…" value="${S.esc(input.value)}" /><button type="button" class="casc-pop-confirm">确定</button></div>`;
+      const allSubs = cur ? getSubs(cur.name) : [];
+      const ql = searchVal.trim().toLowerCase();
+      const subs = allSubs.filter(s => !ql || s.name.toLowerCase().includes(ql) || (s.desc && s.desc.toLowerCase().includes(ql)));
+      const searchHtml = `<div class="casc-search-row"><input type="text" class="casc-search-input" placeholder="搜索小类…" value="${S.esc(searchVal)}" /></div>`;
+      const addHtml = (ql && subs.length === 0)
+        ? `<button type="button" class="casc-sub casc-add" data-addsub="${S.esc(searchVal.trim())}"><div class="casc-sub-n">＋ 添加为新的预设「<b>${S.esc(searchVal.trim())}</b>」</div><div class="casc-sub-d">添加到「${S.esc(cur.name)}」下</div></button>` : "";
+      const subsHtml = subs.map(s => `<button type="button" class="casc-sub" data-sub="${S.esc(s.name)}" data-cat="${S.esc(cur.name)}"><div class="casc-sub-n">${S.esc(s.name)}</div>${s.desc ? `<div class="casc-sub-d">${S.esc(s.desc)}</div>` : ""}</button>`).join("");
+      const emptyHtml = (!ql && subs.length === 0) ? '<div class="combo-empty">该大类下还没有小类，在上方搜索栏输入名称后添加</div>' : '';
       pop.innerHTML =
         '<div class="casc-grid">' +
           '<div class="casc-left">' +
             cats.map(c => `<button type="button" class="casc-cat${c.name === activeCat ? " on" : ""}" data-cat="${S.esc(c.name)}">${S.esc(c.name)}</button>`).join("") +
           '</div>' +
           '<div class="casc-right">' +
-            (subs.length
-              ? subs.map(s => `<button type="button" class="casc-sub" data-sub="${S.esc(s.name)}" data-cat="${S.esc(cur.name)}"><div class="casc-sub-n">${S.esc(s.name)}</div>${s.desc ? `<div class="casc-sub-d">${S.esc(s.desc)}</div>` : ""}</button>`).join("")
-              : '<div class="combo-empty">该大类下还没有小类，可直接输入</div>') +
-            inputHtml +
+            searchHtml + addHtml + subsHtml + emptyHtml +
           '</div>' +
         '</div>';
-      // 绑定弹层面板输入框
-      const popInput = pop.querySelector(".casc-pop-input");
-      const confirmBtn = pop.querySelector(".casc-pop-confirm");
-      if(popInput && confirmBtn){
-        confirmBtn.addEventListener("click", () => {
-          const v = popInput.value.trim();
-          if(!v){ close(); return; }
-          if(typeof opts.onAddSub === "function"){
-            const ok = opts.onAddSub(activeCat, v, "");
-            if(ok){ input.value = v; close();
-              input.dispatchEvent(new Event("input", { bubbles:true }));
-              input.dispatchEvent(new Event("change", { bubbles:true }));
-            }else close();
-          }
+      const si = pop.querySelector(".casc-search-input");
+      if(si){
+        si.addEventListener("input", e => {
+          searchVal = e.target.value;
+          const pos = e.target.selectionStart;
+          render();
+          const ni = pop.querySelector(".casc-search-input");
+          if(ni){ ni.focus(); ni.setSelectionRange(pos, pos); }
         });
-        popInput.addEventListener("keydown", e => { if(e.key === "Enter") confirmBtn.click(); });
+        si.addEventListener("keydown", e => {
+          if(e.key === "Enter"){ e.preventDefault(); const ab = pop.querySelector("[data-addsub]"); if(ab) ab.click(); }
+        });
       }
     }
-    function open(){ render(); pop.classList.add("open"); btn.classList.add("open"); }
-    function close(){ pop.classList.remove("open"); btn.classList.remove("open"); }
+    function open(){ searchVal = input.value; render(); pop.classList.add("open"); btn.classList.add("open"); }
+    function close(){ pop.classList.remove("open"); btn.classList.remove("open"); searchVal = ""; }
     btn.addEventListener("click", e => { e.stopPropagation(); pop.classList.contains("open") ? close() : open(); });
     input.addEventListener("focus", () => open());
+    input.addEventListener("input", () => { searchVal = input.value; if(!pop.classList.contains("open")){ pop.classList.add("open"); btn.classList.add("open"); } render(); });
     pop.addEventListener("click", e => {
-      e.stopPropagation(); // 阻止冒泡到 document，避免 render() 替换 innerHTML 后 wrap.contains() 失效导致误关弹层
+      e.stopPropagation();
       const cat = e.target.closest("[data-cat]");
       const sub = e.target.closest("[data-sub]");
       const addSub = e.target.closest("[data-addsub]");
-      if(cat && !sub){
-        activeCat = cat.getAttribute("data-cat"); render(); return;
+      if(cat && !sub && !addSub){
+        activeCat = cat.getAttribute("data-cat"); searchVal = ""; render(); return;
       }
       if(sub){
         const catName = sub.getAttribute("data-cat");
@@ -267,41 +250,19 @@
         return;
       }
       if(addSub){
-        // 弹窗输入新小类名 + 说明
-        (async () => {
-          const nm = await promptBox("在「" + activeCat + "」下新增小类名称", "");
-          if(!nm) return;
-          const ds = await promptBox("简短说明（可留空）", "");
-          if(typeof opts.onAddSub === "function"){
-            const ok = opts.onAddSub(activeCat, nm.trim(), (ds || "").trim());
-            if(ok){ input.value = nm.trim(); close(); render();
-              input.dispatchEvent(new Event("input", { bubbles:true }));
-              input.dispatchEvent(new Event("change", { bubbles:true }));
-              toast("已新增：「" + activeCat + " / " + nm.trim() + "」");
-            }
-          }
-        })();
+        const v = addSub.getAttribute("data-addsub");
+        if(typeof opts.onAddSub === "function"){
+          const ok = opts.onAddSub(activeCat, v, "");
+          if(ok){ input.value = v; close();
+            input.dispatchEvent(new Event("input", { bubbles:true }));
+            input.dispatchEvent(new Event("change", { bubbles:true }));
+            toast("已加入「" + activeCat + "」下：「" + v + "」");
+          }else close();
+        }
       }
     });
-    // 弹层内部滚轮不关闭弹层；点击空白处才关闭
     pop.addEventListener("wheel", e => e.stopPropagation());
     document.addEventListener("click", e => { if(!wrap.contains(e.target)) close(); });
-    /* 失焦时：若输入值不在任何小类里，自动作为新小类加到"当前激活的大类" */
-    if(typeof opts.onAddSub === "function"){
-      input.addEventListener("blur", () => {
-        const v = input.value.trim(); if(!v) return;
-        const cats = opts.getCategories();
-        // 排除：值等于某个大类名（避免老数据里纯大类名被误当小类）
-        if(cats.find(c => c.name === v)) return;
-        const all = [].concat(...cats.map(c => (opts.getSubs(c.name) || []).map(s => s.name)));
-        if(all.indexOf(v) >= 0) return;
-        refreshActive();
-        const cat = activeCat || (cats[0] && cats[0].name);
-        if(!cat) return;
-        if(S.addSub(cat, v, "")) toast("已加入「" + cat + "」下：「" + v + "」（可在设置页补充说明）");
-      });
-    }
-    /* 暴露刷新方法，供"设置页改了预设"后重渲染 */
     wrap.refresh = () => { if(pop.classList.contains("open")) render(); };
   }
 
@@ -1407,7 +1368,8 @@
     
     // 删除大类
     catList.querySelectorAll(".del-cat-btn").forEach(b => {
-      b.addEventListener("click", async () => {
+      b.addEventListener("click", async e => {
+        e.stopPropagation();
         const cat = b.getAttribute("data-delcat");
         const c = S.findCategory(cat);
         const n = c ? c.subs.length : 0;
@@ -1492,7 +1454,8 @@
       
       // 删除小类
       subList.querySelectorAll(".del-sub-btn").forEach(b => {
-        b.addEventListener("click", async () => {
+        b.addEventListener("click", async e => {
+          e.stopPropagation();
           const sub = b.getAttribute("data-sub");
           if(await confirmBox("删除小类「" + selectedCat + " / " + sub + "」？")){
             S.removeSub(selectedCat, sub); renderPresetCategories();
@@ -1611,7 +1574,8 @@
     });
     /* 删 */
     box.querySelectorAll("[data-del]").forEach(b => {
-      b.addEventListener("click", async () => {
+      b.addEventListener("click", async e => {
+        e.stopPropagation();
         const i = +b.getAttribute("data-del");
         if(await confirmBox("删除「" + arr[i] + "」？")){ S.removeFromList(key, arr[i]); renderPresets(); }
       });
@@ -2067,7 +2031,7 @@
         const statePill = u.disabled
           ? '<span class="pill" style="background:var(--danger)">已停用</span>'
           : '<span class="pill">已启用</span>';
-        const sessionTd = isAdmin ? `<td>${sessionDaysCache != null ? sessionDaysCache + " 天" : "—"}</td>` : "";
+        const sessionTd = isAdmin ? `<td>${sessionDaysCache === 0 ? "永久" : (sessionDaysCache != null ? sessionDaysCache + " 天" : "—")}</td>` : "";
         const delBtn = isAdmin && !isMe
           ? `<button class="btn danger ghost sm" data-delu="${u.id}" data-name="${S.esc(u.username)}">删除</button>` : "";
         return `<tr>
@@ -2194,7 +2158,7 @@
         const sdRaw = $("editSessionDays").value.trim();
         const sd = Number(sdRaw);
         const sdChanged = sessionDaysCache == null ? false : sd !== sessionDaysCache;
-        if(sdChanged && (!(sd >= 1 && sd <= 365))){ toast("会话有效期需为 1-365 的整数天"); return; }
+        if(sdChanged && (!(sd >= 0 && sd <= 365))){ toast("会话有效期需为 0-365 的整数天（0 表示永久）"); return; }
         if(!Object.keys(updates).length && !sdChanged){
           if(emailChanged){ hideEditUser(); toast("邮箱已更新"); loadUserMgmt(); return; }
           toast("没有修改"); return;
@@ -2253,11 +2217,11 @@
     if(!btn) return; // 元素缺失，不绑定（防御性）
     btn.addEventListener("click", async () => {
       const days = Number($("sessionDays").value);
-      if(!(days >= 1 && days <= 365)){ $("sessionMsg").textContent = "请输入 1-365 的整数天"; $("sessionMsg").style.color = "var(--danger)"; return; }
+      if(!(days >= 0 && days <= 365)){ $("sessionMsg").textContent = "请输入 0-365 的整数天（0 表示永久）"; $("sessionMsg").style.color = "var(--danger)"; return; }
       btn.disabled = true;
       try{
         await S.authCfgSave(days);
-        $("sessionMsg").textContent = "已保存：" + days + " 天后登录过期（对之后的新登录生效）。";
+        $("sessionMsg").textContent = days === 0 ? "已保存：登录永久有效（对之后的新登录生效）。" : "已保存：" + days + " 天后登录过期（对之后的新登录生效）。";
         $("sessionMsg").style.color = "var(--ok)";
         toast("会话有效期已更新为 " + days + " 天");
       }catch(e){

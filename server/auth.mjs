@@ -88,14 +88,16 @@ export function createAuth(store, mailer){
     return users.find(u => u.username.toLowerCase() === username.toLowerCase());
   }
 
-  /* 会话有效期（天）：管理员可在设置页配置，默认 30 天（范围 1-365） */
+  /* 会话有效期（天）：管理员可在设置页配置，默认 30 天；0 表示永久 */
   async function sessionDays(){
     const cfg = await store.get("authcfg");
     const d = Number(cfg && cfg.sessionDays);
-    return (d >= 1 && d <= 365) ? d : 30;
+    return (d >= 0 && d <= 365) ? d : 30;
   }
+  const FOREVER_MS = 100 * 365 * 86400 * 1000; // 100 年，用作“永久”的过期时间
   async function signToken(user){
-    const exp = Date.now() + (await sessionDays()) * 86400 * 1000;
+    const days = await sessionDays();
+    const exp = days === 0 ? Date.now() + FOREVER_MS : Date.now() + days * 86400 * 1000;
     return exp + "." + (await hmacHex(user.secret, "pf:" + exp));
   }
 
@@ -406,7 +408,8 @@ export function getCookie(req, name){
   return null;
 }
 export function tokenCookie(token, days){
-  const maxAge = (Number(days) >= 1 && Number(days) <= 365 ? Number(days) : 30) * 86400;
+  const d = Number(days);
+  const maxAge = (d === 0) ? 100 * 365 * 86400 : ((d >= 1 && d <= 365) ? d : 30) * 86400;
   return "pf_token=" + encodeURIComponent(token) + "; HttpOnly; Path=/; Max-Age=" + maxAge + "; SameSite=Lax";
 }
 export const CLEAR_COOKIE = "pf_token=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax";
