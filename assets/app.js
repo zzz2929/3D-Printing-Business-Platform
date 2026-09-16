@@ -1742,7 +1742,6 @@
     renderDash(); renderOrders(); renderMaterials(); renderPrinters(); renderRecords();
     $("headDate").textContent = S.today();
   }
-  refreshAll();
   goto((location.hash.match(/^#\/(\w+)/) || [])[1] || "dash");
 
   /* ---------- 版本与更新 ---------- */
