@@ -2004,7 +2004,7 @@
   $("loginPw").addEventListener("keydown", e => { if(e.key === "Enter") doLogin(); });
   /* 退出登录：顶栏唯一入口，登录态可见 */
   const logoutEl = $("logoutBtnTop");
-  logoutEl.addEventListener("click", () => { manualLogout = true; S.logout(); });
+  logoutEl.addEventListener("click", async () => { await S.logout(); location.reload(); });
   /* 顶栏兜底"登录"按钮：未登录但需要登录时显示，点击直接弹登录门 */
   const loginTopEl = $("loginBtnTop");
   if(loginTopEl){
@@ -2035,11 +2035,9 @@
       : "管理自己的账号：可修改登录密码。";
     $("addUserSection").hidden = !isAdmin;
     hideEditUser();
-    const sdi = $("sessionDaysInfo"); if(sdi) sdi.hidden = !isAdmin;
     if(isAdmin){
       loadSmtpCard(); // 邮件服务配置（仅管理员）
-      await loadSessionCard(); // 登录安全（仅管理员）
-      if(sdi && !sdi.hidden){ $("sessionDaysValue").textContent = sessionDaysCache != null ? sessionDaysCache : "—"; }
+      await loadSessionCard(); // 登录安全（仅管理员，供表格显示登录有效期）
     }
     try{
       let users;
@@ -2060,7 +2058,8 @@
   function renderUserList(users, isAdmin){
     const box = $("userList");
     const me = S.auth.userId || "";
-    box.innerHTML = `<table><thead><tr><th>用户名</th><th>角色</th><th>状态</th><th style="white-space:nowrap">操作</th></tr></thead><tbody>` +
+    const sessionTh = isAdmin ? '<th style="white-space:nowrap">登录有效期</th>' : "";
+    box.innerHTML = `<table><thead><tr><th>用户名</th><th>角色</th><th>状态</th>${sessionTh}<th style="white-space:nowrap">操作</th></tr></thead><tbody>` +
       users.map(u => {
         const isMe = u.id === me;
         const rolePill = u.role === "admin"
@@ -2069,12 +2068,14 @@
         const statePill = u.disabled
           ? '<span class="pill" style="background:var(--danger)">已停用</span>'
           : '<span class="pill">已启用</span>';
+        const sessionTd = isAdmin ? `<td>${sessionDaysCache != null ? sessionDaysCache + " 天" : "—"}</td>` : "";
         const delBtn = isAdmin && !isMe
           ? `<button class="btn danger ghost sm" data-delu="${u.id}" data-name="${S.esc(u.username)}">删除</button>` : "";
         return `<tr>
           <td>${S.esc(u.username)}${isMe ? ' <span class="pill">当前账号</span>' : ""}</td>
           <td>${rolePill}</td>
           <td>${statePill}</td>
+          ${sessionTd}
           <td style="white-space:nowrap"><button class="btn ghost sm" data-editu="${u.id}">编辑</button> ${delBtn}</td>
         </tr>`;
       }).join("") + "</tbody></table>";
