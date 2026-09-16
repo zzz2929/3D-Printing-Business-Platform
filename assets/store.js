@@ -298,6 +298,10 @@ const Store = (function(){
   const dirty = new Set(); let flushT = null;
   function onSync(fn){ syncFns.push(fn); }
   function emit(st){ syncFns.forEach(f => { try{ f(st); }catch(e){} }); }
+  /* 鉴权状态变化回调（用于登录/登出时主动刷新 UI，避免依赖 location.reload） */
+  let authChangeFn = null;
+  function onAuthChange(fn){ authChangeFn = fn; }
+  function emitAuthChange(){ if(authChangeFn){ try{ authChangeFn(); }catch(_){ } } }
   async function push(col){
     dirty.add(col); emit("saving");
     clearTimeout(flushT);
@@ -443,6 +447,7 @@ const Store = (function(){
     const u = d.user || {};
     auth.role = u.role; auth.userId = u.id; auth.username = u.username; auth.perms = u.perms || null; auth.email = u.email || "";
     await tryLoad();
+    emitAuthChange();
   }
   /* 开放模式下创建第一个管理员（服务端首个注册用户自动为 admin），成功后整站转为密码保护 */
   async function createAdmin(username, pw){
@@ -452,6 +457,7 @@ const Store = (function(){
     auth.ok = true; auth.required = true; auth.openMode = false;
     const u = d.user || {};
     auth.role = u.role; auth.userId = u.id; auth.username = u.username; auth.perms = u.perms || null; auth.email = u.email || "";
+    emitAuthChange();
     return d;
   }
   /* 邮箱绑定与忘记密码 */
@@ -537,7 +543,10 @@ const Store = (function(){
   }
   async function logout(){
     try{ await fetch("/api/logout", { method:"POST" }); }catch(e){}
-    location.reload();
+    // 不再 location.reload()（service worker 缓存可能命中旧版本）—— 直接重置本地状态并通知 app.js
+    auth.required = true; auth.ok = false; auth.openMode = false;
+    auth.role = null; auth.userId = null; auth.username = null; auth.perms = null; auth.email = "";
+    emitAuthChange();
   }
 
   /* ---------- 计算 ---------- */
@@ -708,7 +717,7 @@ const Store = (function(){
     get settings(){ return settings; }, get achKeys(){ return achKeys; },
     get mode(){ return mode; },
     get auth(){ return auth; },
-    ready, onSync,
+    ready, onSync, onAuthChange,
     login, logout, createAdmin,
     setSettings(p){ Object.assign(settings, p); push("settings"); },
     getTheme(){ return settings.theme; },

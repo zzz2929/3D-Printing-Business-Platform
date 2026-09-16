@@ -778,6 +778,53 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
   .preset-sub-row .edits{width:100%;justify-content:flex-end}
 }
 
+/* ---------- 内联校验 & 密码强度 ---------- */
+.adm-err{
+  min-height:14px;margin-top:4px;font-size:11.5px;color:var(--faint);
+  transition:color .15s;
+}
+.adm-err.bad{color:var(--err, #ff6b6b)}
+.adm-err.ok{color:var(--ok, #3ddc97)}
+input.invalid{border-color:var(--err, #ff6b6b) !important;box-shadow:0 0 0 2px rgba(255,107,107,.15)}
+input.valid{border-color:var(--ok, #3ddc97) !important}
+
+.pw-meter{margin-top:6px}
+.pw-meter-bar{
+  width:100%;height:5px;border-radius:3px;background:var(--line2);overflow:hidden;
+}
+.pw-meter-bar i{
+  display:block;height:100%;width:0%;
+  background:var(--err, #ff6b6b);transition:width .2s, background .2s;
+}
+.pw-meter-bar.lv-2 i{background:#ff9f43;width:50%}
+.pw-meter-bar.lv-3 i{background:#ffd23f;width:75%}
+.pw-meter-bar.lv-4 i{background:var(--ok, #3ddc97);width:100%}
+.pw-meter-label{font-size:11px;color:var(--faint);margin-top:2px;min-height:14px}
+
+.btn:disabled{opacity:.45;cursor:not-allowed;pointer-events:none}
+
+/* ---------- 首启设置向导 ---------- */
+.setup-card{max-width:480px;width:92vw;text-align:left;padding:22px 24px}
+.setup-step{
+  position:absolute;top:14px;right:18px;
+  font-size:11px;color:var(--faint);letter-spacing:.04em;
+}
+.setup-card .ob-icon{display:none}  /* 用标题取代大图标 */
+.setup-card h2{margin:0 0 4px;font-size:18px}
+.setup-card #setupSub{margin-bottom:14px;font-size:13px;line-height:1.55}
+.setup-card label{
+  display:block;margin-top:10px;font-size:12px;color:var(--faint);font-weight:500;
+}
+.setup-card input{margin-top:4px;width:100%;font-size:13.5px}
+.setup-pane{padding:4px 0}
+#setupStep2 .grid.g2 > div{display:flex;flex-direction:column}
+#setupStep2 .grid.g2 input,#setupStep2 .grid.g2 select{margin-top:2px}
+
+@media(max-width:520px){
+  .setup-card{padding:18px 16px}
+  .setup-step{right:12px}
+}
+
 /* ---------- 色块可见性：描边跟随主题文字色混合，深浅主题下都清晰 ---------- */
 .sw,.sw-p,.preset-row .sw,.preset-row .hex-in{
   border:1px solid color-mix(in srgb,var(--ink) 28%,transparent) !important;

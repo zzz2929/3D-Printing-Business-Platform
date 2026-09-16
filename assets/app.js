@@ -1167,6 +1167,9 @@
     if(activeSetPane === "presets"){
       if(typeof renderPresets === "function") renderPresets();
     }
+    if(activeSetPane === "data"){
+      if(typeof loadUserMgmt === "function") loadUserMgmt();
+    }
   }
   $("setTabs").addEventListener("click", e => {
     const b = e.target.closest("button[data-p]"); if(!b) return;
@@ -1649,7 +1652,8 @@
     // 兜底：若主题无效，强制使用 dark
     document.documentElement.dataset.theme = VALID_THEMES[t] ? t : "dark";
     if(!VALID_THEMES[t]) S.settings.theme = "dark"; // 修正脏数据
-    persistUi();
+    // Bug fix: 仅在主题有效时才写入 localStorage，避免 null/undefined 覆盖缓存导致刷新跳回 dark
+    if(S.settings.theme) persistUi();
   }
   function applyFont(){
     document.documentElement.dataset.font = S.settings.font || "sys";
@@ -1819,32 +1823,106 @@
   let appStarted = false;
   function appStart(){
     if(appStarted) return; appStarted = true;
-    refreshAll(); applyPerms();
+    refreshAll(); applyPerms(); applyLogoutVisibility();
     // 按当前 hash 落页（goto 内部会拦下无权限的页面）
     goto((location.hash.match(/^#\/(\w+)/) || [])[1] || currentTab || "dash");
-    if(!S.settings.onboarded) obShow(); // 初次使用自动引导
+    // 首启优先级：开放模式 + 未完成首启设置 → 向导；否则常规新手引导
+    if(S.mode === "server" && S.auth.openMode && !S.settings.setupDone){
+      setupShow();
+    }else if(!S.settings.onboarded){
+      obShow(); // 初次使用自动引导
+    }
     const sp = S.settings.startPage;    // 启动页
     if(sp && PAGE_TITLES[sp] && !location.hash) goto(sp);
   }
+  /* 鉴权状态变化统一回调：登出 → 弹登录门；登入 → 收起登录门并刷新 */
+  let manualLogout = false;
+  function handleAuthChange(){
+    applyLogoutVisibility();
+    const required = S.auth.required;
+    const ok = S.auth.ok;
+    if(required && !ok){
+      // 已登出或首次登录：收起其它 overlay，弹登录门
+      const w = $("setupWizard"); if(w) w.hidden = true;
+      const o = $("onboard"); if(o) o.hidden = true;
+      appStarted = false; // 允许后续登录后重新 appStart
+      if(manualLogout){ manualLogout = false; } else { showLoginGate(); }
+    }else if(required && ok){
+      // 已登录：收起登录门，确保界面已启动
+      const g = $("loginGate"); if(g) g.hidden = true;
+      appStart();
+      loadUserMgmt();
+    }
+  }
+  S.onAuthChange(handleAuthChange);
   function loginErr(msg){
     const e = $("loginErr"); e.textContent = msg; e.hidden = !msg;
   }
   /* 密码强度验证：8位以上，包含大小写字母和数字 */
   function validatePassword(pw){
+    if(!pw) return "请输入密码";
     if(pw.length < 8) return "密码至少 8 位";
     if(!/[A-Z]/.test(pw)) return "密码需包含大写字母";
     if(!/[a-z]/.test(pw)) return "密码需包含小写字母";
     if(!/\d/.test(pw)) return "密码需包含数字";
     return "";
   }
+  /* 密码强度等级：0 空 / 1 仅长度 / 2 长度+任一规则 / 3 长度+两类规则 / 4 全部满足 */
+  function pwStrength(pw){
+    if(!pw) return 0;
+    let lv = 1;
+    if(pw.length >= 8) lv++;
+    const types = [/[A-Z]/, /[a-z]/, /\d/, /[^A-Za-z0-9]/].filter(re => re.test(pw)).length;
+    if(types >= 2) lv++;
+    if(types >= 3 && pw.length >= 10) lv++;
+    return Math.min(4, lv);
+  }
+  /* 内联错误显示：errEl 显示 ok / bad / hint；inputEl 加 valid / invalid 边框 */
+  function setFieldState(errEl, inputEl, msg, isBad){
+    if(errEl){
+      errEl.textContent = msg || "";
+      errEl.classList.toggle("bad", !!isBad);
+      errEl.classList.toggle("ok", !!msg && !isBad);
+    }
+    if(inputEl){
+      inputEl.classList.toggle("invalid", !!isBad);
+      inputEl.classList.toggle("valid", !!msg && !isBad);
+    }
+  }
+  /* 用户名校验：2 位以上，字母数字下划线 */
+  function validateUsername(name){
+    if(!name) return "请输入用户名";
+    if(name.length < 2) return "用户名至少 2 个字符";
+    if(!/^[a-zA-Z0-9_]+$/.test(name)) return "用户名只能包含字母、数字和下划线";
+    return "";
+  }
+  /* 邮箱格式校验（空字符串视为合法——邮箱可选） */
+  function validateEmailOptional(em){
+    if(!em) return "";
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return "邮箱格式不正确";
+    return "";
+  }
+  /* 更新密码强度条 */
+  function updatePwMeter(pw, meterEl, barEl, labelEl){
+    if(!meterEl) return;
+    if(!pw){ meterEl.hidden = true; return; }
+    meterEl.hidden = false;
+    const lv = pwStrength(pw);
+    const labels = ["", "弱：仅长度", "一般：满足部分规则", "良好：长度+多类型", "强：长度+字符种类丰富"];
+    barEl.parentElement.className = "pw-meter-bar" + (lv >= 2 ? " lv-" + lv : "");
+    labelEl.textContent = labels[lv] || "";
+  }
   function showLoginGate(){
     $("loginTitle").textContent = "登录";
     $("loginSub").textContent = "输入用户名和密码登录。";
     $("loginUser").value = ""; $("loginPw").value = "";
-    loginErr(""); $("loginGate").hidden = false;
+    loginErr("");
+    const gate = $("loginGate");
+    gate.hidden = false;
+    gate.style.opacity = ""; gate.style.visibility = "";
     $("loginMain").hidden = false; $("forgotBox").hidden = true;
     fx(g => {
-      g.from("#loginGate", { autoAlpha:0, duration:0.22, ease:"power1.out" });
+      g.from(gate, { autoAlpha:0, duration:0.22, ease:"power1.out", clearProps:"opacity,visibility" });
       g.from("#loginGate .ob-card", { y:26, scale:0.96, autoAlpha:0, duration:0.38, ease:"power3.out", clearProps:"all" });
     });
     $("loginUser").focus();
@@ -1926,10 +2004,17 @@
   $("loginPw").addEventListener("keydown", e => { if(e.key === "Enter") doLogin(); });
   /* 退出登录：顶栏唯一入口，登录态可见 */
   const logoutEl = $("logoutBtnTop");
-  logoutEl.addEventListener("click", () => S.logout());
+  logoutEl.addEventListener("click", () => { manualLogout = true; S.logout(); });
+  /* 顶栏兜底"登录"按钮：未登录但需要登录时显示，点击直接弹登录门 */
+  const loginTopEl = $("loginBtnTop");
+  if(loginTopEl){
+    loginTopEl.addEventListener("click", () => showLoginGate());
+  }
   function applyLogoutVisibility(){
-    const logged = S.mode === "server" && S.auth.required && S.auth.ok;
-    logoutEl.style.display = logged ? "" : "none";
+    const needAuth = S.mode === "server" && S.auth.required && !S.auth.ok;
+    const logged   = S.mode === "server" && S.auth.required && S.auth.ok;
+    logoutEl.style.display  = logged  ? "" : "none";
+    if(loginTopEl) loginTopEl.style.display = needAuth ? "" : "none";
   }
 
   /* ---------- 用户管理（账号设置已合并于此） ----------
@@ -1950,9 +2035,11 @@
       : "管理自己的账号：可修改登录密码。";
     $("addUserSection").hidden = !isAdmin;
     hideEditUser();
+    const sdi = $("sessionDaysInfo"); if(sdi) sdi.hidden = !isAdmin;
     if(isAdmin){
       loadSmtpCard(); // 邮件服务配置（仅管理员）
-      loadSessionCard(); // 登录安全（仅管理员）
+      await loadSessionCard(); // 登录安全（仅管理员）
+      if(sdi && !sdi.hidden){ $("sessionDaysValue").textContent = sessionDaysCache != null ? sessionDaysCache : "—"; }
     }
     try{
       let users;
@@ -2160,21 +2247,25 @@
       sessionDaysCache = cfg.sessionDays;
     }catch(e){ sessionDaysCache = null; }
   }
-  $("sessionSave").addEventListener("click", async () => {
-    const days = Number($("sessionDays").value);
-    if(!(days >= 1 && days <= 365)){ $("sessionMsg").textContent = "请输入 1-365 的整数天"; $("sessionMsg").style.color = "var(--danger)"; return; }
+  /* 会话有效期设置卡（仅管理员）：HTML 中如尚未补全则跳过绑定，避免中断后续脚本 */
+  (function bindSessionCard(){
     const btn = $("sessionSave");
-    btn.disabled = true;
-    try{
-      await S.authCfgSave(days);
-      $("sessionMsg").textContent = "已保存：" + days + " 天后登录过期（对之后的新登录生效）。";
-      $("sessionMsg").style.color = "var(--ok)";
-      toast("会话有效期已更新为 " + days + " 天");
-    }catch(e){
-      $("sessionMsg").textContent = e.message || "保存失败";
-      $("sessionMsg").style.color = "var(--danger)";
-    }finally{ btn.disabled = false; }
-  });
+    if(!btn) return; // 元素缺失，不绑定（防御性）
+    btn.addEventListener("click", async () => {
+      const days = Number($("sessionDays").value);
+      if(!(days >= 1 && days <= 365)){ $("sessionMsg").textContent = "请输入 1-365 的整数天"; $("sessionMsg").style.color = "var(--danger)"; return; }
+      btn.disabled = true;
+      try{
+        await S.authCfgSave(days);
+        $("sessionMsg").textContent = "已保存：" + days + " 天后登录过期（对之后的新登录生效）。";
+        $("sessionMsg").style.color = "var(--ok)";
+        toast("会话有效期已更新为 " + days + " 天");
+      }catch(e){
+        $("sessionMsg").textContent = e.message || "保存失败";
+        $("sessionMsg").style.color = "var(--danger)";
+      }finally{ btn.disabled = false; }
+    });
+  })();
 
   /* ---------- 邮件服务（SMTP）配置：仅管理员，存服务端 ---------- */
   function smtpMsg(msg, isErr){
@@ -2249,23 +2340,209 @@
     }catch(e){ toast(e.message || "添加失败"); }
   });
 
-  /* 开放模式 → 启用密码保护：创建第一个管理员（服务端自动授予 admin 角色） */
+  /* ============ 首启设置向导 ============
+   仅当服务端处于开放模式且用户未跳过首次设置时弹出。
+   Step 1：创建管理员（必填用户名 / 密码，邮箱可选）
+   Step 2：SMTP 配置（全部可选，可跳过 → 保持开放模式）
+   任意步骤选「跳过」即记录 openModeSkipped 标记并关闭向导 */
+  let setupIdx = 0;
+  const SETUP_STEPS = [
+    { ic:"👋", title:"欢迎使用 3D 打印业务平台",  sub:"先设置一个管理员账号，即可启用密码保护。也可跳过保持开放模式。" },
+    { ic:"📧", title:"配置邮件服务（可选）",     sub:"启用后用户绑定邮箱，可通过验证码重置密码。" }
+  ];
+  function setupRender(){
+    const s = SETUP_STEPS[setupIdx];
+    $("setupStep").textContent = (setupIdx + 1) + " / " + SETUP_STEPS.length;
+    $("setupIcon").textContent = s.ic;
+    $("setupTitle").textContent = s.title;
+    $("setupSub").textContent = s.sub;
+    $("setupStep1").hidden = setupIdx !== 0;
+    $("setupStep2").hidden = setupIdx !== 1;
+    $("setupPrev").hidden = setupIdx === 0;
+    $("setupNext").textContent = setupIdx === SETUP_STEPS.length - 1 ? "完成" : "下一步";
+    // 进入 Step 2 时若有 SMTP 错误则清空
+    if(setupIdx === 1){ setFieldState($("setupSmtpErr"), null, "", false); }
+  }
+  function refreshSetupStep1(){
+    const name = $("setupUserName").value.trim();
+    const em   = $("setupEmail").value.trim();
+    const pw   = $("setupPw").value;
+    const cf   = $("setupPwConfirm").value;
+    const nameErr = validateUsername(name);
+    const emErr   = validateEmailOptional(em);
+    const pwErr   = pw ? validatePassword(pw) : "";
+    const cfErr   = cf && cf !== pw ? "两次输入的密码不一致" : "";
+    setFieldState($("setupUserNameErr"), $("setupUserName"), name ? (nameErr || "✓ 可用") : "", !!nameErr);
+    setFieldState($("setupEmailErr"),   $("setupEmail"),     emErr ? emErr : (em ? "✓ 格式正确" : ""), !!emErr);
+    setFieldState($("setupPwErr"),      $("setupPw"),        pwErr || (pw ? "✓ 符合强度要求" : ""), !!pwErr);
+    setFieldState($("setupPwConfirmErr"),$("setupPwConfirm"), cfErr || (cf && !cfErr ? "✓ 一致" : ""), !!cfErr);
+    updatePwMeter(pw, $("setupPwMeter"), $("setupPwMeterBar"), $("setupPwMeterLabel"));
+    return { nameErr, emErr, pwErr, cfErr, name, em, pw, cf };
+  }
+  function setupShow(){
+    setupIdx = 0; setupRender();
+    // 重置表单（保留可能已输入的值）
+    ["setupUserName","setupEmail","setupPw","setupPwConfirm"].forEach(id => { const el = $(id); if(el) el.value = ""; });
+    ["setupUserNameErr","setupEmailErr","setupPwErr","setupPwConfirmErr"].forEach(id => setFieldState($(id), null, "", false));
+    refreshSetupStep1();
+    $("setupWizard").hidden = false;
+    fx(g => {
+      g.from("#setupWizard", { autoAlpha:0, duration:0.2, ease:"power1.out" });
+      g.from("#setupWizard .ob-card", { y:24, scale:0.96, autoAlpha:0, duration:0.36, ease:"power3.out", clearProps:"all" });
+    });
+    $("setupUserName").focus();
+  }
+  function setupClose(){
+    $("setupWizard").hidden = true;
+    S.setSettings({ setupDone:true });
+  }
+  ["setupUserName","setupEmail","setupPw","setupPwConfirm"].forEach(id => {
+    const el = $(id); if(!el) return;
+    el.addEventListener("input", refreshSetupStep1);
+    el.addEventListener("blur", refreshSetupStep1);
+  });
+  $("setupPrev").addEventListener("click", () => {
+    if(setupIdx > 0){ setupIdx--; setupRender(); }
+  });
+  $("setupNext").addEventListener("click", async () => {
+    if(setupIdx === 0){
+      const st = refreshSetupStep1();
+      // 校验顺序：用户名 → 邮箱 → 密码 → 确认密码
+      if(st.nameErr){ setFieldState($("setupUserNameErr"), $("setupUserName"), st.nameErr, true); $("setupUserName").focus(); toast(st.nameErr); return; }
+      if(st.emErr){ setFieldState($("setupEmailErr"), $("setupEmail"), st.emErr, true); $("setupEmail").focus(); toast(st.emErr); return; }
+      if(!st.pw){ $("setupPw").focus(); toast("请输入密码"); return; }
+      if(st.pwErr){ setFieldState($("setupPwErr"), $("setupPw"), st.pwErr, true); $("setupPw").focus(); toast(st.pwErr); return; }
+      if(!st.cf){ $("setupPwConfirm").focus(); toast("请再次输入密码"); return; }
+      if(st.cfErr){ setFieldState($("setupPwConfirmErr"), $("setupPwConfirm"), st.cfErr, true); $("setupPwConfirm").focus(); toast(st.cfErr); return; }
+      const next = $("setupNext");
+      const orig = next.textContent;
+      next.textContent = "创建中…"; next.style.pointerEvents = "none";
+      try{
+        await S.createAdmin(st.name, st.pw);
+        if(st.em){
+          try{ await S.mailCode(st.em); toast("已发送邮箱验证码，请在「数据与账号」→ 自己的账号中绑定"); }
+          catch(_){ /* SMTP 未配置可忽略 */ }
+        }
+        next.textContent = orig; next.style.pointerEvents = "";
+        setupIdx = 1; setupRender();
+      }catch(e){
+        setFieldState($("setupUserNameErr"), $("setupUserName"), e.message || "创建失败", true);
+        next.textContent = orig; next.style.pointerEvents = "";
+        refreshSetupStep1();
+        toast(e.message || "创建失败");
+      }
+      return;
+    }
+    if(setupIdx === 1){
+      // SMTP 配置：可全部留空跳过；填写了任何字段就尝试保存
+      const cfg = {
+        host: $("setupSmtpHost").value.trim(),
+        port: Number($("setupSmtpPort").value) || 465,
+        user: $("setupSmtpUser").value.trim(),
+        pass: $("setupSmtpPass").value,
+        from: $("setupSmtpFrom").value.trim() || $("setupSmtpUser").value.trim(),
+        secure: $("setupSmtpSecure").value
+      };
+      const hasAny = cfg.host || cfg.user || cfg.pass;
+      if(hasAny){
+        const next = $("setupNext");
+        const orig = next.textContent;
+        next.textContent = "保存中…"; next.style.pointerEvents = "none";
+        try{ await S.smtpSave(cfg); toast("SMTP 已配置"); next.textContent = orig; next.style.pointerEvents = ""; }
+        catch(e){
+          setFieldState($("setupSmtpErr"), null, e.message || "保存失败", true);
+          next.textContent = orig; next.style.pointerEvents = "";
+          toast(e.message || "保存失败"); return;
+        }
+      }
+      setupClose();
+      toast("设置完成 ✓");
+    }
+  });
+  $("setupSkip").addEventListener("click", () => {
+    // Step 1 中途跳过 → 不创建任何账号，保持开放模式
+    if(setupIdx === 0 && ($("setupUserName").value.trim() || $("setupPw").value)){
+      showDialog("确认跳过？将不创建管理员账号，本系统保持开放模式。").then(ok => {
+        if(!ok) return;
+        setupClose();
+        S.setSettings({ openModeSkipped:true });
+        toast("已跳过，本系统继续以开放模式运行");
+      });
+      return;
+    }
+    setupClose();
+    // Step 2 跳过 SMTP：此时管理员已创建，系统已转密码保护；不需 openModeSkipped 标记
+    if(setupIdx === 1){
+      toast("已跳过邮件服务设置，可稍后在「数据与账号」中配置");
+    }
+  });
+
+/* 开放模式 → 启用密码保护：创建第一个管理员（服务端自动授予 admin 角色）
+     内联校验：用户名 / 邮箱 / 密码 / 确认密码 实时校验，错误就近提示
+     按钮始终可点：点击时再做最终校验并以 toast + 内联红字告知 */
+  function refreshAdmFormState(){
+    const name = $("admUserName").value.trim();
+    const em   = $("admUserEmail").value.trim();
+    const pw   = $("admUserPw").value;
+    const cf   = $("admUserPwConfirm").value;
+    const nameErr = validateUsername(name);
+    const emErr   = validateEmailOptional(em);
+    const pwErr   = pw ? validatePassword(pw) : "";
+    const cfErr   = cf && cf !== pw ? "两次输入的密码不一致" : "";
+    setFieldState($("admUserNameErr"), $("admUserName"), name ? (nameErr || "✓ 可用") : "", !!nameErr);
+    setFieldState($("admUserEmailErr"), $("admUserEmail"), emErr ? emErr : (em ? "✓ 格式正确" : ""), !!emErr);
+    setFieldState($("admUserPwErr"), $("admUserPw"), pwErr || (pw ? "✓ 符合强度要求" : ""), !!pwErr);
+    setFieldState($("admUserPwConfirmErr"), $("admUserPwConfirm"), cfErr || (cf && !cfErr ? "✓ 一致" : ""), !!cfErr);
+    updatePwMeter(pw, $("admPwMeter"), $("admPwMeterBar"), $("admPwMeterLabel"));
+    return { nameErr, emErr, pwErr, cfErr, name, em, pw, cf };
+  }
+  ["admUserName","admUserEmail","admUserPw","admUserPwConfirm"].forEach(id => {
+    const el = $(id); if(!el) return;
+    el.addEventListener("input", refreshAdmFormState);
+    el.addEventListener("blur", refreshAdmFormState);
+  });
+  refreshAdmFormState();
+
   $("createAdminBtn").addEventListener("click", async () => {
-    const name = $("admUserName").value.trim(), pw = $("admUserPw").value;
-    if(name.length < 2){ toast("用户名至少 2 个字符"); return; }
-    if(!/^[a-zA-Z0-9_]+$/.test(name)){ toast("用户名只能包含字母、数字和下划线"); return; }
-    const pwdErr = validatePassword(pw);
-    if(pwdErr){ toast(pwdErr); return; }
+    const st = refreshAdmFormState();
+    // 第一处错误就近高亮 + 聚焦 + toast 告知
+    if(st.nameErr){ setFieldState($("admUserNameErr"), $("admUserName"), st.nameErr, true); $("admUserName").focus(); toast(st.nameErr); return; }
+    if(st.emErr){ setFieldState($("admUserEmailErr"), $("admUserEmail"), st.emErr, true); $("admUserEmail").focus(); toast(st.emErr); return; }
+    if(!st.pw){ $("admUserPw").focus(); toast("请输入密码"); return; }
+    if(st.pwErr){ setFieldState($("admUserPwErr"), $("admUserPw"), st.pwErr, true); $("admUserPw").focus(); toast(st.pwErr); return; }
+    if(!st.cf){ $("admUserPwConfirm").focus(); toast("请再次输入密码"); return; }
+    if(st.cfErr){ setFieldState($("admUserPwConfirmErr"), $("admUserPwConfirm"), st.cfErr, true); $("admUserPwConfirm").focus(); toast(st.cfErr); return; }
+    const btn = $("createAdminBtn");
+    const orig = btn.textContent;
+    btn.textContent = "创建中…"; btn.style.pointerEvents = "none";
     try{
-      await S.createAdmin(name, pw);
+      await S.createAdmin(st.name, st.pw);
+      // 可选：邮箱绑定（如有）
+      if(st.em){
+        try{ await S.mailCode(st.em); }catch(_){ /* 邮箱绑定失败不影响创建 */ }
+      }
       $("openModeCard").hidden = true;
       loadUserMgmt();
-      toast("管理员已创建，本站已启用密码保护，其他设备需重新登录");
-    }catch(e){ toast(e.message || "创建失败"); }
+      toast("管理员已创建，本站已启用密码保护" + (st.em ? "；绑定邮箱验证码已发送" : ""));
+    }catch(e){
+      toast(e.message || "创建失败");
+      btn.textContent = orig; btn.style.pointerEvents = "";
+      // 服务端常见错误就近显示到第一个输入框下
+      if(/用户名/.test(e.message || "")){ setFieldState($("admUserNameErr"), $("admUserName"), e.message, true); }
+      else if(/邮箱|email/i.test(e.message || "")){ setFieldState($("admUserEmailErr"), $("admUserEmail"), e.message, true); }
+      else if(/密码|password/i.test(e.message || "")){ setFieldState($("admUserPwErr"), $("admUserPw"), e.message, true); }
+    }
+  });
+
+  /* 开放模式下跳过启用保护：关闭卡片、记一笔本地标记不再骚扰 */
+  $("openModeSkipBtn").addEventListener("click", () => {
+    $("openModeCard").hidden = true;
+    S.setSettings({ openModeSkipped: true });
+    toast("已跳过，本系统继续以开放模式运行");
   });
 
   Store.ready.then(mode => {
-    if(mode === "auth"){ showLoginGate(); return; } // 服务端要求登录
+    if(mode === "auth"){ applyLogoutVisibility(); showLoginGate(); return; } // 服务端要求登录
     appStart();
     loadUserMgmt();
   });

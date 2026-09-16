@@ -73,6 +73,7 @@
     <header class="topbar">
       <h1 id="pageTitle">仪表盘</h1>
       <div class="top-actions">
+        <button class="btn ghost sm" id="loginBtnTop" style="display:none">登录</button>
         <button class="btn ghost sm" id="logoutBtnTop" style="display:none">退出登录</button>
         <span class="pill" id="headDate"></span>
       </div>
@@ -492,6 +493,7 @@
             <span class="pill" id="userMgmtScope">仅管理员</span>
           </div>
           <p class="muted" id="userMgmtDesc" style="margin-top:0">管理账号：编辑用户名、重置密码、分配角色、停用或删除。</p>
+          <p class="muted" id="sessionDaysInfo" style="margin-top:4px" hidden>登录会话有效期：<b id="sessionDaysValue">—</b> 天（对新登录生效，可在编辑任意用户时修改）</p>
           <div id="userList" style="margin-top:12px"></div>
           <!-- 编辑用户（参考表单：用户名 / 密码 / 角色 / 停用） -->
           <div id="editUserBox" hidden style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
@@ -560,13 +562,30 @@
             <div style="margin-top:12px">
               <label>管理员用户名</label>
               <input type="text" id="admUserName" placeholder="2 位以上，字母 / 数字 / 下划线" style="width:100%;margin-top:4px" autocomplete="username" />
+              <div class="hint adm-err" id="admUserNameErr"></div>
+            </div>
+            <div style="margin-top:10px">
+              <label>邮箱（用于找回密码）</label>
+              <input type="email" id="admUserEmail" placeholder="name@example.com（可选）" style="width:100%;margin-top:4px" autocomplete="email" />
+              <div class="hint adm-err" id="admUserEmailErr"></div>
             </div>
             <div style="margin-top:10px">
               <label>密码</label>
               <input type="password" id="admUserPw" placeholder="8 位以上，包含大小写字母和数字" style="width:100%;margin-top:4px" autocomplete="new-password" />
+              <div class="pw-meter" id="admPwMeter" hidden>
+                <div class="pw-meter-bar"><i id="admPwMeterBar"></i></div>
+                <div class="pw-meter-label" id="admPwMeterLabel"></div>
+              </div>
+              <div class="hint adm-err" id="admUserPwErr"></div>
             </div>
-            <div class="row" style="margin-top:12px">
+            <div style="margin-top:10px">
+              <label>确认密码</label>
+              <input type="password" id="admUserPwConfirm" placeholder="再输入一次" style="width:100%;margin-top:4px" autocomplete="new-password" />
+              <div class="hint adm-err" id="admUserPwConfirmErr"></div>
+            </div>
+            <div class="row" style="margin-top:14px">
               <button class="btn" id="createAdminBtn">创建管理员并启用保护</button>
+              <button class="btn ghost" id="openModeSkipBtn">跳过，保持开放模式</button>
             </div>
           </div>
         </div>
@@ -587,6 +606,63 @@
       <button class="btn gray" id="obPrev">上一步</button>
       <button class="btn" id="obNext">下一步</button>
       <button class="btn ghost sm" id="obSkip">跳过引导</button>
+    </div>
+  </div>
+</div>
+
+<!-- 首次设置向导：开放模式下引导创建管理员并可选配置 SMTP -->
+<div class="overlay" id="setupWizard" hidden role="dialog" aria-modal="true" aria-label="首次设置">
+  <div class="ob-card setup-card">
+    <div class="setup-step" id="setupStep">1 / 2</div>
+    <div class="ob-icon" id="setupIcon">👋</div>
+    <h2 id="setupTitle">欢迎使用</h2>
+    <p id="setupSub" class="muted" style="text-align:center;margin:0 0 6px"></p>
+
+    <!-- 步骤 1：创建管理员（含校验内联提示） -->
+    <div id="setupStep1" class="setup-pane">
+      <p class="muted" style="margin:0 0 10px">创建第一个管理员账号即可启用密码保护，其他设备访问时需要登录。</p>
+      <label>管理员用户名</label>
+      <input type="text" id="setupUserName" placeholder="2 位以上，字母 / 数字 / 下划线" autocomplete="username" />
+      <div class="hint adm-err" id="setupUserNameErr"></div>
+      <label style="display:block;margin-top:10px">邮箱（用于找回密码）</label>
+      <input type="email" id="setupEmail" placeholder="name@example.com" autocomplete="email" />
+      <div class="hint adm-err" id="setupEmailErr"></div>
+      <label style="display:block;margin-top:10px">密码</label>
+      <input type="password" id="setupPw" placeholder="8 位以上，包含大小写字母和数字" autocomplete="new-password" />
+      <div class="pw-meter" id="setupPwMeter" hidden>
+        <div class="pw-meter-bar"><i id="setupPwMeterBar"></i></div>
+        <div class="pw-meter-label" id="setupPwMeterLabel"></div>
+      </div>
+      <div class="hint adm-err" id="setupPwErr"></div>
+      <label style="display:block;margin-top:10px">确认密码</label>
+      <input type="password" id="setupPwConfirm" placeholder="再输入一次" autocomplete="new-password" />
+      <div class="hint adm-err" id="setupPwConfirmErr"></div>
+    </div>
+
+    <!-- 步骤 2：SMTP 配置 -->
+    <div id="setupStep2" class="setup-pane" hidden>
+      <p class="muted" style="margin:0 0 10px">配置邮件服务后，忘记密码时可通过邮箱验证码重置。可跳过 → 保持开放模式。</p>
+      <div class="grid g2" style="gap:8px">
+        <div><label>主机</label><input type="text" id="setupSmtpHost" placeholder="smtp.example.com" /></div>
+        <div><label>端口</label><input type="number" id="setupSmtpPort" value="465" min="1" max="65535" /></div>
+        <div><label>用户名</label><input type="text" id="setupSmtpUser" placeholder="邮箱账号" autocomplete="off" /></div>
+        <div><label>密码</label><input type="password" id="setupSmtpPass" placeholder="邮箱密码 / 授权码" autocomplete="new-password" /></div>
+        <div><label>发件人邮箱</label><input type="email" id="setupSmtpFrom" placeholder="通常与用户名相同" /></div>
+        <div><label>安全连接</label>
+          <select id="setupSmtpSecure" style="width:100%">
+            <option value="ssl">SSL（465）</option>
+            <option value="tls">STARTTLS（587）</option>
+            <option value="none">无加密（25）</option>
+          </select>
+        </div>
+      </div>
+      <div class="hint adm-err" id="setupSmtpErr" style="margin-top:8px"></div>
+    </div>
+
+    <div class="row" style="justify-content:center;margin-top:18px">
+      <button class="btn gray" id="setupPrev" hidden>上一步</button>
+      <button class="btn" id="setupNext">下一步</button>
+      <button class="btn ghost" id="setupSkip">跳过，保持开放模式</button>
     </div>
   </div>
 </div>
