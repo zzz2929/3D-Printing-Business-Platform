@@ -92,11 +92,11 @@ npm start            # 等价于 node server/index.mjs
 4. 部署完成后 Cloudflare 会把你的 GitHub 仓库连到该项目：**以后改代码 push 到 main，自动重新部署**；也可以在 Dashboard → Workers & Pages 里手动「Create deployment」重试
 5. 首次打开是开放模式，进「设置 → 数据与账号」创建管理员即可启用密码保护
 
-**关于存储的说明：**本应用只需要 **KV** 键值存储；**不需要 R2**（应用不保存任何文件，R2 是对象存储，用于图片/视频类需求）。KV 免费额度为每日 10 万次读 / 1000 次写，个人记账频率完全够用。
+关于存储的说明：KV 免费额度为每日 10 万次读 / 1000 次写，个人记账频率完全够用。
 
-**邮件（忘记密码）功能：**Workers 上依赖 `nodejs_compat` 兼容标记（`wrangler.jsonc` 已包含，nodemailer v10 支持 Workers）。SMTP 建议在管理员「设置 → 数据与账号 → 邮件服务（SMTP）」卡片里配置；如 Worker 打包报 nodemailer 相关错误，可改用 Vercel 部署邮件功能。
+邮件（忘记密码）功能：Workers 上依赖 `nodejs_compat` 兼容标记（`wrangler.jsonc` 已包含，nodemailer v10 支持 Workers）。SMTP 建议在管理员「设置 → 数据与账号 → 邮件服务（SMTP）」卡片里配置；如 Worker 打包报 nodemailer 相关错误，可改用 Vercel 部署邮件功能。
 
-**命令行方式（可选）：**如果你本地装有 Node，也可以 `npx wrangler kv namespace create DATA` 后把输出的 id 填入 `wrangler.jsonc`，再 `npx wrangler deploy`——效果与面板操作相同。
+命令行方式（可选）：如果你本地装有 Node，也可以 `npx wrangler kv namespace create DATA` 后把输出的 id 填入 `wrangler.jsonc`，再 `npx wrangler deploy`——效果与面板操作相同。
 
 ### 方式二：Vercel
 
@@ -105,13 +105,13 @@ npm start            # 等价于 node server/index.mjs
 **点击上方按钮即可完成部署：**
 
 1. 点击按钮 → 用 GitHub 登录 Vercel → 填写项目名 → 直接点 **Deploy**（首次部署不需要配任何东西，应用立即可用，只是数据临时保存）
-2. **配置持久化数据库（重要）：**进入项目页 → **Storage（存储）** 标签 → **Marketplace（市场）** → 选择 **Upstash Redis**（有免费套餐）→ 点 **Connect** 连接到本项目 → Vercel 会自动注入 `UPSTASH_REDIS_REST_URL` 和 `UPSTASH_REDIS_REST_TOKEN` 两个环境变量
+2. 配置持久化数据库（重要）：进入项目页 → **Storage（存储）** 标签 → **Marketplace（市场）** → 选择 **Upstash Redis**（有免费套餐）→ 点 **Connect** 连接到本项目 → Vercel 会自动注入 `UPSTASH_REDIS_REST_URL` 和 `UPSTASH_REDIS_REST_TOKEN` 两个环境变量
 3. 回到 **Deployments** 标签 → 对最新一次部署点 **⋯ → Redeploy**，让环境变量生效
 4. 完成后数据永久保存在 Upstash Redis，多设备访问同一地址即共享；以后 git push 自动重新部署
 
-**关于「Vercel 数据库」：**Vercel 自己不提供数据库，它在 **Storage 市场**里聚合了第三方存储（Upstash Redis、Neon Postgres、Blob 等）。本应用只需要 **Upstash Redis** 一种；**不需要 R2**（那是 Cloudflare 的对象存储，本应用不保存文件）。
+关于「Vercel 数据库」：Vercel 自己不提供数据库，它在 **Storage 市场**里聚合了第三方存储（Upstash Redis、Neon Postgres、Blob 等）。本应用只需要 **Upstash Redis** 一种；**不需要 R2**（那是 Cloudflare 的对象存储，本应用不保存文件）。
 
-**邮件功能：**Vercel Serverless 函数是 Node 环境，nodemailer 开箱即用，SMTP 在管理员设置页配置即可。
+邮件功能：Vercel Serverless 函数是 Node 环境，nodemailer 开箱即用，SMTP 在管理员设置页配置即可。
 
 ### 方式三：Docker（推荐自托管，含飞牛OS / 群晖 / 绿联等 NAS）
 
