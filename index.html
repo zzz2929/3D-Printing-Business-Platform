@@ -27,8 +27,8 @@
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="apple-touch-icon" href="icon.svg" />
 <link rel="icon" href="icon.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="assets/vendor/flatpickr/flatpickr.min.css?v=47" />
-<link rel="stylesheet" href="assets/style.css?v=47" />
+<link rel="stylesheet" href="assets/vendor/flatpickr/flatpickr.min.css?v=57" />
+<link rel="stylesheet" href="assets/style.css?v=57" />
 </head>
 <body>
 
@@ -294,6 +294,56 @@
         <div class="row" style="margin-top:12px">
           <button class="btn" id="addMat">添加耗材</button>
           <button class="btn gray" id="cancelEditMat" type="button" style="display:none">取消编辑</button>
+        </div>
+      </div>
+      <!-- 拓竹同步：局域网 / 拓竹云 AMS 托盘快照 → 耗材库 -->
+      <div class="card" id="bambuCard">
+        <div class="card-head">
+          <h2>拓竹同步</h2>
+          <span class="muted" id="bambuStatus">未配置 · 连接 AMS 后一键同步库存</span>
+        </div>
+        <div class="row" style="margin-top:2px">
+          <button class="btn ghost sm" id="bambuBtnCfg" type="button">配置连接</button>
+          <button class="btn sm" id="bambuBtnSync" type="button">立即同步</button>
+        </div>
+
+        <!-- 连接配置 -->
+        <div id="bambuCfgBox" hidden style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+          <h3 style="margin:0 0 8px;font-size:13px">局域网打印机</h3>
+          <div id="bambuLanList"></div>
+          <button class="btn ghost sm" id="bambuLanAdd" type="button" style="margin-top:6px">＋ 添加打印机</button>
+          <div class="hint" style="margin-top:6px">访问码在打印机屏幕「设置 → 局域网」查看；IP 可在打印机网络信息或路由器后台查看。需本平台服务与打印机在同一局域网（Docker / NAS / 裸跑 Node 部署）。</div>
+
+          <h3 style="margin:14px 0 8px;font-size:13px">拓竹云账号</h3>
+          <div class="grid g3" style="gap:8px">
+            <div><label>区域</label><select id="bambuCloudRegion" style="width:100%">
+              <option value="cn">中国大陆</option><option value="eu">欧洲</option><option value="us">北美</option>
+            </select></div>
+            <div><label>账号邮箱</label><input id="bambuCloudEmail" placeholder="拓竹账号邮箱" autocomplete="off" /></div>
+            <div><label>密码</label><input id="bambuCloudPass" type="password" placeholder="留空保持不变" autocomplete="new-password" /></div>
+            <div><label>accessToken（可选）</label><input id="bambuCloudToken" type="password" placeholder="可直接粘贴使用，留空保持不变" autocomplete="new-password" /></div>
+            <div><label>邮箱验证码（要求时填）</label><input id="bambuCloudCode" inputmode="numeric" placeholder="6 位验证码" /></div>
+          </div>
+          <input id="bambuTfaKey" type="hidden" />
+          <div class="row" style="margin-top:10px">
+            <button class="btn ghost sm" id="bambuCloudLoginBtn" type="button">登录拓竹云</button>
+            <button class="btn sm" id="bambuCfgSave" type="button">保存连接配置</button>
+            <button class="btn danger ghost sm" id="bambuCfgClear" type="button">清除全部连接</button>
+          </div>
+          <div class="hint adm-err" id="bambuCfgMsg" style="margin-top:6px"></div>
+        </div>
+
+        <!-- 同步预览 -->
+        <div id="bambuSyncBox" hidden style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+          <div class="row" style="flex-wrap:wrap;gap:10px 16px">
+            <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="bambuOptUpdate" checked /> 更新已匹配耗材的库存</label>
+            <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="bambuOptCreate" checked /> 新增未匹配的耗材</label>
+            <button class="btn ghost sm" id="bambuReFetch" type="button" style="margin-left:auto">重新获取</button>
+          </div>
+          <div id="bambuTrayList" style="margin-top:10px"></div>
+          <div class="row" style="margin-top:10px">
+            <button class="btn" id="bambuApply" type="button">应用到耗材库</button>
+          </div>
         </div>
       </div>
       <div class="card" id="matListCard">
@@ -725,9 +775,9 @@
 <div class="toast" id="toast" role="status"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
-<script src="assets/vendor/flatpickr/flatpickr.min.js?v=47"></script>
-<script src="assets/vendor/flatpickr/zh.js?v=47"></script>
-<script src="assets/store.js?v=47"></script>
-<script src="assets/app.js?v=47"></script>
+<script src="assets/vendor/flatpickr/flatpickr.min.js?v=57"></script>
+<script src="assets/vendor/flatpickr/zh.js?v=57"></script>
+<script src="assets/store.js?v=57"></script>
+<script src="assets/app.js?v=57"></script>
 </body>
 </html>

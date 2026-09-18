@@ -273,7 +273,7 @@ ck("admin sets session days = 7", r.status === 200 && r.j.sessionDays === 7, JSO
 r = await api("GET", "/api/authcfg");
 ck("session days persisted", r.j.sessionDays === 7);
 r = await api("POST", "/api/authcfg", { sessionDays: 0 });
-ck("days = 0 rejected", r.status === 400, JSON.stringify(r.j));
+ck("days = 0 accepted (永久)", r.status === 200 && r.j.sessionDays === 0, JSON.stringify(r.j));
 r = await api("POST", "/api/authcfg", { sessionDays: 400 });
 ck("days = 400 rejected", r.status === 400, JSON.stringify(r.j));
 cookie = "";
@@ -297,12 +297,42 @@ cookie = aliceCookie;
 r = await api("GET", "/api/all-data?allUsers=1");
 ck("normal user all-data rejected", r.j && !!r.j.error, JSON.stringify(r.j));
 
+console.log("\n[拓竹同步]");
+cookie = "";
+r = await api("GET", "/api/bambu");
+ck("bambu config requires login → 401", r.status === 401, "got " + r.status);
+cookie = bossCookie;
+r = await api("GET", "/api/bambu");
+ck("bambu config default empty", r.status === 200 && r.j && Array.isArray(r.j.lan) && r.j.lan.length === 0, JSON.stringify(r.j));
+r = await api("POST", "/api/bambu", { lan:[{ name:"P1S", host:"127.0.0.1", code:"secret88" }], cloud:{ region:"cn", email:"me@x.com", password:"pw123456" } });
+ck("bambu config saved", r.status === 200 && r.j && r.j.ok === true && r.j.config && r.j.config.lan[0].hasCode === true, JSON.stringify(r.j));
+const bambuRowId = r.j.config.lan[0].id;
+ck("bambu config masked (no code/password leak)", JSON.stringify(r.j).indexOf("secret88") < 0 && JSON.stringify(r.j).indexOf("pw123456") < 0);
+r = await api("GET", "/api/bambu");
+ck("bambu config masked on re-read", JSON.stringify(r.j).indexOf("secret88") < 0 && JSON.stringify(r.j).indexOf("pw123456") < 0
+  && r.j.lan[0].hasCode === true && r.j.cloud.hasPassword === true && r.j.cloud.email === "me@x.com", JSON.stringify(r.j));
+r = await api("POST", "/api/bambu", { lan:[{ id:bambuRowId, name:"P1S", host:"127.0.0.1" }], cloud:{ region:"cn", email:"me@x.com" } });
+ck("blank secrets keep old values", r.status === 200 && r.j.config.lan[0].hasCode === true && r.j.config.cloud.hasPassword === true, JSON.stringify(r.j));
+r = await api("POST", "/api/bambu", { action:"fetch" });
+ck("fetch unreachable printer → per-source error, 200", r.status === 200 && r.j.sources && r.j.sources.length === 1 && r.j.sources[0].ok === false, JSON.stringify(r.j));
+ck("fetch source error readable", typeof r.j.sources[0].error === "string" && r.j.sources[0].error.length > 3);
+r = await api("POST", "/api/bambu", { action:"cloudLogin" });
+ck("cloudLogin without email → 400", r.status === 400, JSON.stringify(r.j));
+cookie = "";
+r = await api("POST", "/api/login", { username: "alice2", password: "Forgot999A" });
+ck("alice2 fresh login for bambu tests", r.status === 200, JSON.stringify(r.j));
+r = await api("GET", "/api/bambu");
+ck("per-user bambu isolation (alice empty)", r.status === 200 && r.j.lan.length === 0 && !r.j.cloud.email, JSON.stringify(r.j));
+r = await api("POST", "/api/bambu", { action:"fetch" });
+ck("fetch without config → 400 hint", r.status === 400 && /尚未配置/.test(r.j.error || ""), JSON.stringify(r.j));
+cookie = bossCookie;
+
 console.log("\n[登出/杂项]");
 cookie = bossCookie;
 r = await api("POST", "/api/logout");
 ck("logout clears cookie", (r.status === 200) && cookie === "pf_token=");
 r = await api("GET", "/api/version");
-ck("version endpoint no-auth", r.status === 200 && r.j && r.j.version === "1.0.2", JSON.stringify(r.j && r.j.version));
+ck("version endpoint no-auth", r.status === 200 && r.j && r.j.version === "1.0.3", JSON.stringify(r.j && r.j.version));
 r = await api("GET", "/api/whatever-unknown");
 ck("unknown api → 401 (not 500)", r.status === 401, "got " + r.status);
 

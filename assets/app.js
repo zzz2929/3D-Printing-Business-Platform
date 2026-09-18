@@ -37,7 +37,7 @@
     document.querySelectorAll("#nav button[data-tab]").forEach(b => {
       b.style.display = can(PAGE_PERM[b.getAttribute("data-tab")]) ? "" : "none";
     });
-    [["matFormCard","mats_manage"],["matListCard","mats_list"],["priFormCard","pri_add"],["priListCard","pri_list"]]
+    [["matFormCard","mats_manage"],["matListCard","mats_list"],["bambuCard","mats_list"],["priFormCard","pri_add"],["priListCard","pri_list"]]
       .forEach(([id, perm]) => { const el = $(id); if(el) el.hidden = !can(perm); });
     renderSetTabs();
   }
@@ -170,6 +170,7 @@
      - getSubs(catName): [{ name, desc? }]
      - onPick(subName, catName, subObj) 选中后回调（subObj.desc 为说明）
      - 支持"输入新值"自动加入预设（仅小类级）：通过 opts.onAddSub(catName, subName) 钩子
+     - opts.onAddCat(name) 提供时，左栏底部显示"＋ 添加大类"内联表单；返回 false 表示重名
   */
   function attachCascader(input, opts){
     const wrap = document.createElement("span"); wrap.className = "combo cascader";
@@ -180,6 +181,8 @@
     wrap.appendChild(pop);
     let activeCat = null;
     let searchVal = "";
+    let addingCat = false;   // 左栏底部正在展开"添加大类"表单
+    let focusAddCat = false; // 下一次 render 后聚焦大类名输入框
 
     function getCats(){ return opts.getCategories().slice(); }
     function getSubs(c){ return opts.getSubs(c).slice(); }
@@ -187,10 +190,45 @@
       const cats = getCats();
       if(!activeCat || !cats.find(c => c.name === activeCat)) activeCat = cats[0] ? cats[0].name : null;
     }
+    function addCatHtml(){
+      if(typeof opts.onAddCat !== "function") return "";
+      return addingCat
+        ? '<div class="casc-addcat-form">' +
+            '<input type="text" class="casc-pop-input casc-addcat-input" placeholder="大类名称" />' +
+            '<div class="casc-addcat-btns">' +
+              '<button type="button" class="casc-pop-confirm" data-addcat-ok="1">确定</button>' +
+              '<button type="button" class="casc-pop-cancel" data-addcat-cancel="1">取消</button>' +
+            '</div>' +
+          '</div>'
+        : '<button type="button" class="casc-addcat" data-addcat="1">＋ 添加大类</button>';
+    }
+    function bindAddCatInput(){
+      const ai = pop.querySelector(".casc-addcat-input");
+      if(!ai) return;
+      ai.addEventListener("keydown", e => {
+        e.stopPropagation();
+        if(e.key === "Enter"){ e.preventDefault(); confirmAddCat(); }
+        else if(e.key === "Escape"){ e.preventDefault(); addingCat = false; render(); }
+      });
+      if(focusAddCat){ focusAddCat = false; ai.focus(); }
+    }
+    function confirmAddCat(){
+      const ai = pop.querySelector(".casc-addcat-input");
+      const v = (ai ? ai.value : "").trim();
+      if(!v){ toast("请先输入大类名称"); if(ai) ai.focus(); return; }
+      if(!opts.onAddCat(v)){ toast("该大类已存在"); if(ai){ ai.focus(); ai.select(); } return; }
+      addingCat = false;
+      activeCat = v; searchVal = ""; // 新大类置为选中，方便紧接着补小类
+      render();
+      toast("已新增大类：「" + v + "」");
+    }
     function render(){
       const cats = getCats();
       if(!cats.length){
-        pop.innerHTML = '<div class="combo-empty">还没有任何大类，去「设置 → 预设管理」添加</div>';
+        const canAdd = typeof opts.onAddCat === "function";
+        pop.innerHTML = '<div class="combo-empty">' + (canAdd ? "还没有任何大类" : "还没有任何大类，去「设置 → 预设管理」添加") + '</div>' +
+          (canAdd ? '<div class="casc-empty-add">' + addCatHtml() + '</div>' : "");
+        bindAddCatInput();
         return;
       }
       refreshActive();
@@ -206,7 +244,7 @@
       pop.innerHTML =
         '<div class="casc-grid">' +
           '<div class="casc-left">' +
-            cats.map(c => `<button type="button" class="casc-cat${c.name === activeCat ? " on" : ""}" data-cat="${S.esc(c.name)}">${S.esc(c.name)}</button>`).join("") +
+            cats.map(c => `<button type="button" class="casc-cat${c.name === activeCat ? " on" : ""}" data-cat="${S.esc(c.name)}">${S.esc(c.name)}</button>`).join("") + addCatHtml() +
           '</div>' +
           '<div class="casc-right">' +
             searchHtml + addHtml + subsHtml + emptyHtml +
@@ -225,14 +263,18 @@
           if(e.key === "Enter"){ e.preventDefault(); const ab = pop.querySelector("[data-addsub]"); if(ab) ab.click(); }
         });
       }
+      bindAddCatInput();
     }
     function open(){ searchVal = input.value; render(); pop.classList.add("open"); btn.classList.add("open"); }
-    function close(){ pop.classList.remove("open"); btn.classList.remove("open"); searchVal = ""; }
+    function close(){ pop.classList.remove("open"); btn.classList.remove("open"); searchVal = ""; addingCat = false; focusAddCat = false; }
     btn.addEventListener("click", e => { e.stopPropagation(); pop.classList.contains("open") ? close() : open(); });
     input.addEventListener("focus", () => open());
     input.addEventListener("input", () => { searchVal = input.value; if(!pop.classList.contains("open")){ pop.classList.add("open"); btn.classList.add("open"); } render(); });
     pop.addEventListener("click", e => {
       e.stopPropagation();
+      if(e.target.closest("[data-addcat]")){ addingCat = true; focusAddCat = true; render(); return; }
+      if(e.target.closest("[data-addcat-ok]")){ confirmAddCat(); return; }
+      if(e.target.closest("[data-addcat-cancel]")){ addingCat = false; render(); return; }
       const cat = e.target.closest("[data-cat]");
       const sub = e.target.closest("[data-sub]");
       const addSub = e.target.closest("[data-addsub]");
@@ -276,7 +318,8 @@
   attachCascader($("mType"), {
     getCategories: MAT_CATS, getSubs: MAT_SUBS,
     onPick: () => {},  // input.value 已自动写好
-    onAddSub: (cat, sub, desc) => S.addSub(cat, sub, desc)
+    onAddSub: (cat, sub, desc) => S.addSub(cat, sub, desc),
+    onAddCat: v => S.addCategory(v)
   });
   attachCombo($("mColorName"), COLOR_NAMES, { onAdd:v => S.addMatColor(v) });
   /* 打印机品牌：从 <select> 改为 attachCombo 风格，支持输入新品牌 */
@@ -294,17 +337,46 @@
   $("mColorName").addEventListener("input", syncColorFromName);
   $("mColorName").addEventListener("change", syncColorFromName);
 
-  /* 迷你柱状图（HTML 弹性柱，避免 SVG 拉伸变形） */
+  /* 迷你柱状图（HTML 弹性柱，避免 SVG 拉伸变形）；列数过多时横向滚动，每列保底宽度不挤压标签 */
   function barChart(data, opts){
     opts = opts || {};
     const max = Math.max(...data.map(d => Math.abs(d.value)), 0.0001);
     const cls = opts.color === "var(--ok)" ? "pos" : "acc";
-    const hasGroup = data.some(d => d.group); // 有分组时每列都补一行，保证柱子对齐
-    return '<div class="hchart" style="height:' + (opts.height || 150) + 'px">' + data.map(d => {
+    const hasGroup = data.some(d => d.group); // 有月份分组时按月分段，滚动时标签吸附左缘
+    // 按最长标签估算列最小宽度（10px 字号：数字≈7px、中文≈10px + 左右留白）
+    const minCol = Math.max(...data.map(d => d.label.length)) * 7 + 14;
+    const cols = data.map(d => {
       const h = Math.max(2, Math.abs(d.value) / max * 100);
       const c = d.value < 0 ? "neg" : cls;
-      return `<div class="hcol"><div class="hbar-wrap"><div class="hbar ${c}" style="height:${h.toFixed(1)}%" title="${S.esc(d.tip || (d.full || d.label) + " · " + S.money(d.value))}"></div></div><div class="hlab">${S.esc(d.label)}</div>${hasGroup ? `<div class="hgroup">${S.esc(d.group || "")}</div>` : ""}</div>`;
-    }).join("") + "</div>";
+      return `<div class="hcol"><div class="hbar-wrap"><div class="hbar ${c}" style="height:${h.toFixed(1)}%" title="${S.esc(d.tip || (d.full || d.label) + " · " + S.money(d.value))}"></div></div><div class="hlab">${S.esc(d.label)}</div></div>`;
+    }).join("");
+    let groups = "";
+    if(hasGroup){
+      const months = [];
+      data.forEach(d => {
+        if(d.group) months.push({ label:d.group, days:0 });
+        months[months.length - 1].days++;
+      });
+      // 段宽 flex-grow=天数，与上方柱列的 flex 布局同比例，月界天然对齐（误差亚像素）
+      groups = '<div class="hgroups">' + months.map(m =>
+        `<div class="hmonth" style="flex-grow:${m.days}"><span class="hgroup">${S.esc(m.label)}</span></div>`
+      ).join("") + "</div>";
+    }
+    return '<div class="hchart-scroll" style="height:' + (opts.height || 150) + 'px">'
+      + '<div class="hchart-body"><div class="hchart" style="--hcol-min:' + minCol + 'px">' + cols + '</div>' + groups + '</div></div>';
+  }
+  /* 渲染柱状图并自动滚动到最近一根有数据的柱子（列宽富余时保持原样不滚） */
+  function mountBarChart(el, data, opts){
+    el.innerHTML = barChart(data, opts);
+    const sc = el.querySelector(".hchart-scroll");
+    if(!sc) return;
+    let i = data.length - 1;
+    while(i > 0 && data[i].value === 0) i--;
+    const col = sc.querySelectorAll(".hcol")[i];
+    if(col){
+      const r1 = sc.getBoundingClientRect(), r2 = col.getBoundingClientRect();
+      sc.scrollLeft += r2.right - r1.right; // 该柱右缘对齐可视区右缘
+    }
   }
 
   /* ---------- 路由 ---------- */
@@ -471,9 +543,8 @@
     const series = trendSeries(r.from, r.to);
     $("trendTitle").textContent = "区间利润走势";
     $("trendHint").textContent = "期间利润 " + S.money(profit);
-    $("profitChart").innerHTML = series.every(m => m.value === 0)
-      ? '<div class="empty">这段时间还没有订单数据</div>'
-      : barChart(series, { color:"var(--ok)" });
+    if(series.every(m => m.value === 0)) $("profitChart").innerHTML = '<div class="empty">这段时间还没有订单数据</div>';
+    else mountBarChart($("profitChart"), series, { color:"var(--ok)" });
 
     // 经营提醒
     const alerts = [];
@@ -953,6 +1024,257 @@
     }));
   }
 
+  /* ============ 拓竹同步（局域网 / 拓竹云 AMS → 耗材库） ============
+     服务端经 MQTT 读取 AMS 托盘快照（访问码/token 只存服务端）；
+     前端按 uuid（RFID）或 类型+颜色 匹配已有耗材，更新库存或新建。 */
+  const bambuState = { cfg:{ lan:[], cloud:{} }, snap:null };
+  function canUseBambu(){ return S.mode === "server"; }
+  function bambuCfgMsg(msg, bad){
+    const el = $("bambuCfgMsg");
+    el.textContent = msg || "";
+    el.classList.toggle("bad", !!bad);
+  }
+  function renderBambuStatus(){
+    const el = $("bambuStatus"); if(!el) return;
+    if(!canUseBambu()){ el.textContent = "本地模式不可用 · 需服务端部署"; return; }
+    const cfg = bambuState.cfg || {}, cloud = cfg.cloud || {};
+    const parts = [];
+    if((cfg.lan || []).length) parts.push(cfg.lan.length + " 台局域网打印机");
+    if(cloud.email || cloud.hasToken) parts.push("拓竹云" + (cloud.email ? "（" + cloud.email + "）" : ""));
+    if(!parts.length){ el.textContent = "未配置 · 连接 AMS 后一键同步库存"; return; }
+    const last = cfg.last && cfg.last.fetchedAt
+      ? " · 上次抓取 " + new Date(cfg.last.fetchedAt).toLocaleString("zh-CN", { month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit" }) : "";
+    el.textContent = "已配置 " + parts.join(" + ") + last;
+  }
+  async function loadBambu(){
+    if(!canUseBambu()) return renderBambuStatus();
+    try{ bambuState.cfg = await S.bambuGet(); }
+    catch(e){ bambuState.cfg = { lan:[], cloud:{} }; }
+    renderBambuStatus();
+  }
+  /* ---- 连接配置 ---- */
+  function bambuLanRow(r){
+    r = r || {};
+    const d = document.createElement("div");
+    d.className = "extras-row bambu-lan";
+    d.dataset.id = r.id || "";
+    d.innerHTML = `<input class="bl-name" type="text" placeholder="备注（可选）" value="${S.esc(r.name || "")}" />
+      <input class="bl-host" type="text" placeholder="打印机 IP，如 192.168.1.66" value="${S.esc(r.host || "")}" />
+      <input class="bl-code" type="password" placeholder="${r.hasCode ? "已保存 · 留空不修改" : "局域网访问码"}" autocomplete="new-password" />
+      <button class="row-btn danger" type="button" title="删除此行"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>`;
+    d.querySelector("button").addEventListener("click", () => {
+      d.remove();
+      if(!$("bambuLanList").children.length) $("bambuLanList").appendChild(bambuLanRow());
+    });
+    return d;
+  }
+  function renderBambuLanRows(){
+    const box = $("bambuLanList"); box.innerHTML = "";
+    ((bambuState.cfg && bambuState.cfg.lan) || []).forEach(r => box.appendChild(bambuLanRow(r)));
+    if(!box.children.length) box.appendChild(bambuLanRow());
+  }
+  function collectBambuCfg(){
+    const lan = [];
+    Array.from($("bambuLanList").children).forEach(d => {
+      const row = {
+        id: d.dataset.id || "",
+        name: d.querySelector(".bl-name").value.trim(),
+        host: d.querySelector(".bl-host").value.trim()
+      };
+      const code = d.querySelector(".bl-code").value.trim();
+      if(code) row.code = code; // 留空 = 服务端保留原访问码
+      if(row.host || row.name || code) lan.push(row);
+    });
+    const cloud = {
+      region: $("bambuCloudRegion").value,
+      email: $("bambuCloudEmail").value.trim()
+    };
+    if($("bambuCloudPass").value) cloud.password = $("bambuCloudPass").value;
+    if($("bambuCloudToken").value.trim()) cloud.token = $("bambuCloudToken").value.trim();
+    return { lan, cloud };
+  }
+  $("bambuBtnCfg").addEventListener("click", () => {
+    const box = $("bambuCfgBox");
+    box.hidden = !box.hidden;
+    if(!box.hidden){
+      renderBambuLanRows();
+      if(!canUseBambu()) bambuCfgMsg("当前为本地模式：拓竹同步需要 Node / Docker / NAS 服务端运行。", true);
+    }
+  });
+  $("bambuCfgSave").addEventListener("click", async () => {
+    const btn = $("bambuCfgSave");
+    const payload = collectBambuCfg();
+    if(!payload.lan.length && !payload.cloud.email && !payload.cloud.token){
+      bambuCfgMsg("请至少添加一台局域网打印机，或填写拓竹云账号", true); return;
+    }
+    btn.disabled = true;
+    try{
+      const d = await S.bambuSave(payload);
+      if(d.config) bambuState.cfg = d.config;
+      renderBambuLanRows(); renderBambuStatus();
+      $("bambuCloudPass").value = ""; $("bambuCloudToken").value = "";
+      bambuCfgMsg("连接配置已保存（访问码 / token 只保存在服务端，不会回传浏览器）");
+      toast("拓竹连接配置已保存");
+    }catch(e){ bambuCfgMsg(e.message, true); }
+    finally{ btn.disabled = false; }
+  });
+  $("bambuCloudLoginBtn").addEventListener("click", async () => {
+    const btn = $("bambuCloudLoginBtn");
+    const email = $("bambuCloudEmail").value.trim();
+    const password = $("bambuCloudPass").value;
+    const code = $("bambuCloudCode").value.trim();
+    if(!email){ bambuCfgMsg("请先填写拓竹账号邮箱", true); return; }
+    if(!password && !code){ bambuCfgMsg("请填写密码；或直接粘贴 accessToken 保存", true); return; }
+    btn.disabled = true; bambuCfgMsg("正在登录拓竹云…");
+    try{
+      const d = await S.bambuCloudLogin({
+        region: $("bambuCloudRegion").value, email,
+        password: password || undefined, code: code || undefined,
+        tfaKey: $("bambuTfaKey").value || undefined
+      });
+      if(d.needCode){
+        $("bambuTfaKey").value = d.tfaKey || "";
+        bambuCfgMsg("该账号需要验证：验证码已发送到邮箱，请在「邮箱验证码」填写后再点登录");
+        return;
+      }
+      if(d.config) bambuState.cfg = d.config;
+      renderBambuLanRows(); renderBambuStatus();
+      $("bambuCloudPass").value = ""; $("bambuCloudCode").value = ""; $("bambuTfaKey").value = "";
+      bambuCfgMsg("拓竹云登录成功，accessToken 已保存到服务端");
+      toast("拓竹云已登录");
+    }catch(e){ bambuCfgMsg(e.message, true); }
+    finally{ btn.disabled = false; }
+  });
+  $("bambuCfgClear").addEventListener("click", async () => {
+    if(!(await confirmBox("清除全部拓竹连接配置（局域网打印机与云账号）？"))) return;
+    try{
+      await S.bambuClear();
+      bambuState.cfg = { lan:[], cloud:{} };
+      renderBambuLanRows(); renderBambuStatus();
+      bambuCfgMsg("已清除全部连接配置");
+      $("bambuSyncBox").hidden = true;
+    }catch(e){ bambuCfgMsg(e.message, true); }
+  });
+  /* ---- 抓取与匹配 ---- */
+  function guessColorName(hex){
+    if(!hex) return "";
+    const m = S.presets().matColorHex || {};
+    const up = hex.toUpperCase();
+    for(const k in m){ if(String(m[k] || "").toUpperCase() === up) return k; }
+    return "";
+  }
+  function trayLabel(t){
+    return [t.brand || (t.idx ? "Bambu Lab 拓竹" : ""), t.type, t.color ? (guessColorName(t.color) || t.color) : ""]
+      .filter(Boolean).join(" ") || "未知耗材";
+  }
+  function matchBambuTray(t){
+    if(t.uuid){
+      const byUuid = S.materials.find(x => x.bambuUuid === t.uuid);
+      if(byUuid) return { m: byUuid, how:"uuid" };
+    }
+    const tt = String(t.type || "").toLowerCase().trim(), cc = String(t.color || "").toUpperCase();
+    const typeEq = x => String(x.type || "").toLowerCase().trim() === tt;
+    const typeNear = x => { // 拓竹常报大类（PLA），平台类型更细（PLA Basic）：前后缀任一匹配
+      const xt = String(x.type || "").toLowerCase().trim();
+      return tt && xt && (xt.startsWith(tt) || tt.startsWith(xt));
+    };
+    const byPair = S.materials.find(x => typeEq(x) && String(x.color || "").toUpperCase() === cc)
+      || S.materials.find(x => typeNear(x) && String(x.color || "").toUpperCase() === cc);
+    return { m: byPair || null, how: byPair ? "pair" : "none" };
+  }
+  async function bambuFetchSnap(){
+    const btn = $("bambuBtnSync");
+    btn.disabled = true; const old = btn.textContent; btn.textContent = "连接中…";
+    bambuCfgMsg("");
+    try{
+      bambuState.snap = await S.bambuFetch();
+      if(bambuState.cfg) bambuState.cfg.last = { fetchedAt: bambuState.snap.fetchedAt };
+      renderBambuPreview();
+      renderBambuStatus();
+      $("bambuSyncBox").hidden = false;
+      $("bambuCfgBox").hidden = true;
+      $("bambuSyncBox").scrollIntoView({ behavior:"smooth", block:"nearest" });
+    }catch(e){
+      bambuCfgMsg(e.message || "抓取失败", true);
+      toast(e.message || "抓取失败");
+      $("bambuCfgBox").hidden = false; // 引导去配置
+    }finally{ btn.disabled = false; btn.textContent = old; }
+  }
+  $("bambuBtnSync").addEventListener("click", bambuFetchSnap);
+  $("bambuReFetch").addEventListener("click", bambuFetchSnap);
+  function renderBambuPreview(){
+    const box = $("bambuTrayList");
+    const snap = bambuState.snap;
+    if(!snap){ box.innerHTML = ""; return; }
+    let anyTray = false, html = "";
+    snap.sources.forEach(src => {
+      html += `<div class="bambu-src"><span class="pill">${src.kind === "lan" ? "局域网" : "拓竹云"}</span> <b>${S.esc(src.name)}</b>` +
+        (src.ok ? "" : `<span class="badge" style="--bc:var(--danger)"><i></i>${S.esc(src.error || "失败")}</span>`) + `</div>`;
+      (src.devices || []).forEach(dev => {
+        html += `<div class="bambu-dev">${S.esc(dev.devName || dev.devId || "设备")}</div>`;
+        if(!(dev.trays || []).length){
+          html += '<div class="empty" style="padding:10px">未读到 AMS 托盘数据</div>';
+          return;
+        }
+        anyTray = true;
+        html += dev.trays.map(t => {
+          const { m } = matchBambuTray(t);
+          const act = m
+            ? `<span class="badge" style="--bc:var(--ok)"><i></i>更新 ${S.esc(m.name)}</span>`
+            : `<span class="badge" style="--bc:var(--accent)"><i></i>新建</span>`;
+          return `<div class="bambu-tray">
+            <span class="sw" style="background:${S.esc(t.color || "#666")}"></span>
+            <span class="bt-name">${S.esc(trayLabel(t))}</span>
+            <span class="muted bt-slot">${S.esc(t.slot)}${t.remain != null ? " · " + Math.round(t.remain) + "%" : ""}</span>
+            <span class="num bt-rem">${t.remaining != null ? S.fmt(t.remaining, 0) + " g" : "—"}</span>${act}</div>`;
+        }).join("");
+      });
+    });
+    box.innerHTML = anyTray ? html : html + '<div class="empty">所有连接都没有读到托盘数据</div>';
+  }
+  $("bambuApply").addEventListener("click", async () => {
+    const snap = bambuState.snap; if(!snap) return;
+    const optUpdate = $("bambuOptUpdate").checked, optCreate = $("bambuOptCreate").checked;
+    if(!optUpdate && !optCreate){ toast("请至少勾选一种同步方式"); return; }
+    if(optCreate && !(await confirmBox("未匹配的 AMS 料卷将按「品牌 + 类型 + 颜色」新建为耗材（单价需之后手动补充），继续？"))) return;
+    const now = Date.now();
+    let updated = 0, created = 0, skipped = 0;
+    snap.sources.forEach(src => (src.devices || []).forEach(dev => (dev.trays || []).forEach(t => {
+      const { m } = matchBambuTray(t);
+      if(m){
+        if(!optUpdate){ skipped++; return; }
+        if(t.remaining != null) m.remaining = Math.min(Math.max(0, t.remaining), Math.max(S.num(m.spool), t.weight || 0));
+        if(t.uuid) m.bambuUuid = t.uuid;
+        m.bambuSlot = t.slot; m.bambuSyncedAt = now;
+        updated++;
+      }else{
+        if(!optCreate){ skipped++; return; }
+        const m2 = {
+          id: S.uid(),
+          brand: t.brand || (t.idx ? "Bambu Lab 拓竹" : ""),
+          type: t.type || "",
+          color: t.color || "#9aa3ad",
+          colorName: guessColorName(t.color),
+          pricePerKg: 0,
+          spool: t.weight > 0 ? t.weight : 1000,
+          remaining: t.remaining != null ? Math.max(0, t.remaining) : 0,
+          bambuSlot: t.slot, bambuSyncedAt: now
+        };
+        if(t.uuid) m2.bambuUuid = t.uuid;
+        m2.name = S.matLabel(m2);
+        S.materials.push(m2);
+        created++;
+      }
+    })));
+    if(updated || created){
+      S.saveMat();
+      renderMaterials(); fillSelects(); calc();
+    }
+    $("bambuSyncBox").hidden = true;
+    renderBambuStatus();
+    toast("同步完成：更新 " + updated + " · 新建 " + created + (skipped ? " · 跳过 " + skipped : ""));
+  });
+
   /* ============ 打印机 ============ */
   let editingPriId = null;
   function resetPriForm(){
@@ -1060,9 +1382,8 @@
     ].map(([k, v, s, cls]) => `<div class="stat ${cls}"><div class="k">${k}</div><div class="v" style="font-size:${v.length > 14 ? "16px" : "19px"}">${v}</div></div>`).join("");
 
     const months = S.monthly(rs.map(r => ({ date:r.date, value:r.total })), "value", 12);
-    $("monthChart").innerHTML = months.every(m => m.value === 0)
-      ? '<div class="empty">还没有月度数据</div>'
-      : barChart(months, { height:130 });
+    if(months.every(m => m.value === 0)) $("monthChart").innerHTML = '<div class="empty">还没有月度数据</div>';
+    else mountBarChart($("monthChart"), months, { height:130 });
 
     renderRecList();
   }
@@ -1295,7 +1616,7 @@
     const addCatHtml = `
       <div class="preset-add-row cat-add-row">
         <input id="pcAddCat" placeholder="新增大类名" />
-        <button class="btn sm" id="pcAddCatBtn" type="button">+ 大类</button>
+        <button class="btn sm" id="pcAddCatBtn" type="button">添加</button>
       </div>`;
     
     // 生成右侧小类列表
@@ -1317,7 +1638,7 @@
         <div class="preset-add-row sub-add-row">
           <input id="subNameIn" placeholder="新增小类名" />
           <input id="subDescIn" placeholder="简短说明（可留空）" />
-          <button class="btn ghost sm" id="addSubBtn" type="button">+ 小类</button>
+          <button class="btn ghost sm" id="addSubBtn" type="button">添加</button>
         </div>`;
     } else {
       subListHtml = '<div class="preset-empty">请先选择一个左侧大类</div>';
@@ -1543,7 +1864,7 @@
       : '<div class="preset-empty">还没有' + label + '，在下面新增</div>'
     ) + `<div class="preset-add-row">
           <input id="add${key}" placeholder="新增${label}，回车确认" />
-          <button class="btn sm" id="add${key}Btn" type="button">+ ${label}</button>
+          <button class="btn sm" id="add${key}Btn" type="button">添加</button>
         </div>`;
     /* 颜色模式：编辑色值 → 色块即时预览 + 写入预设 */
     if(colorMode){
@@ -1827,6 +2148,7 @@
   function appStart(){
     if(appStarted) return; appStarted = true;
     refreshAll(); applyPerms(); applyLogoutVisibility();
+    loadBambu(); // 拓竹连接状态（耗材页卡片）
     // 按当前 hash 落页（goto 内部会拦下无权限的页面）
     goto((location.hash.match(/^#\/(\w+)/) || [])[1] || currentTab || "dash");
     // 首启优先级：开放模式 + 未完成首启设置 → 向导；否则常规新手引导

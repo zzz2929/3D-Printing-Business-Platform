@@ -6,6 +6,7 @@
 
 import { createAuth, tokenCookie, CLEAR_COOKIE } from "./auth.mjs";
 import { appVersion } from "./version.mjs";
+import { cloudLogin, fetchAll } from "./bambu.mjs";
 
 const DATA_COLS = ["materials", "printers", "records", "orders", "settings", "achievements"];
 
@@ -223,6 +224,105 @@ export function createRouter(store, mailer){
       const result = await auth.updateUser(userId, body || {}, operator);
       if(result.error) return json({ error:result.error }, 400);
       return json(result);
+    }
+
+    /* ---- 拓竹耗材同步：连接配置（密钥只存服务端，不回传前端）+ 云登录 + 立即抓取 ----
+       配置存于每用户私有集合 bambucfg（不属 DATA_COLS，不进 /api/data、导出与 /api/all-data）。 */
+    if(path.startsWith("bambu")){
+      const user = await auth.verify(req);
+      const prefix = (await auth.configured()) ? (user ? "u_" + user.id + "_" : null) : "";
+      if(prefix === null) return json({ error:"请先登录" }, 401);
+      const cfgKey = prefix + "bambucfg";
+      const getCfg = async () => await store.get(cfgKey) || { lan:[], cloud:{} };
+
+      /* 规范化保存：密钥字段留空 = 保留原值；LAN 行按 id 对应（新增行要求填访问码） */
+      function normBambuCfg(body, prev){
+        body = body || {};
+        const prevLan = Array.isArray(prev.lan) ? prev.lan : [];
+        const lan = Array.isArray(body.lan)
+          ? body.lan.map((p, i) => {
+              const old = prevLan.find(x => x.id && x.id === p.id) || {};
+              const code = String((p.code == null ? "" : p.code)).trim() || old.code || "";
+              return {
+                id: String(p.id || "").trim() || old.id || "bp" + Date.now().toString(36) + i,
+                name: String(p.name == null ? "" : p.name).trim().slice(0, 40) || old.name || "",
+                host: String(p.host == null ? "" : p.host).trim().slice(0, 120),
+                code
+              };
+            }).filter(p => p.host)
+          : prevLan;
+        const prevC = prev.cloud || {};
+        const c = body.cloud || {};
+        const keep = (v, old) => (v === undefined || String(v).trim() === "") ? (old || "") : String(v).trim();
+        const cloud = {
+          region: ["cn", "eu", "us"].includes(c.region) ? c.region : (prevC.region || "cn"),
+          email: keep(c.email, prevC.email),
+          password: keep(c.password, prevC.password),
+          token: keep(c.token, prevC.token)
+        };
+        return { lan, cloud, last: prev.last }; // 保留上次抓取摘要
+      }
+      /* 脱敏视图：只回传 has* 布尔，绝不回传访问码 / token / 密码 */
+      function maskBambuCfg(cfg, last){
+        return {
+          lan: (cfg.lan || []).map(p => ({ id:p.id, name:p.name || "", host:p.host, hasCode:!!p.code })),
+          cloud: {
+            region: (cfg.cloud && cfg.cloud.region) || "cn",
+            email: (cfg.cloud && cfg.cloud.email) || "",
+            hasToken: !!(cfg.cloud && cfg.cloud.token),
+            hasPassword: !!(cfg.cloud && cfg.cloud.password)
+          },
+          last: last || cfg.last || null
+        };
+      }
+
+      if(path === "bambu" && req.method === "GET"){
+        return json(maskBambuCfg(await getCfg()));
+      }
+      if(path === "bambu" && req.method === "DELETE"){ // 清除全部连接配置
+        await store.set(cfgKey, { lan:[], cloud:{} });
+        return json({ ok:true });
+      }
+      if(path === "bambu" && req.method === "POST"){
+        const body = await readBody(req) || {};
+        if(body.action === "cloudLogin"){ // 拓竹云账号登录（获取并保存 accessToken）
+          const { region, email, password, code, tfaKey } = body;
+          try{
+            const r = await cloudLogin({ region, account: email, password, code, tfaKey });
+            if(r.needCode) return json({ needCode:true, tfaKey: r.tfaKey || "" });
+            const prev = await getCfg();
+            const cfg = normBambuCfg({ cloud:{
+              region, email, password: password || undefined,
+              token: r.token
+            }}, prev);
+            cfg.lan = prev.lan || []; // 登录只动 cloud，不覆盖 lan
+            await store.set(cfgKey, cfg);
+            return json(Object.assign({ ok:true }, maskBambuCfg(cfg)));
+          }catch(e){
+            return json({ error: e.message || "登录失败" }, 400);
+          }
+        }
+        if(body.action === "fetch"){ // 立即抓取所有已配置来源的 AMS 快照
+          const cfg = await getCfg();
+          try{
+            const r = await fetchAll(cfg);
+            const brief = r.sources.map(s => ({ kind:s.kind, name:s.name, ok:s.ok, error:s.error || "",
+              devices: s.ok ? s.devices.map(d => ({ devId:d.devId, devName:d.devName, trayCount:d.trays.length })) : [] }));
+            const saved = Object.assign({}, cfg, { last:{ fetchedAt: r.fetchedAt, sources: brief } });
+            await store.set(cfgKey, saved);
+            return json(r);
+          }catch(e){
+            return json({ error: e.message || "抓取失败" }, 400);
+          }
+        }
+        // 默认：保存连接配置
+        const prev = await getCfg();
+        const cfg = normBambuCfg(body, prev);
+        if(!cfg.lan.length && !cfg.cloud.token && !cfg.cloud.email && !cfg.cloud.password)
+          return json({ error:"请至少配置一台局域网打印机或拓竹云账号" }, 400);
+        await store.set(cfgKey, cfg);
+        return json({ ok:true, config: maskBambuCfg(cfg) });
+      }
     }
 
     /* ---- 数据端点 ---- */

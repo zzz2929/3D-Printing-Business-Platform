@@ -1,11 +1,11 @@
 {
-  "version": "1.0.2",
-  "date": "2026-09-13",
+  "version": "1.0.3",
+  "date": "2026-09-19",
   "notes": [
-    "安全修复：静态资源白名单、会话密钥与密码哈希解耦",
-    "多用户功能修复：用户管理 / 修改密码 / 开放模式一键启用密码保护",
-    "修复 Docker 健康检查与 Vercel 登录态",
-    "清理失效配置与死代码"
+    "新增拓竹（Bambu Lab）耗材同步：局域网直连与拓竹云，一键读取 AMS 料卷余量",
+    "同步预览按 RFID uuid 或 类型+颜色 匹配耗材，更新库存或新建",
+    "访问码 / accessToken 仅保存在服务端，接口脱敏回传",
+    "只读取打印机状态，不下发任何控制指令"
   ],
   "downloadUrl": "https://github.com/zzz2929/3D-Printing-Business-Platform/releases"
 }

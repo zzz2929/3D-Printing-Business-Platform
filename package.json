@@ -1,6 +1,6 @@
 {
   "name": "3d-printing-business",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "type": "module",
   "description": "3D 打印经营台 · 前后端分离",

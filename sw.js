@@ -1,17 +1,17 @@
 /* 3D打印业务平台 — 离线缓存（应用壳）；/api 一律走网络，不缓存
    发版时：CACHE 版本号与 index.html 里静态资源的 ?v= 保持一致（换 URL 即换缓存） */
-const CACHE = "3d-printing-business-v47";
+const CACHE = "3d-printing-business-v57";
 const ASSETS = [
   "./",
   "index.html",
   "manifest.webmanifest",
   "icon.svg",
-  "assets/vendor/flatpickr/flatpickr.min.css?v=47",
-  "assets/vendor/flatpickr/flatpickr.min.js?v=47",
-  "assets/vendor/flatpickr/zh.js?v=47",
-  "assets/style.css?v=47",
-  "assets/store.js?v=47",
-  "assets/app.js?v=47"
+  "assets/vendor/flatpickr/flatpickr.min.css?v=57",
+  "assets/vendor/flatpickr/flatpickr.min.js?v=57",
+  "assets/vendor/flatpickr/zh.js?v=57",
+  "assets/style.css?v=57",
+  "assets/store.js?v=57",
+  "assets/app.js?v=57"
 ];
 
 self.addEventListener("install", (e) => {

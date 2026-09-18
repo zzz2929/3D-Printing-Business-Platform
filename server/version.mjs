@@ -3,10 +3,20 @@
    前端通过 GET /api/version 获取；「检查更新」则拉取用户配置的远程 version.json
    并与 APP_VERSION 做比较。远程 version.json 建议格式：
    { "version":"2.5.0", "date":"2026-10-01", "notes":["xxx"], "downloadUrl":"https://…" } */
-export const APP_VERSION = "1.0.2";
-export const BUILD_DATE = "2026-09-13";
+export const APP_VERSION = "1.0.3";
+export const BUILD_DATE = "2026-09-19";
 
 export const CHANGELOG = [
+  {
+    v:"1.0.3", date:"2026-09-19", items:[
+      "新增拓竹（Bambu Lab）耗材同步：局域网直连与拓竹云两种方式，一键读取 AMS 料卷余量",
+      "局域网：MQTT over TLS 直连打印机（8883 端口，用户名 bblp + 局域网访问码），自动请求全量状态，支持 X1 / P1 / A1 系列",
+      "拓竹云：账号密码登录（需要时走邮箱验证码 / 2FA），或直接粘贴 accessToken；自动识别中国 / 欧洲 / 北美区域节点",
+      "同步预览：按 RFID uuid 或「类型 + 颜色」匹配已有耗材，勾选更新库存或新建耗材，新建耗材自动带出品牌 / 类型 / 颜色 / 整卷克重",
+      "访问码与 accessToken / 云密码仅保存在服务端（不进入 /api/data、导出备份与 /api/all-data），接口只回传脱敏视图",
+      "同步读取为只读操作，不向打印机下发任何控制指令"
+    ]
+  },
   {
     v:"1.0.2", date:"2026-09-13", items:[
       "安全修复：静态资源改为白名单提供，/data 数据文件不再可被直接下载",

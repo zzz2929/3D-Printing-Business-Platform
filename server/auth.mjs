@@ -91,7 +91,7 @@ export function createAuth(store, mailer){
   /* 会话有效期（天）：管理员可在设置页配置，默认 30 天；0 表示永久 */
   async function sessionDays(){
     const cfg = await store.get("authcfg");
-    const d = Number(cfg && cfg.sessionDays);
+    const d = cfg ? Number(cfg.sessionDays) : NaN; // 注意 Number(null)===0，未配置时必须走 NaN 分支
     return (d >= 0 && d <= 365) ? d : 30;
   }
   const FOREVER_MS = 100 * 365 * 86400 * 1000; // 100 年，用作“永久”的过期时间

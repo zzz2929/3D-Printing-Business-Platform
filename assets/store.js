@@ -521,6 +521,38 @@ const Store = (function(){
     return d;
   }
 
+  /* 拓竹耗材同步（配置密钥只存服务端，前端只拿脱敏视图） */
+  async function bambuGet(){
+    const r = await fetch("/api/bambu", { headers:{ "accept":"application/json" } });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(d.error || "读取失败");
+    return d;
+  }
+  async function bambuSave(cfg){
+    const r = await fetch("/api/bambu", { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify(cfg) });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(d.error || "保存失败");
+    return d;
+  }
+  async function bambuClear(){
+    const r = await fetch("/api/bambu", { method:"DELETE" });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(d.error || "清除失败");
+    return d;
+  }
+  async function bambuCloudLogin(payload){
+    const r = await fetch("/api/bambu", { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify(Object.assign({ action:"cloudLogin" }, payload)) });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(d.error || "登录失败");
+    return d;
+  }
+  async function bambuFetch(){
+    const r = await fetch("/api/bambu", { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify({ action:"fetch" }) });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(d.error || "抓取失败");
+    return d;
+  }
+
   /* 用户管理 API */
   async function apiUsers(){ return fetch("/api/users", { headers:{ "accept":"application/json" } }).then(r => r.json()); }
   async function apiRegister(username, password, role){
@@ -729,6 +761,7 @@ const Store = (function(){
     forgotRequest, forgotReset, mailCode, mailBind,
     smtpGet, smtpSave, smtpTest,
     authCfgGet, authCfgSave,
+    bambuGet, bambuSave, bambuClear, bambuCloudLogin, bambuFetch,
     computePrint, machineRate, laborCost, sumPayments, orderDue, matById, priById, orderStats, monthly, byCustomer,
     matLabel, priLabel,
     buildAchStats, exportPayload, importPayload, wipeAll, loadDemo,
