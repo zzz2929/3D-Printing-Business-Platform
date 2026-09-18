@@ -351,6 +351,7 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 .hbar.neg{background:var(--danger)}
 .hbar:hover{filter:brightness(1.2)}
 .hlab{font-size:10px;color:var(--faint);text-align:center;margin-top:5px;font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hgroup{height:13px;font-size:10px;font-weight:600;color:var(--sub);text-align:center;margin-top:1px;white-space:nowrap}
 
 /* ---------- 成就 ---------- */
 .ach-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}

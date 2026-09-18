@@ -299,10 +299,11 @@
     opts = opts || {};
     const max = Math.max(...data.map(d => Math.abs(d.value)), 0.0001);
     const cls = opts.color === "var(--ok)" ? "pos" : "acc";
+    const hasGroup = data.some(d => d.group); // 有分组时每列都补一行，保证柱子对齐
     return '<div class="hchart" style="height:' + (opts.height || 150) + 'px">' + data.map(d => {
       const h = Math.max(2, Math.abs(d.value) / max * 100);
       const c = d.value < 0 ? "neg" : cls;
-      return `<div class="hcol"><div class="hbar-wrap"><div class="hbar ${c}" style="height:${h.toFixed(1)}%" title="${S.esc(d.tip || d.label + " · " + S.money(d.value))}"></div></div><div class="hlab">${S.esc(d.label)}</div></div>`;
+      return `<div class="hcol"><div class="hbar-wrap"><div class="hbar ${c}" style="height:${h.toFixed(1)}%" title="${S.esc(d.tip || (d.full || d.label) + " · " + S.money(d.value))}"></div></div><div class="hlab">${S.esc(d.label)}</div>${hasGroup ? `<div class="hgroup">${S.esc(d.group || "")}</div>` : ""}</div>`;
     }).join("") + "</div>";
   }
 
@@ -374,10 +375,8 @@
   }
   $("dashQuick").addEventListener("click", e => {
     const b = e.target.closest("button[data-q]"); if(!b) return;
-    dashApply(dashRange(), b.getAttribute("data-q") === "month" ? "month" : b.getAttribute("data-q"));
-    // 让 preset 与 range 完全一致
-    dashSel = { preset:b.getAttribute("data-q") };
-    dashMarkActive(); renderDash();
+    dashSel = { preset:b.getAttribute("data-q") }; // 先切 preset，dashRange 才按新区间算
+    dashApply(dashRange(), dashSel.preset);
   });
   $("dashFrom").addEventListener("change", () => { dashSel = { from:$("dashFrom").value, to:$("dashTo").value }; dashMarkActive(); renderDash(); });
   $("dashTo").addEventListener("change", () => { dashSel = { from:$("dashFrom").value, to:$("dashTo").value }; dashMarkActive(); renderDash(); });
@@ -391,7 +390,13 @@
     if(days <= 31){
       for(let i = 0; i < days; i++){
         const d = new Date(d1); d.setDate(d1.getDate() + i);
-        out.push({ key:isoDate(d), label:(d.getMonth() + 1) + "/" + d.getDate(), value:0 });
+        out.push({
+          key:isoDate(d),
+          label:String(d.getDate()), // 柱下只显示「日」，月份由 group 单独标出
+          full:(d.getMonth() + 1) + "/" + d.getDate(),
+          group:(i === 0 || d.getDate() === 1) ? (d.getMonth() + 1) + "月" : "",
+          value:0
+        });
       }
       S.orders.forEach(o => { const b = out.find(x => x.key === o.date); if(b) b.value += orderProfit(o); });
     }else if(days <= 800){

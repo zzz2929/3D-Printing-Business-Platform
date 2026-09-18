@@ -1,6 +1,6 @@
 /* 3D打印业务平台 — 离线缓存（应用壳）；/api 一律走网络，不缓存
    发版时：CACHE 版本号与 index.html 里静态资源的 ?v= 保持一致（换 URL 即换缓存） */
-const CACHE = "3d-printing-business-v44";
+const CACHE = "3d-printing-business-v46";
 const ASSETS = [
   "./",
   "index.html",
