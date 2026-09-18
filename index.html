@@ -27,7 +27,8 @@
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="apple-touch-icon" href="icon.svg" />
 <link rel="icon" href="icon.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="assets/style.css?v=46" />
+<link rel="stylesheet" href="assets/vendor/flatpickr/flatpickr.min.css?v=47" />
+<link rel="stylesheet" href="assets/style.css?v=47" />
 </head>
 <body>
 
@@ -91,8 +92,8 @@
         </div>
       </div>
       <div class="filter-bar2" style="margin-bottom:14px">
-        <div><label class="f-label">日期从</label><input id="dashFrom" type="date" /></div>
-        <div><label class="f-label">到</label><input id="dashTo" type="date" /></div>
+        <div class="range-cell"><label class="f-label">日期范围</label><input id="dashRange" type="text" placeholder="选择开始与结束日期" readonly /></div>
+        <input id="dashFrom" type="hidden" /><input id="dashTo" type="hidden" />
         <button class="btn gray sm" id="dashClear" type="button">恢复本月</button>
       </div>
       <div class="stats" id="dashStats"></div>
@@ -262,8 +263,8 @@
           </select>
         </div>
         <div class="filter-bar2">
-          <div><label class="f-label">日期从</label><input id="fFrom" type="date" /></div>
-          <div><label class="f-label">到</label><input id="fTo" type="date" /></div>
+          <div class="range-cell"><label class="f-label">日期范围</label><input id="fRange" type="text" placeholder="选择开始与结束日期" readonly /></div>
+          <input id="fFrom" type="hidden" /><input id="fTo" type="hidden" />
           <button class="btn gray sm" id="fClear" type="button">清除筛选</button>
         </div>
         <div id="ordList"></div>
@@ -346,8 +347,8 @@
           <select id="frPri"><option value="all">全部打印机</option></select>
         </div>
         <div class="filter-bar2">
-          <div><label class="f-label">日期从</label><input id="frFrom" type="date" /></div>
-          <div><label class="f-label">到</label><input id="frTo" type="date" /></div>
+          <div class="range-cell"><label class="f-label">日期范围</label><input id="frRange" type="text" placeholder="选择开始与结束日期" readonly /></div>
+          <input id="frFrom" type="hidden" /><input id="frTo" type="hidden" />
           <button class="btn gray sm" id="frClear" type="button">清除筛选</button>
         </div>
         <div id="recList"></div>
@@ -724,7 +725,9 @@
 <div class="toast" id="toast" role="status"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
-<script src="assets/store.js?v=46"></script>
-<script src="assets/app.js?v=46"></script>
+<script src="assets/vendor/flatpickr/flatpickr.min.js?v=47"></script>
+<script src="assets/vendor/flatpickr/zh.js?v=47"></script>
+<script src="assets/store.js?v=47"></script>
+<script src="assets/app.js?v=47"></script>
 </body>
 </html>

@@ -353,9 +353,39 @@
   }
 
   /* ============ 仪表盘 ============ */
+  /* 范围日期选择器（flatpickr 本地化）：触发器 + 隐藏 from/to 双输入，原有 change/input 逻辑无感复用 */
+  function initRangePicker(triggerId, fromId, toId){
+    const from = $(fromId), to = $(toId), trigger = $(triggerId);
+    if(!window.flatpickr){ // 组件缺失时退回原生日期输入
+      trigger.parentElement.style.display = "none";
+      [from, to].forEach(el => { el.type = "date"; });
+      return null;
+    }
+    const fire = () => [from, to].forEach(el => {
+      el.dispatchEvent(new Event("input", { bubbles:true }));
+      el.dispatchEvent(new Event("change", { bubbles:true }));
+    });
+    const fp = window.flatpickr(trigger, {
+      locale: "zh",
+      mode: "range",
+      dateFormat: "Y-m-d",
+      disableMobile: true,
+      onChange(ds){
+        if(ds.length !== 2) return; // range 模式：选满起止两天才应用
+        from.value = fp.formatDate(ds[0], "Y-m-d");
+        to.value = fp.formatDate(ds[1], "Y-m-d");
+        fire();
+      }
+    });
+    return {
+      // 把隐藏输入的值回写到选择器（快捷区间/清空按钮改值后调用）
+      sync(){ fp.setDate([from.value, to.value].filter(Boolean), false); }
+    };
+  }
   /* 时间筛选与订单列表同款（日期从/到），外加快捷区间按钮 */
   function isoDate(d){ return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0"); }
   let dashSel = { preset:"month" }; // {preset} 或 {from,to}
+  const dashPick = initRangePicker("dashRange", "dashFrom", "dashTo");
   function dashRange(){
     const t = S.today(), now = new Date();
     if(dashSel.preset === "7d"){ const s = new Date(now); s.setDate(now.getDate() - 6); return { from:isoDate(s), to:t, label:"近7天" }; }
@@ -371,6 +401,7 @@
   function dashApply(r, preset){
     dashSel = preset ? { preset } : { from:r.from, to:r.to };
     $("dashFrom").value = r.from; $("dashTo").value = r.to;
+    if(dashPick) dashPick.sync();
     dashMarkActive(); renderDash();
   }
   $("dashQuick").addEventListener("click", e => {
@@ -380,7 +411,7 @@
   });
   $("dashFrom").addEventListener("change", () => { dashSel = { from:$("dashFrom").value, to:$("dashTo").value }; dashMarkActive(); renderDash(); });
   $("dashTo").addEventListener("change", () => { dashSel = { from:$("dashFrom").value, to:$("dashTo").value }; dashMarkActive(); renderDash(); });
-  $("dashClear").addEventListener("click", () => { dashSel = { preset:"month" }; const r = dashRange(); $("dashFrom").value = r.from; $("dashTo").value = r.to; dashMarkActive(); renderDash(); });
+  $("dashClear").addEventListener("click", () => { dashSel = { preset:"month" }; const r = dashRange(); $("dashFrom").value = r.from; $("dashTo").value = r.to; if(dashPick) dashPick.sync(); dashMarkActive(); renderDash(); });
 
   /* 趋势序列：按区间跨度自动选粒度（≤31天按日，≤2年按月，更长按年） */
   function trendSeries(from, to){
@@ -416,7 +447,7 @@
   }
 
   function renderDash(){
-    if(!$("dashFrom").value){ const rr = dashRange(); $("dashFrom").value = rr.from; $("dashTo").value = rr.to; }
+    if(!$("dashFrom").value){ const rr = dashRange(); $("dashFrom").value = rr.from; $("dashTo").value = rr.to; if(dashPick) dashPick.sync(); }
     const r = { from:$("dashFrom").value, to:$("dashTo").value };
     const title = dashSel.preset ? { "7d":"近7天", "6m":"近6个月", "5y":"近5年", "month":"本月" }[dashSel.preset] : "所选区间";
     const inP = S.orders.filter(o => o.status !== "canceled" && inRange(o, r));
@@ -692,12 +723,14 @@
   $("fSearch").addEventListener("input", () => { filt.q = $("fSearch").value.trim().toLowerCase(); renderOrdList(); });
   $("fStatus").addEventListener("change", () => { filt.status = $("fStatus").value; renderOrdList(); });
   $("fSort").addEventListener("change", () => { filt.sort = $("fSort").value; renderOrdList(); });
+  const fPick = initRangePicker("fRange", "fFrom", "fTo");
   $("fFrom").addEventListener("change", () => { filt.from = $("fFrom").value; renderOrdList(); });
   $("fTo").addEventListener("change", () => { filt.to = $("fTo").value; renderOrdList(); });
   $("fClear").addEventListener("click", () => {
     Object.assign(filt, { q:"", status:"all", sort:"date-desc", from:"", to:"" });
     $("fSearch").value = ""; $("fStatus").value = "all"; $("fSort").value = "date-desc";
     $("fFrom").value = ""; $("fTo").value = "";
+    if(fPick) fPick.sync();
     renderOrdList();
   });
 
@@ -995,12 +1028,14 @@
 
   /* ============ 打印记录 ============ */
   const recFilt = { q:"", mat:"all", pri:"all", from:"", to:"" };
+  const frPick = initRangePicker("frRange", "frFrom", "frTo");
   [["frSearch","q","value"],["frMat","mat","value"],["frPri","pri","value"],["frFrom","from","value"],["frTo","to","value"]]
     .forEach(([id, key]) => $(id).addEventListener("input", () => { recFilt[key] = $(id).value; renderRecList(); }));
   $("frClear").addEventListener("click", () => {
     Object.assign(recFilt, { q:"", mat:"all", pri:"all", from:"", to:"" });
     $("frSearch").value = ""; $("frMat").value = "all"; $("frPri").value = "all";
     $("frFrom").value = ""; $("frTo").value = "";
+    if(frPick) frPick.sync();
     renderRecList();
   });
 

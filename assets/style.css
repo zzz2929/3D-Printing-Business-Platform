@@ -837,3 +837,41 @@ input.valid{border-color:var(--ok, #3ddc97) !important}
   border:1px solid color-mix(in srgb,var(--ink) 28%,transparent) !important;
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.28) !important;
 }
+/* ---------- 范围日期选择器（flatpickr 主题适配，跟随明暗主题变量） ---------- */
+.range-cell{grid-column:1 / span 2}
+.range-cell input{cursor:pointer}
+.flatpickr-calendar{
+  background:var(--panel);border:1px solid var(--line2);border-radius:10px;
+  box-shadow:0 12px 32px rgba(0,0,0,.35);color:var(--ink);
+  font-family:var(--sans);margin-top:6px;
+}
+.flatpickr-calendar.arrowTop:before{border-bottom-color:var(--line2)}
+.flatpickr-calendar.arrowTop:after{border-bottom-color:var(--panel)}
+.flatpickr-calendar.arrowBottom:before{border-top-color:var(--line2)}
+.flatpickr-calendar.arrowBottom:after{border-top-color:var(--panel)}
+.flatpickr-months .flatpickr-month,.flatpickr-weekdays{background:transparent}
+.flatpickr-current-month .flatpickr-monthDropdown-months,.flatpickr-current-month input.cur-year{color:var(--ink);font-weight:600}
+.flatpickr-monthDropdown-months .flatpickr-monthDropdown-month{background:var(--panel);color:var(--ink)}
+.flatpickr-weekday{color:var(--sub)}
+.flatpickr-day{color:var(--ink)}
+.flatpickr-day:hover{background:var(--accent-dim);border-color:transparent}
+.flatpickr-day.today{border-color:var(--accent)}
+.flatpickr-day.today:hover{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+.flatpickr-day.prevMonthDay,.flatpickr-day.nextMonthDay{color:var(--faint)}
+.flatpickr-day.flatpickr-disabled,.flatpickr-day.prevMonthDay:hover,.flatpickr-day.nextMonthDay:hover{color:var(--faint);opacity:.55}
+.flatpickr-day.inRange{
+  background:var(--accent-dim);border-color:transparent;
+  box-shadow:-5px 0 0 var(--accent-dim),5px 0 0 var(--accent-dim);
+}
+.flatpickr-day.selected,.flatpickr-day.startRange,.flatpickr-day.endRange,
+.flatpickr-day.selected.inRange,.flatpickr-day.startRange.inRange,.flatpickr-day.endRange.inRange,
+.flatpickr-day.selected:hover,.flatpickr-day.startRange:hover,.flatpickr-day.endRange:hover,
+.flatpickr-day.selected:focus,.flatpickr-day.startRange:focus,.flatpickr-day.endRange:focus{
+  background:var(--accent);border-color:var(--accent);color:var(--bg);box-shadow:none;
+}
+.flatpickr-day.selected.startRange,.flatpickr-day.startRange.startRange,.flatpickr-day.endRange.startRange,
+.flatpickr-day.selected.endRange,.flatpickr-day.startRange.endRange,.flatpickr-day.endRange.endRange{
+  background:var(--accent);border-color:var(--accent);
+}
+.flatpickr-prev-month svg,.flatpickr-next-month svg{fill:var(--sub)}
+.flatpickr-prev-month:hover svg,.flatpickr-next-month:hover svg{fill:var(--accent)}
