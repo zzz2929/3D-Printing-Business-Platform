@@ -313,19 +313,48 @@ ck("bambu config masked on re-read", JSON.stringify(r.j).indexOf("secret88") < 0
   && r.j.lan[0].hasCode === true && r.j.cloud.hasPassword === true && r.j.cloud.email === "me@x.com", JSON.stringify(r.j));
 r = await api("POST", "/api/bambu", { lan:[{ id:bambuRowId, name:"P1S", host:"127.0.0.1" }], cloud:{ region:"cn", email:"me@x.com" } });
 ck("blank secrets keep old values", r.status === 200 && r.j.config.lan[0].hasCode === true && r.j.config.cloud.hasPassword === true, JSON.stringify(r.j));
+r = await api("POST", "/api/bambu", { mode:"cloud", cloud:{ region:"cn", email:"me@x.com" } });
+ck("mode=cloud saved, lan rows preserved", r.status === 200 && r.j.config.mode === "cloud" && r.j.config.lan.length === 1, JSON.stringify(r.j));
+r = await api("POST", "/api/bambu", { mode:"lan", lan:[{ id:bambuRowId, name:"P1S", host:"127.0.0.1" }] });
+ck("mode=lan saved, cloud email preserved", r.status === 200 && r.j.config.mode === "lan" && r.j.config.cloud.email === "me@x.com" && r.j.config.cloud.hasPassword === true, JSON.stringify(r.j));
+r = await api("POST", "/api/bambu", { mode:"lan", lan:[] });
+ck("mode=lan without printer rejected", r.status === 400, JSON.stringify(r.j));
 r = await api("POST", "/api/bambu", { action:"fetch" });
 ck("fetch unreachable printer → per-source error, 200", r.status === 200 && r.j.sources && r.j.sources.length === 1 && r.j.sources[0].ok === false, JSON.stringify(r.j));
 ck("fetch source error readable", typeof r.j.sources[0].error === "string" && r.j.sources[0].error.length > 3);
+r = await api("POST", "/api/bambu", { mode:"cloud", cloud:{} });
+ck("mode=cloud blank fields keep email (留空保留)", r.status === 200 && r.j.config.mode === "cloud" && r.j.config.cloud.email === "me@x.com", JSON.stringify(r.j));
+r = await api("POST", "/api/bambu", { action:"fetch" });
+ck("cloud mode without token → 400 提示登录", r.status === 400 && /拓竹云还未登录/.test(r.j.error || ""), JSON.stringify(r.j));
 r = await api("POST", "/api/bambu", { action:"cloudLogin" });
-ck("cloudLogin without email → 400", r.status === 400, JSON.stringify(r.j));
+ck("cloudLogin without account → 400", r.status === 400, JSON.stringify(r.j));
+r = await api("POST", "/api/bambu", { action:"cloudLogin", email:"13800138000" });
+ck("cloudLogin phone without password/code → 400", r.status === 400 && /密码/.test(r.j.error || ""), JSON.stringify(r.j));
+r = await api("POST", "/api/bambu", { action:"cloudLogin", sendCode:true, email:"not-an-account" });
+ck("sendCode bad account format → 400", r.status === 400 && /手机号或邮箱/.test(r.j.error || ""), JSON.stringify(r.j));
 cookie = "";
 r = await api("POST", "/api/login", { username: "alice2", password: "Forgot999A" });
 ck("alice2 fresh login for bambu tests", r.status === 200, JSON.stringify(r.j));
+r = await api("POST", "/api/bambu", { mode:"cloud", cloud:{} });
+ck("alice mode=cloud no email → 400", r.status === 400 && /邮箱/.test(r.j.error || ""), JSON.stringify(r.j));
 r = await api("GET", "/api/bambu");
 ck("per-user bambu isolation (alice empty)", r.status === 200 && r.j.lan.length === 0 && !r.j.cloud.email, JSON.stringify(r.j));
 r = await api("POST", "/api/bambu", { action:"fetch" });
 ck("fetch without config → 400 hint", r.status === 400 && /尚未配置/.test(r.j.error || ""), JSON.stringify(r.j));
 cookie = bossCookie;
+
+console.log("\n[静态缓存与保存即刷新]");
+const sr = await fetch(B + "/assets/app.js");
+ck("assets 协商缓存 no-cache", (sr.headers.get("cache-control") || "").includes("no-cache"), sr.headers.get("cache-control"));
+await sr.arrayBuffer();
+const ctlSse = new AbortController();
+let sseCt = "";
+try{
+  const sse = await fetch(B + "/__reload", { signal: ctlSse.signal });
+  sseCt = sse.headers.get("content-type") || "";
+  ctlSse.abort(); // 只校验响应头，不消费事件流
+}catch(e){}
+ck("保存即刷新 SSE 端点", sseCt.includes("text/event-stream"), sseCt);
 
 console.log("\n[登出/杂项]");
 cookie = bossCookie;

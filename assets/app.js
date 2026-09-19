@@ -39,6 +39,8 @@
     });
     [["matFormCard","mats_manage"],["matListCard","mats_list"],["bambuCard","mats_list"],["priFormCard","pri_add"],["priListCard","pri_list"]]
       .forEach(([id, perm]) => { const el = $(id); if(el) el.hidden = !can(perm); });
+    const goCfg = $("bambuBtnCfg"); // 连接配置在设置页，需「数据与账号」权限才展示入口
+    if(goCfg) goCfg.hidden = !can("set_account");
     renderSetTabs();
   }
 
@@ -1027,29 +1029,57 @@
   /* ============ 拓竹同步（局域网 / 拓竹云 AMS → 耗材库） ============
      服务端经 MQTT 读取 AMS 托盘快照（访问码/token 只存服务端）；
      前端按 uuid（RFID）或 类型+颜色 匹配已有耗材，更新库存或新建。 */
-  const bambuState = { cfg:{ lan:[], cloud:{} }, snap:null };
+  const bambuState = { cfg:{ lan:[], cloud:{} }, snap:null, mode:"lan", loginMode:"sms" }; // mode：连接方式（局域网/云二选一）；loginMode：云登录方式（短信/密码）
   function canUseBambu(){ return S.mode === "server"; }
   function bambuCfgMsg(msg, bad){
     const el = $("bambuCfgMsg");
     el.textContent = msg || "";
     el.classList.toggle("bad", !!bad);
   }
-  function renderBambuStatus(){
-    const el = $("bambuStatus"); if(!el) return;
-    if(!canUseBambu()){ el.textContent = "本地模式不可用 · 需服务端部署"; return; }
+  /* 模式切换：选哪个模式只显示哪个的表单，同步也只走该模式（另一模式的配置保留但不使用） */
+  function setBambuMode(mode){
+    bambuState.mode = mode === "cloud" ? "cloud" : "lan";
+    document.querySelectorAll("#bambuModeSeg button").forEach(b =>
+      b.classList.toggle("on", b.getAttribute("data-mode") === bambuState.mode));
+    $("bambuLanSection").hidden = bambuState.mode !== "lan";
+    $("bambuCloudSection").hidden = bambuState.mode !== "cloud";
+    $("bambuCloudLoginBtn").hidden = bambuState.mode !== "cloud";
+  }
+  /* 连接方式摘要（耗材页状态与设置页卡片头共用） */
+  function bambuDesc(){
     const cfg = bambuState.cfg || {}, cloud = cfg.cloud || {};
-    const parts = [];
-    if((cfg.lan || []).length) parts.push(cfg.lan.length + " 台局域网打印机");
-    if(cloud.email || cloud.hasToken) parts.push("拓竹云" + (cloud.email ? "（" + cloud.email + "）" : ""));
-    if(!parts.length){ el.textContent = "未配置 · 连接 AMS 后一键同步库存"; return; }
-    const last = cfg.last && cfg.last.fetchedAt
-      ? " · 上次抓取 " + new Date(cfg.last.fetchedAt).toLocaleString("zh-CN", { month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit" }) : "";
-    el.textContent = "已配置 " + parts.join(" + ") + last;
+    if((cfg.mode || "lan") === "cloud"){
+      return (cloud.email || cloud.hasToken)
+        ? "拓竹云" + (cloud.email ? "（" + cloud.email + "）" : "")
+        : "拓竹云模式 · 未登录";
+    }
+    const n = (cfg.lan || []).length;
+    return n ? n + " 台局域网打印机" : "局域网模式 · 未添加打印机";
+  }
+  function renderBambuStatus(){
+    const el = $("bambuStatus"), cfgEl = $("bambuCfgStatus");
+    if(!canUseBambu()){
+      if(el) el.textContent = "本地模式不可用 · 需服务端部署";
+      if(cfgEl) cfgEl.textContent = "本地模式不可用";
+      return;
+    }
+    const last = bambuState.cfg && bambuState.cfg.last && bambuState.cfg.last.fetchedAt
+      ? " · 上次抓取 " + new Date(bambuState.cfg.last.fetchedAt).toLocaleString("zh-CN", { month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit" }) : "";
+    const text = bambuDesc() + last;
+    if(el) el.textContent = text;
+    if(cfgEl) cfgEl.textContent = text;
   }
   async function loadBambu(){
-    if(!canUseBambu()) return renderBambuStatus();
+    const card = $("bambuCfgCard");
+    if(!canUseBambu()){
+      if(card) card.hidden = true;
+      return renderBambuStatus();
+    }
     try{ bambuState.cfg = await S.bambuGet(); }
     catch(e){ bambuState.cfg = { lan:[], cloud:{} }; }
+    if(card) card.hidden = false;
+    setBambuMode((bambuState.cfg && bambuState.cfg.mode) === "cloud" ? "cloud" : "lan");
+    renderBambuLanRows();
     renderBambuStatus();
   }
   /* ---- 连接配置 ---- */
@@ -1073,39 +1103,60 @@
     ((bambuState.cfg && bambuState.cfg.lan) || []).forEach(r => box.appendChild(bambuLanRow(r)));
     if(!box.children.length) box.appendChild(bambuLanRow());
   }
+  $("bambuLanAdd").addEventListener("click", () => {
+    $("bambuLanList").appendChild(bambuLanRow());
+    const rows = $("bambuLanList").children;
+    const last = rows[rows.length - 1];
+    if(last) last.querySelector(".bl-host").focus();
+  });
   function collectBambuCfg(){
-    const lan = [];
-    Array.from($("bambuLanList").children).forEach(d => {
-      const row = {
-        id: d.dataset.id || "",
-        name: d.querySelector(".bl-name").value.trim(),
-        host: d.querySelector(".bl-host").value.trim()
+    const payload = { mode: bambuState.mode };
+    if(bambuState.mode === "lan"){
+      payload.lan = [];
+      Array.from($("bambuLanList").children).forEach(d => {
+        const row = {
+          id: d.dataset.id || "",
+          name: d.querySelector(".bl-name").value.trim(),
+          host: d.querySelector(".bl-host").value.trim()
+        };
+        const code = d.querySelector(".bl-code").value.trim();
+        if(code) row.code = code; // 留空 = 服务端保留原访问码
+        if(row.host || row.name || code) payload.lan.push(row);
+      });
+      // 云字段不上送 → 服务端保留原值（切换模式后不丢配置）
+    }else{
+      const cloud = {
+        region: $("bambuCloudRegion").value,
+        email: $("bambuCloudEmail").value.trim()
       };
-      const code = d.querySelector(".bl-code").value.trim();
-      if(code) row.code = code; // 留空 = 服务端保留原访问码
-      if(row.host || row.name || code) lan.push(row);
-    });
-    const cloud = {
-      region: $("bambuCloudRegion").value,
-      email: $("bambuCloudEmail").value.trim()
-    };
-    if($("bambuCloudPass").value) cloud.password = $("bambuCloudPass").value;
-    if($("bambuCloudToken").value.trim()) cloud.token = $("bambuCloudToken").value.trim();
-    return { lan, cloud };
-  }
-  $("bambuBtnCfg").addEventListener("click", () => {
-    const box = $("bambuCfgBox");
-    box.hidden = !box.hidden;
-    if(!box.hidden){
-      renderBambuLanRows();
-      if(!canUseBambu()) bambuCfgMsg("当前为本地模式：拓竹同步需要 Node / Docker / NAS 服务端运行。", true);
+      if($("bambuCloudPass").value) cloud.password = $("bambuCloudPass").value;
+      if($("bambuCloudToken").value.trim()) cloud.token = $("bambuCloudToken").value.trim();
+      payload.cloud = cloud;
+      // lan 不上送 → 服务端保留原列表
     }
+    return payload;
+  }
+  $("bambuModeSeg").addEventListener("click", e => {
+    const b = e.target.closest("button[data-mode]"); if(!b) return;
+    setBambuMode(b.getAttribute("data-mode"));
+    if(bambuState.mode === "lan") renderBambuLanRows();
+    bambuCfgMsg("");
+  });
+  $("bambuBtnCfg").addEventListener("click", () => {
+    // 连接配置在「设置 → 数据与账号管理 → 拓竹连接」，这里只负责跳转
+    goto("settings");
+    activeSetPane = "data";
+    renderSetTabs();
+    const card = $("bambuCfgCard");
+    if(card && !card.hidden) setTimeout(() => card.scrollIntoView({ behavior:"smooth", block:"start" }), 80);
   });
   $("bambuCfgSave").addEventListener("click", async () => {
     const btn = $("bambuCfgSave");
     const payload = collectBambuCfg();
-    if(!payload.lan.length && !payload.cloud.email && !payload.cloud.token){
-      bambuCfgMsg("请至少添加一台局域网打印机，或填写拓竹云账号", true); return;
+    if(payload.mode === "lan"){
+      if(!payload.lan.some(p => p.host)){ bambuCfgMsg("请至少填写一台打印机的 IP 地址", true); return; }
+    }else if(!payload.cloud.email && !payload.cloud.token){
+      bambuCfgMsg("请填写拓竹账号（手机号或邮箱，或直接粘贴 accessToken）", true); return;
     }
     btn.disabled = true;
     try{
@@ -1118,35 +1169,118 @@
     }catch(e){ bambuCfgMsg(e.message, true); }
     finally{ btn.disabled = false; }
   });
+  /* 拓竹云登录（参考拓竹设备管理类应用的通用交互）：
+     登录方式二选一 —— 手机短信（手机号 + 短信验证码）或 账号密码；
+     密码登录被要求验证时自动切到短信方式填码；2FA 账号填动态验证码（无需发码）。
+     accessToken 粘贴后「保存连接配置」即可，作为风控兜底。 */
+  function bambuAccountKind(v){
+    const s = String(v || "").trim();
+    if(/@/.test(s)) return "email";
+    if(/^\+?\d{5,15}$/.test(s)) return "phone";
+    return "invalid";
+  }
+  function setBambuLoginMode(lm){
+    bambuState.loginMode = lm === "password" ? "password" : "sms";
+    document.querySelectorAll("#bambuLoginSeg button").forEach(b =>
+      b.classList.toggle("on", b.getAttribute("data-lm") === bambuState.loginMode));
+    const sms = bambuState.loginMode === "sms";
+    $("bambuSmsRow").hidden = !sms;
+    $("bambuPwRow").hidden = sms;
+    $("bambuAccountLabel").textContent = sms ? "手机号" : "账号（手机号 / 邮箱）";
+    $("bambuCloudEmail").placeholder = sms ? "13800138000" : "手机号或邮箱";
+    $("bambuCloudEmail").setAttribute("inputmode", sms ? "tel" : "text");
+    $("bambuCloudLoginBtn").textContent = sms ? "验证并登录" : "登录拓竹云";
+    $("bambuCodeLabel").textContent = sms ? "短信验证码" : "验证码";
+    $("bambuCodeHint").textContent = sms ? "点击「获取验证码」后查收手机短信" : "密码登录被要求验证时，点击「获取验证码」（邮箱账号收邮件）";
+    // 切换方式时复位发码按钮（取消进行中的倒计时）
+    clearTimeout(bambuCodeTimer);
+    $("bambuCodeSend").disabled = false;
+    $("bambuCodeSend").textContent = "获取验证码";
+  }
+  $("bambuLoginSeg").addEventListener("click", e => {
+    const b = e.target.closest("button[data-lm]"); if(!b) return;
+    setBambuLoginMode(b.getAttribute("data-lm"));
+    bambuCfgMsg("");
+  });
+  let bambuCodeTimer = null;
+  function bambuCodeCountdown(){
+    const btn = $("bambuCodeSend");
+    let left = 60;
+    btn.disabled = true;
+    btn.textContent = left + "s";
+    clearTimeout(bambuCodeTimer);
+    const tick = () => {
+      btn.textContent = (--left) + "s";
+      if(left > 0){ bambuCodeTimer = setTimeout(tick, 1000); }
+      else { btn.disabled = false; btn.textContent = "获取验证码"; }
+    };
+    bambuCodeTimer = setTimeout(tick, 1000);
+  }
+  $("bambuCodeSend").addEventListener("click", async () => {
+    const account = $("bambuCloudEmail").value.trim();
+    if(bambuAccountKind(account) === "invalid"){ bambuCfgMsg("请先填写正确的手机号或邮箱", true); return; }
+    const btn = $("bambuCodeSend");
+    btn.disabled = true; btn.textContent = "发送中…";
+    try{
+      const d = await S.bambuCloudLogin({ region: $("bambuCloudRegion").value, email: account, sendCode: true });
+      if(!d.channel){ // 旧版服务端没有发码接口，会把该请求当配置保存
+        btn.disabled = false; btn.textContent = "获取验证码";
+        bambuCfgMsg("服务端版本较旧（不支持短信验证码）：请重启服务（npm start 或 docker compose up -d --build）并强刷页面后重试", true);
+        return;
+      }
+      bambuCodeCountdown();
+      bambuCfgMsg(d.channel === "sms" ? "验证码已短信发送到该手机号，收到后填入再点「验证并登录」" : "该账号是邮箱：验证码已发送到邮箱，收到后填入再点「验证并登录」");
+      $("bambuCloudCode").focus();
+    }catch(e){
+      btn.disabled = false; btn.textContent = "获取验证码";
+      bambuCfgMsg(e.message, true);
+    }
+  });
   $("bambuCloudLoginBtn").addEventListener("click", async () => {
     const btn = $("bambuCloudLoginBtn");
-    const email = $("bambuCloudEmail").value.trim();
+    const account = $("bambuCloudEmail").value.trim();
     const password = $("bambuCloudPass").value;
     const code = $("bambuCloudCode").value.trim();
-    if(!email){ bambuCfgMsg("请先填写拓竹账号邮箱", true); return; }
-    if(!password && !code){ bambuCfgMsg("请填写密码；或直接粘贴 accessToken 保存", true); return; }
+    const lm = bambuState.loginMode || "sms"; // 兜底：旧状态缺省按短信方式处理
+    if(bambuAccountKind(account) === "invalid"){ bambuCfgMsg("请先填写正确的手机号或邮箱", true); return; }
+    if(lm === "sms" && !code){ bambuCfgMsg("请先点击「获取验证码」，收到后填写验证码", true); return; }
+    if(lm === "password" && !password){ bambuCfgMsg("请填写密码后点「登录拓竹云」；或切换到「手机短信」方式用验证码登录", true); return; }
     btn.disabled = true; bambuCfgMsg("正在登录拓竹云…");
     try{
       const d = await S.bambuCloudLogin({
-        region: $("bambuCloudRegion").value, email,
-        password: password || undefined, code: code || undefined,
+        region: $("bambuCloudRegion").value, email: account,
+        password: lm === "password" ? password : undefined,
+        code: code || undefined,
         tfaKey: $("bambuTfaKey").value || undefined
       });
       if(d.needCode){
         $("bambuTfaKey").value = d.tfaKey || "";
-        bambuCfgMsg("该账号需要验证：验证码已发送到邮箱，请在「邮箱验证码」填写后再点登录");
+        if(d.tfaKey){ // 2FA：动态验证码无需点「获取验证码」
+          setBambuLoginMode("sms");
+          $("bambuCodeSend").disabled = true;
+          $("bambuCodeSend").textContent = "无需发码";
+          $("bambuCodeHint").textContent = "该账号开启了 2FA：请输入 Authenticator / 恢复码等动态验证码";
+          bambuCfgMsg("该账号开启了 2FA，请填写动态验证码后点「验证并登录」");
+        }else{
+          setBambuLoginMode("sms");
+          bambuCfgMsg("该账号需要验证：请点「获取验证码」，收到短信后填入再点「验证并登录」");
+        }
+        $("bambuCloudCode").focus();
         return;
       }
       if(d.config) bambuState.cfg = d.config;
       renderBambuLanRows(); renderBambuStatus();
       $("bambuCloudPass").value = ""; $("bambuCloudCode").value = ""; $("bambuTfaKey").value = "";
+      $("bambuCodeSend").disabled = false; $("bambuCodeSend").textContent = "获取验证码";
+      $("bambuCodeHint").textContent = "点击「获取验证码」后查收手机短信";
+      setBambuLoginMode("sms");
       bambuCfgMsg("拓竹云登录成功，accessToken 已保存到服务端");
       toast("拓竹云已登录");
     }catch(e){ bambuCfgMsg(e.message, true); }
     finally{ btn.disabled = false; }
   });
   $("bambuCfgClear").addEventListener("click", async () => {
-    if(!(await confirmBox("清除全部拓竹连接配置（局域网打印机与云账号）？"))) return;
+    if(!(await confirmBox("清除全部拓竹连接配置（含两种模式的已存配置）？"))) return;
     try{
       await S.bambuClear();
       bambuState.cfg = { lan:[], cloud:{} };
@@ -1185,19 +1319,18 @@
   async function bambuFetchSnap(){
     const btn = $("bambuBtnSync");
     btn.disabled = true; const old = btn.textContent; btn.textContent = "连接中…";
-    bambuCfgMsg("");
     try{
       bambuState.snap = await S.bambuFetch();
       if(bambuState.cfg) bambuState.cfg.last = { fetchedAt: bambuState.snap.fetchedAt };
       renderBambuPreview();
       renderBambuStatus();
       $("bambuSyncBox").hidden = false;
-      $("bambuCfgBox").hidden = true;
       $("bambuSyncBox").scrollIntoView({ behavior:"smooth", block:"nearest" });
     }catch(e){
-      bambuCfgMsg(e.message || "抓取失败", true);
+      // 抓取失败（多为未配置/云 token 过期）：提示并引导到设置页的拓竹连接卡片
       toast(e.message || "抓取失败");
-      $("bambuCfgBox").hidden = false; // 引导去配置
+      $("bambuCfgMsg").textContent = e.message || "抓取失败";
+      $("bambuCfgMsg").classList.add("bad");
     }finally{ btn.disabled = false; btn.textContent = old; }
   }
   $("bambuBtnSync").addEventListener("click", bambuFetchSnap);

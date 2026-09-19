@@ -1,7 +1,9 @@
 /* 3D打印业务平台 Node 宿主：静态文件 + REST API + 文件存储
-   环境变量：PORT（默认 2929）、DATA_DIR（默认 ./data） */
+   环境变量：PORT（默认 2929）、DATA_DIR（默认 ./data）、NO_WATCH=1 关闭「保存即刷新」 */
 import http from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
+import { watch } from "node:fs";
+import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRouter } from "./router.mjs";
@@ -39,7 +41,8 @@ async function serveStatic(urlPath){
     return new Response(data, {
       headers: {
         "content-type": MIME[path.extname(file)] || "application/octet-stream",
-        "cache-control": rel.startsWith("/assets/") ? "public, max-age=604800" : "no-cache"
+        // 静态资源统一协商缓存：每次加载都向服务器校验，文件一改普通刷新即生效（无需 Ctrl+F5）
+        "cache-control": "no-cache"
       }
     });
   }catch(e){
@@ -47,8 +50,73 @@ async function serveStatic(urlPath){
   }
 }
 
+/* ---------- 保存即刷新：监听前端文件变更，经 SSE 通知浏览器自动 reload ----------
+   内容哈希去重（编辑器临时文件/重复事件不触发），600ms 防抖；NO_WATCH=1 可关闭。 */
+function createReloadHub(){
+  const clients = new Set();
+  let lastSig = "", timer = null, scanning = false;
+  const ROOT_FILES = ["index.html", "sw.js", "manifest.webmanifest", "icon.svg"];
+  const fileHash = async f => {
+    try{ return crypto.createHash("md5").update(await readFile(f)).digest("hex"); }
+    catch(e){ return "gone"; }
+  };
+  const listFiles = async () => {
+    const out = [];
+    const walk = async dir => {
+      for(const name of await readdir(dir, { withFileTypes: true })){
+        const p = path.join(dir, name.name);
+        if(name.isDirectory()) await walk(p); else out.push(p);
+      }
+    };
+    try{ await walk(path.join(ROOT, "assets")); }catch(e){}
+    for(const f of ROOT_FILES) out.push(path.join(ROOT, f));
+    return out;
+  };
+  const scan = async () => {
+    const files = await listFiles();
+    const parts = await Promise.all(files.map(async f => path.relative(ROOT, f) + ":" + await fileHash(f)));
+    return parts.sort().join("|");
+  };
+  const broadcast = () => {
+    const msg = "data: " + JSON.stringify({ reload: true, at: Date.now() }) + "\n\n";
+    for(const res of clients){ try{ res.write(msg); }catch(e){ clients.delete(res); } }
+    console.log("[3d-printing-business] 前端文件变更，已通知 " + clients.size + " 个页面自动刷新");
+  };
+  const onChange = () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      if(scanning) return;
+      scanning = true;
+      try{
+        const sig = await scan();
+        if(sig !== lastSig){ lastSig = sig; broadcast(); }
+      }catch(e){}
+      scanning = false;
+    }, 600);
+  };
+  scan().then(sig => { lastSig = sig; }).catch(() => {});
+  try{
+    watch(path.join(ROOT, "assets"), { recursive: true }, onChange);
+    for(const f of ROOT_FILES) watch(path.join(ROOT, f), onChange);
+  }catch(e){ console.log("[3d-printing-business] 文件监听不可用，自动刷新停用（" + e.message + "）"); }
+  return (req, res) => {
+    res.writeHead(200, {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache",
+      "connection": "keep-alive"
+    });
+    res.write("retry: 5000\n\n");
+    clients.add(res);
+    const keep = setInterval(() => { try{ res.write(": ping\n\n"); }catch(e){} }, 25000);
+    req.on("close", () => { clearInterval(keep); clients.delete(res); });
+  };
+}
+
+const reloadHub = process.env.NO_WATCH === "1" ? null : createReloadHub();
+
 const server = http.createServer(async (req, res) => {
   try{
+    if(reloadHub && req.url.split("?")[0] === "/__reload") return reloadHub(req, res);
     const body = ["GET", "HEAD"].includes(req.method) ? undefined : await readStream(req);
     const headers = {};
     for(const k of Object.keys(req.headers)) headers[k] = req.headers[k];

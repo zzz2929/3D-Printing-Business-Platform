@@ -12,9 +12,9 @@ import net from "node:net";
 
 /* ---------- 区域端点 ---------- */
 export const BAMBU_REGIONS = {
-  cn: { label:"中国大陆", api:"https://api.bambulab.cn", mqtt:"cn.mqtt.bambulab.com" },
-  eu: { label:"欧洲",     api:"https://api.bambulab.com", mqtt:"eu.mqtt.bambulab.com" },
-  us: { label:"北美",     api:"https://api.bambulab.com", mqtt:"us.mqtt.bambulab.com" }
+  cn: { label:"中国大陆", api:"https://api.bambulab.cn", web:"https://bambulab.cn", mqtt:"cn.mqtt.bambulab.com" },
+  eu: { label:"欧洲",     api:"https://api.bambulab.com", web:"https://bambulab.com", mqtt:"eu.mqtt.bambulab.com" },
+  us: { label:"北美",     api:"https://api.bambulab.com", web:"https://bambulab.com", mqtt:"us.mqtt.bambulab.com" }
 };
 const regionOf = r => BAMBU_REGIONS[r] || BAMBU_REGIONS.cn;
 
@@ -227,41 +227,99 @@ async function restJson(url, opts = {}, timeoutMs = 10000){
   }finally{ clearTimeout(t); }
 }
 
-/* 云账号登录（account + password → accessToken）
-   需要邮箱验证码时返回 { needCode:true, tfaKey? }；成功返回 { token }。
-   code 存在时走验证码流程：先请求下发验证码，再带 code 重新登录。 */
-export async function cloudLogin({ region = "cn", account, password, code, tfaKey }){
+/* 同上但保留状态码与 Set-Cookie（2FA 的 accessToken 在响应 Cookie 里） */
+async function restRaw(url, opts = {}, timeoutMs = 10000){
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), timeoutMs);
+  try{
+    const r = await fetch(url, Object.assign({}, opts, { signal: ctl.signal }));
+    const j = await r.json().catch(() => null);
+    let setCookies = [];
+    if(r.headers.getSetCookie) setCookies = r.headers.getSetCookie();
+    else { const sc = r.headers.get("set-cookie"); if(sc) setCookies = [sc]; }
+    return { status: r.status, json: j, setCookies };
+  }finally{ clearTimeout(t); }
+}
+
+/* 账号类型：手机号（5-15 位数字，可带 + 国际区号）或邮箱 */
+function accountKind(account){
+  const s = String(account || "").trim();
+  if(/@/.test(s)) return "email";
+  if(/^\+?\d{5,15}$/.test(s)) return "phone";
+  return "invalid";
+}
+
+/* 下发登录验证码：手机号 → 短信，邮箱 → 邮件（端点与字段参考拓竹 App / 同类开源集成实现） */
+export async function cloudSendCode({ region = "cn", account }){
   const base = regionOf(region).api;
-  if(!account) throw new Error("请填写拓竹账号邮箱");
-  if(!password && !code) throw new Error("请填写密码");
-  if(code && tfaKey){ // 2FA：tfaKey + 6 位验证码
-    const j = await restJson(base + "/api/sign-in/tfa", {
+  const kind = accountKind(account);
+  if(kind === "invalid") throw new Error("请填写正确的手机号或邮箱");
+  const isPhone = kind === "phone";
+  const url = base + (isPhone ? "/v1/user-service/user/sendsmscode" : "/v1/user-service/user/sendemail/code");
+  const body = isPhone
+    ? { phone: String(account).trim(), type: "codeLogin" }
+    : { email: String(account).trim(), type: "codeLogin" };
+  await restJson(url, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body)
+  }).catch(e => {
+    throw new Error((isPhone ? "短信" : "邮件") + "验证码发送失败：" + captchaHint(e));
+  });
+  return { ok: true, channel: isPhone ? "sms" : "email" };
+}
+
+/* 拓竹风控（HTTP 418 + 极验 gcaptcha4 质询 / Cloudflare）的可读提示 */
+function captchaHint(e){
+  const m = String((e && e.message) || "");
+  if(/418|robot|captcha|geetest/i.test(m))
+    return "拓竹要求人机验证（极验），第三方应用暂无法在服务端完成；建议改用 accessToken 方式登录";
+  if(/403|cloudflare/i.test(m))
+    return "请求被拓竹安全防护拦截；可稍后重试或改用 accessToken 登录";
+  return m;
+}
+
+/* 云账号登录（流程参考拓竹 App 与同类开源集成的通用实现）：
+   1) account + password        → 密码登录；账号开启验证时返回 { needCode:true, tfaKey? }
+   2) account + code            → 提交验证码登录（验证码用 cloudSendCode 下发：手机走短信、邮箱走邮件）
+   3) account + code + tfaKey   → 2FA：POST web 域 /api/sign-in/tfa，accessToken 在响应 Cookie
+   成功返回 { token }。 */
+export async function cloudLogin({ region = "cn", account, password, code, tfaKey }){
+  const r = regionOf(region);
+  const acc = String(account || "").trim();
+  if(!acc) throw new Error("请填写拓竹账号（手机号或邮箱）");
+  if(accountKind(acc) === "invalid") throw new Error("账号格式不正确：请填写手机号或邮箱");
+  if(code && tfaKey){ // 2FA：tfaKey + 验证码，token 在 Set-Cookie 的 token 字段
+    const out = await restRaw(r.web + "/api/sign-in/tfa", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ tfaKey, tfaCode: String(code) })
     });
-    if(j && j.accessToken) return { token: j.accessToken };
-    throw new Error("验证码校验未通过");
+    const ck = (out.setCookies || []).map(c => /^token=([^;]+)/.exec(c)).find(Boolean);
+    if(ck) return { token: decodeURIComponent(ck[1]) };
+    if(out.json && out.json.accessToken) return { token: out.json.accessToken };
+    throw new Error("2FA 验证码校验未通过");
   }
-  if(code && !password){ // 邮箱验证码登录：先请求下发，再带 code 登录
-    await restJson(base + "/v1/user-service/user/sendemail/code", {
+  if(code && !password){ // 验证码登录（不自动重发验证码）
+    const j = await restJson(r.api + "/v1/user-service/user/login", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: account, type: "codeLogin" })
-    }).catch(e => { throw new Error("验证码发送失败：" + e.message); });
+      body: JSON.stringify({ account: acc, code: String(code) })
+    });
+    if(j && j.accessToken) return { token: j.accessToken };
+    throw new Error((j && (j.message || j.error)) || "验证码校验未通过或已过期");
   }
-  const loginBody = code && !password
-    ? { account, code: String(code) }
-    : { account, password, apiError: "" };
-  const j = await restJson(base + "/v1/user-service/user/login", {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(loginBody)
+  if(!password) throw new Error("请填写密码；或点「获取验证码」改用短信验证码登录");
+  const j = await restJson(r.api + "/v1/user-service/user/login", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ account: acc, password, apiError: "" })
+  }).catch(e => {
+    throw new Error("登录请求失败：" + captchaHint(e));
   });
   if(j && j.accessToken) return { token: j.accessToken };
-  const msg = String((j && (j.message || j.error)) || "");
   const lt = String((j && j.loginType) || "");
-  if((j && j.tfaKey) || (j && j.tfa && j.tfa.tfaKey)) return { needCode: true, tfaKey: j.tfaKey || j.tfa.tfaKey };
+  if(lt === "verifyCode" || lt === "verify_code") return { needCode: true }; // 需短信/邮件验证码，用 cloudSendCode 下发
+  if(lt === "tfa" || (j && (j.tfaKey || (j.tfa && j.tfa.tfaKey))))
+    return { needCode: true, tfaKey: (j && j.tfaKey) || (j && j.tfa && j.tfa.tfaKey) || "" };
   if(j && j.tfa) return { needCode: true, tfaKey: j.tfa.tfaKey || "" };
-  if(lt === "verifyCode" || lt === "verify_code" || lt === "code" || /verify|code|captcha/i.test(msg))
-    return { needCode: true };
-  throw new Error(msg || "登录未成功，请检查账号密码（中国区账号若不支持密码登录，请改用 accessToken 登录）");
+  const msg = String((j && (j.message || j.error)) || "");
+  throw new Error(msg || "登录未成功，请检查账号密码（若提示需要验证码，请点「发送验证码」后填写再登录）");
 }
 
 /* 云设备列表（尽力而为，用于显示设备名；失败不影响 MQTT 抓取） */
@@ -319,13 +377,16 @@ export async function fetchCloud({ region = "cn", email, token, timeoutMs = 9000
   return { devices };
 }
 
-/* ---------- 汇总：根据配置抓取所有来源 ----------
-   cfg = { lan:[{ name, host, code }], cloud:{ region, email, token } }
+/* ---------- 汇总：根据配置抓取来源 ----------
+   cfg.mode = "lan" | "cloud" → 只抓对应来源（二选一）；
+   旧配置无 mode → 两种都抓（兼容升级前的既有配置）。
+   cfg = { mode?, lan:[{ name, host, code }], cloud:{ region, email, token } }
    返回 { sources:[{ kind, name, ok, error?, devices:[{ devId, devName, trays }] }], fetchedAt } */
 export async function fetchAll(cfg, { lanTimeoutMs = 9000, cloudTimeoutMs = 9000 } = {}){
   const sources = [];
   const jobs = [];
-  (Array.isArray(cfg.lan) ? cfg.lan : []).forEach((p, i) => {
+  const useLan = cfg.mode !== "cloud", useCloud = cfg.mode !== "lan";
+  if(useLan) (Array.isArray(cfg.lan) ? cfg.lan : []).forEach((p, i) => {
     if(!p || !p.host) return;
     jobs.push(fetchLan({ host: p.host, code: p.code, timeoutMs: lanTimeoutMs })
       .then(d => sources.push({ kind:"lan", name: p.name || ("局域网打印机 " + (i + 1)), host: p.host, ok:true,
@@ -333,13 +394,15 @@ export async function fetchAll(cfg, { lanTimeoutMs = 9000, cloudTimeoutMs = 9000
       .catch(e => sources.push({ kind:"lan", name: p.name || ("局域网打印机 " + (i + 1)), host: p.host, ok:false, error: e.message })));
   });
   const c = cfg.cloud || {};
-  if(c.token){
+  if(useCloud && c.token){
     jobs.push(fetchCloud({ region: c.region, email: c.email, token: c.token, timeoutMs: cloudTimeoutMs })
       .then(d => sources.push({ kind:"cloud", name: "拓竹云 · " + (c.email || regionOf(c.region).label), region: c.region, ok:true, devices: d.devices }))
       .catch(e => sources.push({ kind:"cloud", name: "拓竹云 · " + (c.email || regionOf(c.region).label), region: c.region, ok:false, error: e.message })));
   }
   await Promise.all(jobs);
-  if(!jobs.length) throw new Error("尚未配置任何连接：请先添加局域网打印机或登录拓竹账号");
+  if(!jobs.length) throw new Error(cfg.mode === "cloud"
+    ? "拓竹云还未登录：请先登录拓竹账号或粘贴 accessToken"
+    : "尚未配置连接：请先添加打印机或登录拓竹账号");
   sources.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "lan" ? -1 : 1));
   return { sources, fetchedAt: Date.now() };
 }

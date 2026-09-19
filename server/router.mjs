@@ -6,7 +6,7 @@
 
 import { createAuth, tokenCookie, CLEAR_COOKIE } from "./auth.mjs";
 import { appVersion } from "./version.mjs";
-import { cloudLogin, fetchAll } from "./bambu.mjs";
+import { cloudLogin, cloudSendCode, fetchAll } from "./bambu.mjs";
 
 const DATA_COLS = ["materials", "printers", "records", "orders", "settings", "achievements"];
 
@@ -235,7 +235,8 @@ export function createRouter(store, mailer){
       const cfgKey = prefix + "bambucfg";
       const getCfg = async () => await store.get(cfgKey) || { lan:[], cloud:{} };
 
-      /* 规范化保存：密钥字段留空 = 保留原值；LAN 行按 id 对应（新增行要求填访问码） */
+      /* 规范化保存：密钥字段留空 = 保留原值；LAN 行按 id 对应（新增行要求填访问码）；
+         mode = 当前使用的连接方式（lan / cloud 二选一，另一种的配置保留但不使用） */
       function normBambuCfg(body, prev){
         body = body || {};
         const prevLan = Array.isArray(prev.lan) ? prev.lan : [];
@@ -260,11 +261,13 @@ export function createRouter(store, mailer){
           password: keep(c.password, prevC.password),
           token: keep(c.token, prevC.token)
         };
-        return { lan, cloud, last: prev.last }; // 保留上次抓取摘要
+        const mode = ["lan", "cloud"].includes(body.mode) ? body.mode : (["lan", "cloud"].includes(prev.mode) ? prev.mode : "lan");
+        return { lan, cloud, mode, last: prev.last }; // 保留上次抓取摘要
       }
       /* 脱敏视图：只回传 has* 布尔，绝不回传访问码 / token / 密码 */
       function maskBambuCfg(cfg, last){
         return {
+          mode: cfg.mode === "cloud" ? "cloud" : "lan",
           lan: (cfg.lan || []).map(p => ({ id:p.id, name:p.name || "", host:p.host, hasCode:!!p.code })),
           cloud: {
             region: (cfg.cloud && cfg.cloud.region) || "cn",
@@ -286,7 +289,15 @@ export function createRouter(store, mailer){
       if(path === "bambu" && req.method === "POST"){
         const body = await readBody(req) || {};
         if(body.action === "cloudLogin"){ // 拓竹云账号登录（获取并保存 accessToken）
-          const { region, email, password, code, tfaKey } = body;
+          const { region, email, password, code, tfaKey, sendCode } = body;
+          if(sendCode){ // 下发登录验证码：手机号 → 短信，邮箱 → 邮件
+            try{
+              const r = await cloudSendCode({ region, account: email });
+              return json(r);
+            }catch(e){
+              return json({ error: e.message || "验证码发送失败" }, 400);
+            }
+          }
           try{
             const r = await cloudLogin({ region, account: email, password, code, tfaKey });
             if(r.needCode) return json({ needCode:true, tfaKey: r.tfaKey || "" });
@@ -318,8 +329,12 @@ export function createRouter(store, mailer){
         // 默认：保存连接配置
         const prev = await getCfg();
         const cfg = normBambuCfg(body, prev);
-        if(!cfg.lan.length && !cfg.cloud.token && !cfg.cloud.email && !cfg.cloud.password)
-          return json({ error:"请至少配置一台局域网打印机或拓竹云账号" }, 400);
+        if(cfg.mode === "cloud"){
+          if(!cfg.cloud.email && !cfg.cloud.token && !cfg.cloud.password)
+            return json({ error:"请填写拓竹账号（手机号或邮箱，或粘贴 accessToken）" }, 400);
+        }else if(!cfg.lan.length){
+          return json({ error:"请至少添加一台局域网打印机" }, 400);
+        }
         await store.set(cfgKey, cfg);
         return json({ ok:true, config: maskBambuCfg(cfg) });
       }
