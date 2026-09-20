@@ -5,7 +5,11 @@
         订阅 device/#（X1 系为 device/REPORT，P1/A1 系为 device/<SN>/report），
         P1/A1 只推增量，收到消息后向 device/<SN>/request 发 pushing.pushall 拉全量。
      2) 拓竹云：区域 MQTT（cn/eu/us.mqtt.bambulab.com:8883，用户名 u_<uid>（或邮箱），密码 = accessToken）
-        订阅 device/+/report；设备名尽力通过 REST /v1/iot-service/api/user/bind 补充。
+        订阅 device/<SN>/report（云 broker 的 ACL 仅授权精确主题，通配符 device/+/report 会被 0x80 拒绝）；
+        设备名尽力通过 REST /v1/iot-service/api/user/bind 补充。
+    P1/A1 系（P1S/P1P/A1/A1 MINI）在云端与局域网都只推增量：空闲待机时不会主动上报全量，
+    因此两种模式都会在连接后向 device/<SN>/request 发送 pushing.pushall 主动拉取全量快照
+    （云端优先用 REST 设备列表里的 dev_id，避免静默设备连一条 report 都不推时无从得知序列号）。
    仅「读取」AMS 托盘状态（耗材类型/品牌/颜色/剩余），不向打印机下发任何控制指令。 */
 import tls from "node:tls";
 import net from "node:net";
@@ -50,6 +54,13 @@ function encSubscribe(packetId, topics){
 }
 function encPublish(topic, payload){
   return packet(0x30, Buffer.concat([mqttStr(topic), Buffer.from(String(payload), "utf8")])); // qos0
+}
+/* qos1 发布（带 packetId）：X2D 等新机型云端 gateway 对 request 主题仅认可 qos1 + 递增 sequence_id，
+   否则 pushall 会被静默丢弃（实测对比验证：qos0/时间戳 seq/双载荷均无响应，qos1+递增立即回全量） */
+function encPublishQos1(packetId, topic, payload){
+  return packet(0x32, Buffer.concat([mqttStr(topic),
+    Buffer.from([(packetId >> 8) & 0xff, packetId & 0xff]),
+    Buffer.from(String(payload), "utf8")]));
 }
 
 /* 把一个 TCP 分片流解析为 MQTT 包（处理粘包与剩余长度变长编码） */
@@ -124,7 +135,12 @@ export function mqttSession({ host, port = 8883, username, password, topics, tim
           if(qos > 0) off += 2; // qos>0 时主体前有 2 字节包 id（订阅 qos0 时不会出现，防御性跳过）
           const payload = p.body.subarray(off).toString("utf8");
           packets.push({ topic, payload });
-          if(onPublish) try{ onPublish(topic, payload); }catch(e){}
+          // onPublish 返回 true → 数据已满足要求，提前结束窗口（避免干等满 timeoutMs）
+          if(onPublish){
+            let early = false;
+            try{ early = onPublish(topic, payload) === true; }catch(e){}
+            if(early){ done(null); return; }
+          }
         }
       }
     });
@@ -146,6 +162,19 @@ function modelFromDevId(id){
   return MODEL_SN_PREFIX[String(id || "").toUpperCase().slice(0, 3)] || "";
 }
 
+/* 请求设备推送全量状态（P1/A1/X2D 等默认只推增量，空闲待机时需主动拉取才有数据）。
+   载荷与发送方式对齐客户端实现（hanye3Dprintergroup-control / Home Assistant ha-bambulab）：
+   单载荷 { pushing:{ sequence_id:<递增>, command:"pushall" } } + qos1 发布。
+   X2D 云端实测：qos0 / 时间戳 sequence_id / 附加 pushall:true 双载荷 均无响应，
+   仅此格式（sequence_id 从 1 递增的小整数 + qos1 + 无多余字段）可稳定 0~2s 内拿到全量 report。
+   重复发送无副作用：打印机可能回多遍全量，由收集端按 uuid/槽位去重。 */
+let _pushPktId = 1; // qos1 publish 的 packetId（单连接内递增即可）
+function pushFullState(sock, sn, getSeq){
+  if(!sock || !sn) return;
+  const payload = { pushing: { sequence_id: getSeq(), command: "pushall" } };
+  try{ sock.write(encPublishQos1(_pushPktId++, "device/" + sn + "/request", JSON.stringify(payload))); }catch(e){}
+}
+
 /* ---------- 报告解析：print 报文 → 归一化托盘列表 ----------
    托盘：{ slot, ext, brand, type, color, weight, remain, remaining, uuid, tagUid, idx, name } */
 export function parseReport(payload, devIdFromTopic){
@@ -165,9 +194,10 @@ export function parseReport(payload, devIdFromTopic){
     const color = hexColor(t.tray_color);
     const weight = Math.max(0, parseFloat(t.tray_weight) || 0);
     // 兼容两种字段：老固件 tray_remain / 新固件 remain（均为 0-100 百分比）
+    // X2D 等新机型无 RFID 标签时 remain=-1 → 剩余量未知（不能误算为 0%）
     let remain = parseFloat(t.tray_remain);
     if(!isFinite(remain)) remain = parseFloat(t.remain);
-    if(!isFinite(remain)) remain = null;
+    if(!isFinite(remain) || remain < 0) remain = null;
     if(remain != null) remain = Math.max(0, Math.min(100, remain));
     const uuid = String(t.tray_uuid || "").replace(/^0+$/, "");
     const tagUid = String(t.tag_uid || "").replace(/^0+$/, "");
@@ -179,7 +209,7 @@ export function parseReport(payload, devIdFromTopic){
       remaining: remain != null ? Math.round(weight * remain / 100) : null,
       uuid, tagUid,
       idx: String(t.tray_info_idx || "").trim(),
-      name: String(t.tray_name || "").trim()
+      name: String(t.tray_name || t.tray_id_name || "").trim()
     };
   };
   const ams = p.ams;
@@ -206,15 +236,14 @@ export async function fetchLan({ host, port = 8883, code, timeoutMs = 9000, tls:
   if(!host) throw new Error("缺少打印机 IP / 主机名");
   if(!code) throw new Error("缺少局域网访问码");
   const seen = new Set();
-  const push = (sock, sn) => {
-    try{ sock.write(encPublish("device/" + sn + "/request", JSON.stringify({ pushing:{ pushall:true }, user_id:"0" }))); }catch(e){}
-  };
   const r = await mqttSession({
     host, port, username: "bblp", password: String(code),
     topics: ["device/#"], timeoutMs, tls: useTls,
     onPublish(topic){ const m = topic.match(/^device\/([0-9A-Za-z]{10,})\/report/i); if(m) seen.add(m[1]); },
     onReady(sock){
-      [2000, 4500].forEach(at => setTimeout(() => seen.forEach(sn => push(sock, sn)), at));
+      let seq = 1;
+      const getSeq = () => String(seq++);
+      [500, 3000, 6000].forEach(at => setTimeout(() => Array.from(seen).forEach(sn => pushFullState(sock, sn, getSeq)), at));
     }
   });
   const infos = r.packets.map(pk => parseReport(pk.payload,
@@ -225,7 +254,15 @@ export async function fetchLan({ host, port = 8883, code, timeoutMs = 9000, tls:
     throw new Error("连接打印机超时或无响应：请检查 IP 与端口是否正确、打印机是否在线、局域网服务是否开启");
   }
   const dev = withTrays[0];
-  return { devId: dev.devId, devName: dev.devName, devModel: dev.devModel || "", trays: withTrays.flatMap(x => x.trays) };
+  // 同一设备可能回多遍全量（多轮 pushall / 双 payload 格式）：按 uuid（无 uuid 按 槽位+类型+颜色）去重，保留剩余更多者
+  const trayMap = new Map();
+  withTrays.forEach(x => x.trays.forEach(t => {
+    const k = t.uuid || (t.slot + "|" + t.type + "|" + t.color);
+    const prev = trayMap.get(k);
+    if(!prev) trayMap.set(k, t);
+    else if(prev.remaining == null || (t.remaining != null && t.remaining > prev.remaining)) trayMap.set(k, t);
+  }));
+  return { devId: dev.devId, devName: dev.devName, devModel: dev.devModel || "", trays: Array.from(trayMap.values()) };
 }
 
 /* ---------- 拓竹云 ---------- */
@@ -342,15 +379,26 @@ export async function cloudDevices({ region = "cn", token }){
       headers: { authorization: "Bearer " + token, "content-type": "application/json" }
     }, 6000);
     const list = (j && j.devices) || [];
-    return list.map(d => ({ devId: d.dev_id || "", name: d.dev_name || "", model: d.dev_model_name || "" }))
-      .filter(d => d.devId);
+    return list.map(d => {
+      const product = String(d.dev_product_name || "").trim(); // 产品名（如 X2D），优先作为设备名
+      const model = String(d.dev_model_name || "").trim();     // 型号（如 N6-V2）
+      return {
+        devId: d.dev_id || "",
+        name: String(d.dev_name || "").trim() || product || model,
+        model: model || product || modelFromDevId(d.dev_id) || "",
+        accessCode: d.dev_access_code || ""
+      };
+    }).filter(d => d.devId);
   }catch(e){ return []; }
 }
 
-/* 云端抓取：MQTT 订阅 device/+/report 收集所有设备报告 */
-export async function fetchCloud({ region = "cn", email, token, timeoutMs = 9000 }){
+/* 云端抓取：MQTT 精确订阅 device/<SN>/report 收集所有绑定设备的报告
+   （通配符订阅会被云 broker 以 SUBACK 0x80 拒绝，必须用 REST 设备列表的序列号逐台精确订阅）。
+   P1/A1/X2D 系在云端也只推增量 → 订阅确认后立即向 device/<SN>/request 发 pushall 主动拉全量，
+   避免空闲打印机静默导致窗口内无数据；全部设备拿到有效托盘数据后提前结束窗口。 */
+export async function fetchCloud({ region = "cn", email, token, timeoutMs = 12000, host, port = 8883, tls: useTls = true }){
   if(!token) throw new Error("缺少 accessToken");
-  const host = regionOf(region).mqtt;
+  const mqttHost = host || regionOf(region).mqtt;
   // 用户名优先 u_<uid>（新版鉴权），连不上再退回邮箱（旧版）；uid 尽力获取
   let uid = "";
   try{
@@ -359,10 +407,42 @@ export async function fetchCloud({ region = "cn", email, token, timeoutMs = 9000
     }, 6000);
     uid = String((j && (j.uid || (j.preference && j.preference.uid))) || "");
   }catch(e){}
+  // 设备清单必须等待完成：既是设备名/型号来源，也是主动拉全量的序列号来源
+  const meta = await cloudDevices({ region, token });
   const names = {};
-  cloudDevices({ region, token }).then(ds => ds.forEach(d => { if(d.name || d.model) names[d.devId] = { name: d.name || "", model: d.model || "" }; })).catch(() => {});
+  meta.forEach(d => { if(d.name || d.model) names[d.devId] = { name: d.name || "", model: d.model || "" }; });
+  const seen = new Set(meta.map(d => d.devId).filter(Boolean)); // 已绑定设备：连接后即拉全量
+  const gotDevs = new Set(); // 已收到有效托盘数据的设备（用于提前结束抓取窗口）
+  let sockRef = null;
+  const searchSeq = (() => { let n = 1; return () => String(n++); })(); // pushall sequence_id 从 1 递增（X2D 云端 gateway 校验）
+  const pushAll = sock => Array.from(seen).forEach(sn => pushFullState(sock, sn, searchSeq));
+  // 拓竹云 broker 的 ACL 只授权「精确主题」订阅（device/<SN>/report），通配符订阅会被拒绝（SUBACK 0x80）
+  // → 必须用 REST 设备列表里的序列号逐台精确订阅，否则即使设备在线也一条数据都收不到
+  let nextSubId = 2; // 包 ID 1 已被 mqttSession 初始订阅占用
+  const subExact = (sock, sn) => {
+    if(!sock || !sn) return;
+    try{ sock.write(encSubscribe(nextSubId++, ["device/" + sn + "/report"])); }catch(e){}
+  };
   const attempt = user => mqttSession({
-    host, port: 8883, username: user, password: token, topics: ["device/+/report"], timeoutMs
+    host: mqttHost, port, username: user, password: token,
+    topics: seen.size ? Array.from(seen).map(sn => "device/" + sn + "/report") : ["device/+/report"],
+    timeoutMs, tls: useTls,
+    onPublish(topic, payload){
+      // 新出现的序列号（REST 列表缺失/不全时的兜底）：动态补订精确主题并立即拉全量
+      const m = topic.match(/^device\/([0-9A-Za-z]{10,})\/report/i);
+      if(m && !seen.has(m[1])){
+        seen.add(m[1]);
+        if(sockRef){ pushFullState(sockRef, m[1]); subExact(sockRef, m[1]); }
+      }
+      // 所有已绑定设备都至少收到一份有效托盘数据 → 提前结束窗口（实测 X2D 全量 0~2s 即达）
+      const info = parseReport(payload, (m || [])[1] || "");
+      if(info && info.trays.length) gotDevs.add(info.devId || (m || [])[1] || "");
+      return seen.size > 0 && gotDevs.size >= seen.size;
+    },
+    onReady(sock){
+      sockRef = sock;
+      [300, 4000, 9000].forEach(at => setTimeout(() => pushAll(sock), at));
+    }
   });
   let r = await attempt(uid ? "u_" + uid : email);
   if(uid && r.connack !== 0) r = await attempt(email); // u_<uid> 不行则退回邮箱
@@ -383,7 +463,12 @@ export async function fetchCloud({ region = "cn", email, token, timeoutMs = 9000
   });
   const devices = Object.values(byDev);
   if(!devices.length){
-    if(r.connack === 0) throw new Error("云连接成功但未收到设备数据：请确认打印机在线并已绑定到该拓竹账号");
+    if(r.connack === 0){
+      const lanHint = meta.some(d => d.accessCode)
+        ? "；已确认该设备支持局域网直连（访问码已通过云端获取，可在『局域网』模式填写打印机 IP + 访问码后再同步）"
+        : "；可尝试切换『局域网』模式直连打印机";
+      throw new Error("云连接成功但未收到设备数据：已精确订阅 " + seen.size + " 台绑定设备的 report 主题仍无上报，请确认打印机在线并已绑定到该拓竹账号" + lanHint);
+    }
     throw new Error("云端 MQTT 认证失败或无数据：token 可能已过期，请重新登录拓竹账号");
   }
   devices.forEach(d => {
@@ -399,7 +484,7 @@ export async function fetchCloud({ region = "cn", email, token, timeoutMs = 9000
    旧配置无 mode → 两种都抓（兼容升级前的既有配置）。
    cfg = { mode?, lan:[{ name, host, code }], cloud:{ region, email, token } }
    返回 { sources:[{ kind, name, ok, error?, devices:[{ devId, devName, trays }] }], fetchedAt } */
-export async function fetchAll(cfg, { lanTimeoutMs = 9000, cloudTimeoutMs = 9000 } = {}){
+export async function fetchAll(cfg, { lanTimeoutMs = 9000, cloudTimeoutMs = 15000 } = {}){
   const sources = [];
   const jobs = [];
   const useLan = cfg.mode !== "cloud", useCloud = cfg.mode !== "lan";
