@@ -1,18 +1,18 @@
 /* 3D打印业务平台 — 离线缓存（应用壳）；/api 一律走网络，不缓存
    抓取策略：网络优先（服务器可达时普通刷新即拿到最新前端，无需强制刷新），离线回退缓存；
    发版时：CACHE 版本号与 index.html 里静态资源的 ?v= 保持一致（换 URL 即换缓存） */
-const CACHE = "3d-printing-business-v63";
+const CACHE = "3d-printing-business-v64";
 const ASSETS = [
   "./",
   "index.html",
   "manifest.webmanifest",
   "icon.svg",
-  "assets/vendor/flatpickr/flatpickr.min.css?v=63",
-  "assets/vendor/flatpickr/flatpickr.min.js?v=63",
-  "assets/vendor/flatpickr/zh.js?v=63",
-  "assets/style.css?v=63",
-  "assets/store.js?v=63",
-  "assets/app.js?v=63"
+  "assets/vendor/flatpickr/flatpickr.min.css?v=64",
+  "assets/vendor/flatpickr/flatpickr.min.js?v=64",
+  "assets/vendor/flatpickr/zh.js?v=64",
+  "assets/style.css?v=64",
+  "assets/store.js?v=64",
+  "assets/app.js?v=64"
 ];
 
 self.addEventListener("install", (e) => {

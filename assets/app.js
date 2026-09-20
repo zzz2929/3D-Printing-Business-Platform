@@ -37,10 +37,8 @@
     document.querySelectorAll("#nav button[data-tab]").forEach(b => {
       b.style.display = can(PAGE_PERM[b.getAttribute("data-tab")]) ? "" : "none";
     });
-    [["matFormCard","mats_manage"],["matListCard","mats_list"],["bambuCard","mats_list"],["priFormCard","pri_add"],["priListCard","pri_list"]]
+    [["matFormCard","mats_manage"],["matListCard","mats_list"],["priFormCard","pri_add"],["priListCard","pri_list"]]
       .forEach(([id, perm]) => { const el = $(id); if(el) el.hidden = !can(perm); });
-    const goCfg = $("bambuBtnCfg"); // 连接配置在设置页，需「数据与账号」权限才展示入口
-    if(goCfg) goCfg.hidden = !can("set_account");
     renderSetTabs();
   }
 
@@ -1057,17 +1055,16 @@
     return n ? n + " 台局域网打印机" : "局域网模式 · 未添加打印机";
   }
   function renderBambuStatus(){
-    const el = $("bambuStatus"), cfgEl = $("bambuCfgStatus");
+    const cfgEl = $("bambuCfgStatus"), atEl = $("bambuFetchedAt");
     if(!canUseBambu()){
-      if(el) el.textContent = "本地模式不可用 · 需服务端部署";
       if(cfgEl) cfgEl.textContent = "本地模式不可用";
       return;
     }
     const last = bambuState.cfg && bambuState.cfg.last && bambuState.cfg.last.fetchedAt
       ? " · 上次抓取 " + new Date(bambuState.cfg.last.fetchedAt).toLocaleString("zh-CN", { month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit" }) : "";
-    const text = bambuDesc() + last;
-    if(el) el.textContent = text;
-    if(cfgEl) cfgEl.textContent = text;
+    if(cfgEl) cfgEl.textContent = bambuDesc() + last;
+    if(atEl) atEl.textContent = bambuState.cfg && bambuState.cfg.last && bambuState.cfg.last.fetchedAt
+      ? "上次抓取 " + new Date(bambuState.cfg.last.fetchedAt).toLocaleString("zh-CN", { month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit" }) : "";
   }
   async function loadBambu(){
     const card = $("bambuCfgCard");
@@ -1142,14 +1139,6 @@
     if(bambuState.mode === "lan") renderBambuLanRows();
     bambuCfgMsg("");
   });
-  $("bambuBtnCfg").addEventListener("click", () => {
-    // 连接配置在「设置 → 数据与账号管理 → 拓竹连接」，这里只负责跳转
-    goto("settings");
-    activeSetPane = "data";
-    renderSetTabs();
-    const card = $("bambuCfgCard");
-    if(card && !card.hidden) setTimeout(() => card.scrollIntoView({ behavior:"smooth", block:"start" }), 80);
-  });
   $("bambuCfgSave").addEventListener("click", async () => {
     const btn = $("bambuCfgSave");
     const payload = collectBambuCfg();
@@ -1187,7 +1176,7 @@
     $("bambuSmsRow").hidden = !sms;
     $("bambuPwRow").hidden = sms;
     $("bambuAccountLabel").textContent = sms ? "手机号" : "账号（手机号 / 邮箱）";
-    $("bambuCloudEmail").placeholder = sms ? "13800138000" : "手机号或邮箱";
+    $("bambuCloudEmail").placeholder = sms ? "手机号" : "手机号或邮箱";
     $("bambuCloudEmail").setAttribute("inputmode", sms ? "tel" : "text");
     $("bambuCloudLoginBtn").textContent = sms ? "验证并登录" : "登录拓竹云";
     $("bambuCodeLabel").textContent = sms ? "短信验证码" : "验证码";
@@ -1286,10 +1275,13 @@
       bambuState.cfg = { lan:[], cloud:{} };
       renderBambuLanRows(); renderBambuStatus();
       bambuCfgMsg("已清除全部连接配置");
-      $("bambuSyncBox").hidden = true;
+      $("bambuPrinterBox").hidden = true;
+      $("bambuTrayBox").hidden = true;
+      $("bambuReFetch").hidden = true;
     }catch(e){ bambuCfgMsg(e.message, true); }
   });
-  /* ---- 抓取与匹配 ---- */
+  /* ---- 抓取与同步（打印机 + 耗材） ---- */
+  const BAMBU_POWER_EST = { "X1C":130, "X1E":150, "X1":130, "P1S":110, "P1P":100, "A1":110, "A1 MINI":75 }; // 打印功率经验均值，可改
   function guessColorName(hex){
     if(!hex) return "";
     const m = S.presets().matColorHex || {};
@@ -1316,30 +1308,115 @@
       || S.materials.find(x => typeNear(x) && String(x.color || "").toUpperCase() === cc);
     return { m: byPair || null, how: byPair ? "pair" : "none" };
   }
+  /* 扁平设备列表（打印机同步用） */
+  function bambuDevices(){
+    const snap = bambuState.snap; if(!snap) return [];
+    const out = [];
+    snap.sources.forEach(src => (src.devices || []).forEach(d =>
+      out.push(Object.assign({ srcKind: src.kind, srcOk: src.ok }, d))));
+    return out;
+  }
+  function matchBambuPrinter(d){
+    const model = String(d.devModel || "").toLowerCase().trim();
+    const name = String(d.devName || "").toLowerCase().trim();
+    if(model){
+      const byModel = S.printers.find(x => String(x.model || "").toLowerCase().trim() === model);
+      if(byModel) return byModel;
+    }
+    if(name){
+      const byName = S.printers.find(x => String(x.name || "").toLowerCase() === name
+        || String(x.model || "").toLowerCase() === name);
+      if(byName) return byName;
+    }
+    return null;
+  }
   async function bambuFetchSnap(){
     const btn = $("bambuBtnSync");
-    btn.disabled = true; const old = btn.textContent; btn.textContent = "连接中…";
+    btn.disabled = true; const old = btn.textContent; btn.textContent = "获取中…";
     try{
       bambuState.snap = await S.bambuFetch();
       if(bambuState.cfg) bambuState.cfg.last = { fetchedAt: bambuState.snap.fetchedAt };
-      renderBambuPreview();
+      renderBambuPrinterPreview();
+      renderBambuTrayPreview();
       renderBambuStatus();
-      $("bambuSyncBox").hidden = false;
-      $("bambuSyncBox").scrollIntoView({ behavior:"smooth", block:"nearest" });
+      $("bambuReFetch").hidden = false;
+      $("bambuPrinterBox").scrollIntoView({ behavior:"smooth", block:"nearest" });
     }catch(e){
-      // 抓取失败（多为未配置/云 token 过期）：提示并引导到设置页的拓竹连接卡片
-      toast(e.message || "抓取失败");
-      $("bambuCfgMsg").textContent = e.message || "抓取失败";
+      // 获取失败（多为未配置/云 token 过期）：提示写进拓竹卡片
+      toast(e.message || "获取失败");
+      $("bambuCfgMsg").textContent = e.message || "获取失败";
       $("bambuCfgMsg").classList.add("bad");
     }finally{ btn.disabled = false; btn.textContent = old; }
   }
   $("bambuBtnSync").addEventListener("click", bambuFetchSnap);
   $("bambuReFetch").addEventListener("click", bambuFetchSnap);
-  function renderBambuPreview(){
+  /* ---- 打印机预览与同步 ---- */
+  function renderBambuPrinterPreview(){
+    const box = $("bambuPrinterList");
+    const devices = bambuDevices();
+    $("bambuPrinterBox").hidden = !bambuState.snap;
+    $("bambuPrinterCount").textContent = devices.length ? "· " + devices.length + " 台" : "";
+    if(!devices.length){
+      box.innerHTML = '<div class="empty" style="padding:10px">未发现设备：请确认打印机在线（局域网）或已绑定拓竹账号（云）</div>';
+      return;
+    }
+    box.innerHTML = devices.map(d => {
+      const p = matchBambuPrinter(d);
+      const model = d.devModel || "";
+      const power = BAMBU_POWER_EST[model];
+      const act = p
+        ? `<span class="badge" style="--bc:var(--ok)"><i></i>更新 ${S.esc(p.name)}</span>`
+        : `<span class="badge" style="--bc:var(--accent)"><i></i>新建${power ? " · 约" + power + "W" : ""}</span>`;
+      return `<div class="bambu-tray">
+        <span class="pill">${d.srcKind === "lan" ? "局域网" : "拓竹云"}</span>
+        <span class="bt-name">${S.esc(d.devName || d.devId || "拓竹打印机")}${model ? " · " + S.esc(model) : ""}</span>
+        <span class="muted bt-slot">${S.esc(d.devId || "")}</span>${act}</div>`;
+    }).join("");
+  }
+  $("bambuApplyPri").addEventListener("click", async () => {
+    const devices = bambuDevices();
+    if(!devices.length){ toast("请先「获取设备与耗材」"); return; }
+    const optUpdate = $("bambuPriOptUpdate").checked, optCreate = $("bambuPriOptCreate").checked;
+    if(!optUpdate && !optCreate){ toast("请至少勾选一种同步方式"); return; }
+    if(optCreate && !(await confirmBox("未匹配的拓竹设备将新建为打印机：功率为经验预估值，电价 / 购入价等需之后手动补充，继续？"))) return;
+    const now = Date.now();
+    let updated = 0, created = 0, skipped = 0;
+    devices.forEach(d => {
+      const model = d.devModel || "";
+      const p = matchBambuPrinter(d);
+      if(p){
+        if(!optUpdate){ skipped++; return; }
+        if(model && !String(p.model || "").trim()) p.model = model; // 只补空缺，不覆盖用户填写
+        p.bambuDevId = d.devId || p.bambuDevId || "";
+        p.bambuSyncedAt = now;
+        updated++;
+      }else{
+        if(!optCreate){ skipped++; return; }
+        const p2 = {
+          id: S.uid(),
+          brand: "拓竹 Bambu Lab",
+          model: model || (d.devName || "拓竹打印机"),
+          powerW: BAMBU_POWER_EST[model] || 100,
+          elecPrice: 0,
+          price: 0, depYears: 2, maintPerYear: 0, utilization: 50,
+          bambuDevId: d.devId || "", bambuSyncedAt: now
+        };
+        p2.name = S.priLabel(p2);
+        S.printers.push(p2);
+        created++;
+      }
+    });
+    if(updated || created){ S.savePri(); renderPrinters(); fillSelects(); calc(); }
+    renderBambuPrinterPreview();
+    toast("打印机同步完成：更新 " + updated + " · 新建 " + created + (skipped ? " · 跳过 " + skipped : ""));
+  });
+  /* ---- 耗材预览与同步 ---- */
+  function renderBambuTrayPreview(){
     const box = $("bambuTrayList");
     const snap = bambuState.snap;
+    $("bambuTrayBox").hidden = !snap;
     if(!snap){ box.innerHTML = ""; return; }
-    let anyTray = false, html = "";
+    let total = 0, html = "";
     snap.sources.forEach(src => {
       html += `<div class="bambu-src"><span class="pill">${src.kind === "lan" ? "局域网" : "拓竹云"}</span> <b>${S.esc(src.name)}</b>` +
         (src.ok ? "" : `<span class="badge" style="--bc:var(--danger)"><i></i>${S.esc(src.error || "失败")}</span>`) + `</div>`;
@@ -1349,7 +1426,7 @@
           html += '<div class="empty" style="padding:10px">未读到 AMS 托盘数据</div>';
           return;
         }
-        anyTray = true;
+        total += dev.trays.length;
         html += dev.trays.map(t => {
           const { m } = matchBambuTray(t);
           const act = m
@@ -1363,7 +1440,8 @@
         }).join("");
       });
     });
-    box.innerHTML = anyTray ? html : html + '<div class="empty">所有连接都没有读到托盘数据</div>';
+    $("bambuTrayCount").textContent = total ? "· " + total + " 卷" : "";
+    box.innerHTML = total ? html : html + '<div class="empty">所有连接都没有读到托盘数据</div>';
   }
   $("bambuApply").addEventListener("click", async () => {
     const snap = bambuState.snap; if(!snap) return;
@@ -1403,9 +1481,9 @@
       S.saveMat();
       renderMaterials(); fillSelects(); calc();
     }
-    $("bambuSyncBox").hidden = true;
+    renderBambuTrayPreview();
     renderBambuStatus();
-    toast("同步完成：更新 " + updated + " · 新建 " + created + (skipped ? " · 跳过 " + skipped : ""));
+    toast("耗材同步完成：更新 " + updated + " · 新建 " + created + (skipped ? " · 跳过 " + skipped : ""));
   });
 
   /* ============ 打印机 ============ */

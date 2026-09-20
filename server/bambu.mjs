@@ -134,13 +134,26 @@ export function mqttSession({ host, port = 8883, username, password, topics, tim
 /* ---------- 通用：JSON 安全解析 ---------- */
 function jparse(s){ try{ return JSON.parse(s); }catch(e){ return null; } }
 
+/* 型号推断：优先设备名（官方名/自定义名常含型号），再按序列号前缀（社区对照表，尽力而为） */
+const MODEL_PATTERNS = ["X1C", "X1E", "P1S", "P1P", "A1 MINI", "A1", "X1"];
+const MODEL_SN_PREFIX = { "00M": "X1C", "00K": "X1", "01P": "P1S", "030": "A1", "039": "A1 MINI" };
+function modelFromDevName(name){
+  const s = String(name || "").toUpperCase().replace(/BAMBU\s*LAB|拓竹/g, " ");
+  for(const m of MODEL_PATTERNS) if(s.includes(m)) return m;
+  return "";
+}
+function modelFromDevId(id){
+  return MODEL_SN_PREFIX[String(id || "").toUpperCase().slice(0, 3)] || "";
+}
+
 /* ---------- 报告解析：print 报文 → 归一化托盘列表 ----------
    托盘：{ slot, ext, brand, type, color, weight, remain, remaining, uuid, tagUid, idx, name } */
 export function parseReport(payload, devIdFromTopic){
   const msg = jparse(payload);
   const p = msg && (msg.print || msg);
   if(!p || typeof p !== "object") return null;
-  const out = { devId: p.dev_id || devIdFromTopic || "", devName: p.dev_name || "", trays: [] };
+  const devId = p.dev_id || devIdFromTopic || "";
+  const out = { devId, devName: p.dev_name || "", devModel: modelFromDevName(p.dev_name) || modelFromDevId(devId), trays: [] };
   const hexColor = c => {
     const s = String(c || "").trim().toUpperCase();
     if(!/^[0-9A-F]{6,8}$/.test(s) || /^0+$/.test(s.slice(0, 6))) return "";
@@ -212,7 +225,7 @@ export async function fetchLan({ host, port = 8883, code, timeoutMs = 9000, tls:
     throw new Error("连接打印机超时或无响应：请检查 IP 与端口是否正确、打印机是否在线、局域网服务是否开启");
   }
   const dev = withTrays[0];
-  return { devId: dev.devId, devName: dev.devName, trays: withTrays.flatMap(x => x.trays) };
+  return { devId: dev.devId, devName: dev.devName, devModel: dev.devModel || "", trays: withTrays.flatMap(x => x.trays) };
 }
 
 /* ---------- 拓竹云 ---------- */
@@ -347,7 +360,7 @@ export async function fetchCloud({ region = "cn", email, token, timeoutMs = 9000
     uid = String((j && (j.uid || (j.preference && j.preference.uid))) || "");
   }catch(e){}
   const names = {};
-  cloudDevices({ region, token }).then(ds => ds.forEach(d => { if(d.name) names[d.devId] = d.name; })).catch(() => {});
+  cloudDevices({ region, token }).then(ds => ds.forEach(d => { if(d.name || d.model) names[d.devId] = { name: d.name || "", model: d.model || "" }; })).catch(() => {});
   const attempt = user => mqttSession({
     host, port: 8883, username: user, password: token, topics: ["device/+/report"], timeoutMs
   });
@@ -359,7 +372,7 @@ export async function fetchCloud({ region = "cn", email, token, timeoutMs = 9000
     const info = parseReport(pk.payload, sn);
     if(!info || !info.trays.length) return;
     const key = info.devId || sn;
-    if(!byDev[key]) byDev[key] = { devId: key, devName: info.devName || names[key] || "", trays: [] };
+    if(!byDev[key]) byDev[key] = { devId: key, devName: info.devName || (names[key] && names[key].name) || "", devModel: info.devModel || (names[key] && names[key].model) || "", trays: [] };
     // 同一设备多条报告：uuid 相同的取剩余更多者，uuid 未知则按 槽位+类型+颜色 去重
     info.trays.forEach(t => {
       const k = t.uuid ? null : (t.slot + "|" + t.type + "|" + t.color);
@@ -373,7 +386,11 @@ export async function fetchCloud({ region = "cn", email, token, timeoutMs = 9000
     if(r.connack === 0) throw new Error("云连接成功但未收到设备数据：请确认打印机在线并已绑定到该拓竹账号");
     throw new Error("云端 MQTT 认证失败或无数据：token 可能已过期，请重新登录拓竹账号");
   }
-  devices.forEach(d => { if(!d.devName && names[d.devId]) d.devName = names[d.devId]; });
+  devices.forEach(d => {
+    const meta = names[d.devId] || {};
+    if(!d.devName && meta.name) d.devName = meta.name;
+    if(!d.devModel && meta.model) d.devModel = meta.model;
+  });
   return { devices };
 }
 
@@ -390,7 +407,7 @@ export async function fetchAll(cfg, { lanTimeoutMs = 9000, cloudTimeoutMs = 9000
     if(!p || !p.host) return;
     jobs.push(fetchLan({ host: p.host, code: p.code, timeoutMs: lanTimeoutMs })
       .then(d => sources.push({ kind:"lan", name: p.name || ("局域网打印机 " + (i + 1)), host: p.host, ok:true,
-        devices:[{ devId: d.devId || "", devName: d.devName || p.name || p.host, trays: d.trays }] }))
+        devices:[{ devId: d.devId || "", devName: d.devName || p.name || p.host, devModel: d.devModel || "", trays: d.trays }] }))
       .catch(e => sources.push({ kind:"lan", name: p.name || ("局域网打印机 " + (i + 1)), host: p.host, ok:false, error: e.message })));
   });
   const c = cfg.cloud || {};

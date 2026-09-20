@@ -1,0 +1,42 @@
+[
+  {
+    "id": "mu8n2qz57a97e",
+    "name": "打印机 样例",
+    "powerW": 1300,
+    "elecPrice": 0.49,
+    "brand": "其他",
+    "price": 0,
+    "depYears": 2,
+    "maintPerYear": 0,
+    "utilization": 50,
+    "model": "打印机 样例"
+  },
+  {
+    "id": "mu8n32cg9spc9",
+    "brand": "拓竹 Bambu Lab",
+    "model": "P1S",
+    "powerW": 110,
+    "elecPrice": 0,
+    "price": 0,
+    "depYears": 2,
+    "maintPerYear": 0,
+    "utilization": 50,
+    "bambuDevId": "01P00A123400011",
+    "bambuSyncedAt": 1789837583776,
+    "name": "拓竹 Bambu Lab P1S"
+  },
+  {
+    "id": "mu8n32cgsa7sb",
+    "brand": "拓竹 Bambu Lab",
+    "model": "A1 MINI",
+    "powerW": 75,
+    "elecPrice": 0,
+    "price": 0,
+    "depYears": 2,
+    "maintPerYear": 0,
+    "utilization": 50,
+    "bambuDevId": "0399B1234000011",
+    "bambuSyncedAt": 1789837583776,
+    "name": "拓竹 Bambu Lab A1 MINI"
+  }
+]
