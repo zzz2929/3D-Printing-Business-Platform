@@ -1282,21 +1282,32 @@
   });
   /* ---- 抓取与同步（打印机 + 耗材） ---- */
   const BAMBU_POWER_EST = { "X1C":130, "X1E":150, "X1":130, "P1S":110, "P1P":100, "A1":110, "A1 MINI":75 }; // 打印功率经验均值，可改
+// 常见色兜底：预设配色里没有的托盘色（纯白/灰/粉等）也能读出颜色名
+  const COLOR_FALLBACK = { "#FFFFFF":"白", "#898989":"太空灰", "#F55A74":"樱花粉", "#FF0F0F":"中国红", "#000000":"曜石黑" };
   function guessColorName(hex){
     if(!hex) return "";
     const m = S.presets().matColorHex || {};
     const up = hex.toUpperCase();
     for(const k in m){ if(String(m[k] || "").toUpperCase() === up) return k; }
-    return "";
+    return COLOR_FALLBACK[up] || "";
   }
   function trayLabel(t){
-    return [t.brand || (t.idx ? "Bambu Lab 拓竹" : ""), t.type, t.color ? (guessColorName(t.color) || t.color) : ""]
-      .filter(Boolean).join(" ") || "未知耗材";
+    if(t.name) return String(t.name).trim(); // 打印机端自定义名优先（tray_name / tray_id_name）
+    const parts = [t.brand, t.type, t.color ? (guessColorName(t.color) || t.color) : ""].filter(Boolean);
+    if(parts.length >= 2) return parts.join(" "); // 品牌 + 类型 + 颜色（通常 ≥2 项）
+    // 云端 brand 为空时至少保留类型+颜色；实在啥都没有才兜底
+    return (t.type || t.color ? [t.type, t.color ? (guessColorName(t.color) || t.color) : ""].filter(Boolean).join(" ") : "未知耗材");
   }
-  function matchBambuTray(t){
+  function matchBambuTray(t, devId, taken){
+    const takenIds = taken || new Set();
+    // ① 已绑定：用户手动把托盘绑定到材料库记录（按设备+槽位）
+    if(devId && t.slot){
+      const byBind = S.materials.find(x => x.bambuDevId === devId && x.bambuSlot === t.slot);
+      if(byBind){ takenIds.add(byBind.id); return { m: byBind, how:"bind" }; }
+    }
     if(t.uuid){
       const byUuid = S.materials.find(x => x.bambuUuid === t.uuid);
-      if(byUuid) return { m: byUuid, how:"uuid" };
+      if(byUuid){ takenIds.add(byUuid.id); return { m: byUuid, how:"uuid" }; }
     }
     const tt = String(t.type || "").toLowerCase().trim(), cc = String(t.color || "").toUpperCase();
     const typeEq = x => String(x.type || "").toLowerCase().trim() === tt;
@@ -1304,9 +1315,31 @@
       const xt = String(x.type || "").toLowerCase().trim();
       return tt && xt && (xt.startsWith(tt) || tt.startsWith(xt));
     };
+    // ② 用户自建耗材优先：同类型自建记录未绑定其它槽位、本轮未占用时优先匹配（无 RFID 时托盘色不可靠）
+    if(tt){
+      const self = S.materials.filter(x => typeNear(x) && !x.bambuSyncedAt
+        && !(x.bambuDevId && x.bambuSlot) && !takenIds.has(x.id));
+      if(self.length === 1){ takenIds.add(self[0].id); return { m: self[0], how:"type" }; }
+    }
+    // ③ 精确匹配：类型+颜色 或 相近类型+颜色（含历史同步的拓竹记录）
     const byPair = S.materials.find(x => typeEq(x) && String(x.color || "").toUpperCase() === cc)
       || S.materials.find(x => typeNear(x) && String(x.color || "").toUpperCase() === cc);
-    return { m: byPair || null, how: byPair ? "pair" : "none" };
+    if(byPair){ takenIds.add(byPair.id); return { m: byPair, how:"pair" }; }
+    return { m: null, how:"none" };
+  }
+  /* 手动绑定托盘 → 材料库记录；绑定写入材料字段并持久化（服务端材料库） */
+  function bambuBindTray(devId, slot, mid){
+    let changed = false;
+    S.materials.forEach(x => {
+      if(x.bambuDevId === devId && x.bambuSlot === slot && x.id !== mid){
+        delete x.bambuDevId; delete x.bambuSlot; changed = true;
+      }
+      if(mid && x.id === mid){
+        x.bambuDevId = devId; x.bambuSlot = slot; changed = true;
+      }
+    });
+    if(changed){ S.saveMat(); }
+    return changed;
   }
   /* 扁平设备列表（打印机同步用） */
   function bambuDevices(){
@@ -1426,23 +1459,40 @@
           html += '<div class="empty" style="padding:10px">未读到 AMS 托盘数据</div>';
           return;
         }
-        total += dev.trays.length;
+total += dev.trays.length;
+        const taken = new Set();
         html += dev.trays.map(t => {
-          const { m } = matchBambuTray(t);
+          const devId = dev.devId || "";
+          const { m } = matchBambuTray(t, devId, taken);
+          const selId = m ? m.id : "";
+          const opts = ['<option value="">新建（不匹配）</option>']
+            .concat(S.materials.map(x => `<option value="${x.id}"${x.id === selId ? " selected" : ""}>${S.esc(x.name)}</option>`))
+            .join("");
           const act = m
             ? `<span class="badge" style="--bc:var(--ok)"><i></i>更新 ${S.esc(m.name)}</span>`
             : `<span class="badge" style="--bc:var(--accent)"><i></i>新建</span>`;
           return `<div class="bambu-tray">
             <span class="sw" style="background:${S.esc(t.color || "#666")}"></span>
             <span class="bt-name">${S.esc(trayLabel(t))}</span>
+            <select class="tray-pick" data-dev="${S.esc(devId)}" data-slot="${S.esc(t.slot || "")}" title="手动指定该托盘对应哪条耗材记录（点同步前生效并记住）">${opts}</select>
             <span class="muted bt-slot">${S.esc(t.slot)}${t.remain != null ? " · " + Math.round(t.remain) + "%" : ""}</span>
             <span class="num bt-rem">${t.remaining != null ? S.fmt(t.remaining, 0) + " g" : "—"}</span>${act}</div>`;
         }).join("");
       });
     });
-    $("bambuTrayCount").textContent = total ? "· " + total + " 卷" : "";
+$("bambuTrayCount").textContent = total ? "· " + total + " 卷" : "";
     box.innerHTML = total ? html : html + '<div class="empty">所有连接都没有读到托盘数据</div>';
   }
+  /* 手动改选：把某托盘绑定到材料库指定记录（或解除绑定 → 新建） */
+  $("bambuTrayList").addEventListener("change", e => {
+    const sel = e.target;
+    if(!sel || sel.tagName !== "SELECT" || !sel.classList.contains("tray-pick")) return;
+    const devId = sel.dataset.dev || "", slot = sel.dataset.slot || "";
+    const mid = sel.value || "";
+    bambuBindTray(devId, slot, mid);
+    renderBambuTrayPreview();
+    toast(mid ? "已绑定该托盘到所选耗材，再次同步将沿用" : "已解除绑定，该托盘同步时将新建耗材");
+  });
   $("bambuApply").addEventListener("click", async () => {
     const snap = bambuState.snap; if(!snap) return;
     const optUpdate = $("bambuOptUpdate").checked, optCreate = $("bambuOptCreate").checked;
@@ -1450,33 +1500,45 @@
     if(optCreate && !(await confirmBox("未匹配的 AMS 料卷将按「品牌 + 类型 + 颜色」新建为耗材（单价需之后手动补充），继续？"))) return;
     const now = Date.now();
     let updated = 0, created = 0, skipped = 0;
-    snap.sources.forEach(src => (src.devices || []).forEach(dev => (dev.trays || []).forEach(t => {
-      const { m } = matchBambuTray(t);
+snap.sources.forEach(src => (src.devices || []).forEach(dev => {
+      const taken = new Set();
+      (dev.trays || []).forEach(t => {
+      const devId = dev.devId || "";
+      const { m } = matchBambuTray(t, devId, taken);
       if(m){
         if(!optUpdate){ skipped++; return; }
         if(t.remaining != null) m.remaining = Math.min(Math.max(0, t.remaining), Math.max(S.num(m.spool), t.weight || 0));
         if(t.uuid) m.bambuUuid = t.uuid;
-        m.bambuSlot = t.slot; m.bambuSyncedAt = now;
+        m.bambuDevId = devId; m.bambuSlot = t.slot; m.bambuSyncedAt = now;
+        // 清理旧同步硬编码的"拓竹"占位：云端 brand 为空时，去掉本地默认 brand
+        if(!t.brand && m.brand === "Bambu Lab 拓竹"){ m.brand = ""; }
+        // 同步类型/颜色（允许用户在 Bambu Studio 换料后更新）
+        if(t.type && t.type !== m.type){ m.type = t.type; }
+        if(t.color && t.color !== m.color){ m.color = t.color; m.colorName = guessColorName(t.color); }
+        // brand 被清理后 colorName 可能仍为空，重新计算一次确保展示名完整
+        if(!m.colorName && m.color){ m.colorName = guessColorName(m.color); }
+        m.name = S.matLabel(m);
         updated++;
       }else{
         if(!optCreate){ skipped++; return; }
         const m2 = {
           id: S.uid(),
-          brand: t.brand || (t.idx ? "Bambu Lab 拓竹" : ""),
+          brand: t.brand || "", // 托盘无品牌信息时不硬塞"拓竹"
           type: t.type || "",
           color: t.color || "#9aa3ad",
           colorName: guessColorName(t.color),
           pricePerKg: 0,
           spool: t.weight > 0 ? t.weight : 1000,
           remaining: t.remaining != null ? Math.max(0, t.remaining) : 0,
-          bambuSlot: t.slot, bambuSyncedAt: now
+          bambuDevId: devId, bambuSlot: t.slot, bambuSyncedAt: now
         };
         if(t.uuid) m2.bambuUuid = t.uuid;
         m2.name = S.matLabel(m2);
         S.materials.push(m2);
         created++;
       }
-    })));
+      });
+    }));
     if(updated || created){
       S.saveMat();
       renderMaterials(); fillSelects(); calc();
