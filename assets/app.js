@@ -42,8 +42,7 @@
     renderSetTabs();
   }
 
-  /* 打印机品牌下拉改为 attachCombo 风格（在下方重新初始化），先清空原 select 内容 */
-  $("pBrand").innerHTML = "";
+  /* 打印机品牌下拉已改为 attachCombo 风格的 input（在下方初始化），无需额外清空 */
 
   /* 常用颜色快选 */
   const PRESET_COLORS = [
@@ -137,7 +136,7 @@
         });
       }
     }
-    function open(){ searchVal = input.value; renderList(); pop.classList.add("open"); btn.classList.add("open"); }
+    function open(){ searchVal = ""; renderList(); pop.classList.add("open"); btn.classList.add("open"); }
     function close(){ pop.classList.remove("open"); btn.classList.remove("open"); searchVal = ""; }
     btn.addEventListener("click", e => { e.stopPropagation(); pop.classList.contains("open") ? close() : open(); });
     input.addEventListener("focus", () => open());
@@ -729,7 +728,7 @@
     $("ocbLab").closest(".line").classList.toggle("off", !incl.lab);
     $("oEc").textContent = S.money(ec); $("oCt").textContent = S.money(ct);
     $("oRvQ").textContent = S.money(rv) + " / " + S.money(quote);
-    $("oMargin").textContent = ct > 0 ? (profit / ct * 100).toFixed(1) + " %" : "—";
+    $("oMargin").textContent = ct > 0 ? (est / ct * 100).toFixed(1) + " %" : "—";
     $("recvTotal").textContent = S.money(rv);
     $("dueTotal").textContent = S.money(due);
     return { pc:c.cFil + c.cElec, fil:c.cFil, elec:c.cElec, mach:c.cMach, lab, incl, ec, ct, rv, quote, due, profit, est, extras:getExtras(), pays:getPayments() };
@@ -1681,7 +1680,26 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
         <td class="num">${S.money(S.num(r.cFil) + S.num(r.cElec))}</td>
         <td class="num">${S.money(S.num(r.cMach) + S.num(r.cLab))}</td>
         <td class="num tot">${S.money(r.total)}</td>
-        <td><button class="btn danger ghost sm" data-delr="${r.id}">删</button></td></tr>`).join("") + "</tbody></table>";
+        <td><button class="btn primary ghost sm" data-ordr="${r.id}">单</button><button class="btn danger ghost sm" data-delr="${r.id}">删</button></td></tr>`).join("") + "</tbody></table>";
+    // 添加为订单
+    box.querySelectorAll("[data-ordr]").forEach(b => b.addEventListener("click", () => {
+      const r = S.records.find(x => x.id === b.getAttribute("data-ordr")); if(!r) return;
+      goto("order");
+      // 先确保选择器已填充（避免 goto 时 fillSelects 用旧空值覆盖）
+      fillSelects();
+      // 填充打印数据到订单表单
+      $("oDate").value = r.date || S.today();
+      $("oMat").value = r.materialId || "";
+      $("oPri").value = r.printerId || "";
+      $("oG").value = S.fmt(r.grams, 1);
+      $("oH").value = S.fmt(r.hours, 1);
+      $("oMin").value = S.fmt(r.handlingMin, 0);
+      $("oQuote").value = S.num(r.total) || "";
+      $("oNote").value = r.note ? "来自打印记录：" + r.note : "";
+      orderCalc();
+      toast("已载入打印记录，请补充客户信息后保存订单");
+    }));
+    // 删除记录
     box.querySelectorAll("[data-delr]").forEach(b => b.addEventListener("click", async () => {
       const r = S.records.find(x => x.id === b.getAttribute("data-delr")); if(!r) return;
       if(await confirmBox("删除这条记录？" + (S.num(r.consumed) > 0 ? "\n对应库存会加回。" : ""))){
