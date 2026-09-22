@@ -130,7 +130,8 @@ const Store = (function(){
   function fmt(n, d){ return Number(n).toLocaleString("zh-CN", { maximumFractionDigits: d == null ? 1 : d }); }
 
   /* ---------- 状态 ---------- */
-  let settings = { currency:"¥", theme:"dark", lowStock:200, laborHourly:65, markupPct:10, onboarded:false,
+  let settings = { currency:"¥", theme:"dark", lowStock:200, laborHourly:65, onboarded:false,
+    markupPct: { fil:10, elec:10, mach:10, lab:10 }, // 分成本项加成比例
     presets: JSON.parse(JSON.stringify(DEFAULT_PRESETS)) };
   let materials = [], printers = [], records = [], orders = [];
   let achKeys = new Set();
@@ -367,11 +368,19 @@ const Store = (function(){
       if(r.cMach == null) r.cMach = 0;
       if(r.cLab == null) r.cLab = 0;
     });
-    if(settings.markupPct == null){
-      settings.markupPct = settings.markup != null ? Math.max(0, Math.round((num(settings.markup) - 1) * 100)) : 10;
+    // 利润加成迁移：旧数字 markupPct → 分成本项对象；旧 markups → 先转数字再转对象
+    const oldNum = typeof settings.markupPct === "number" ? settings.markupPct : (settings.markup != null ? Math.max(0, Math.round((num(settings.markup) - 1) * 100)) : null);
+    if(!settings.markupPct || typeof settings.markupPct !== "object" || Array.isArray(settings.markupPct)){
+      settings.markupPct = { fil: oldNum != null ? oldNum : 10, elec: oldNum != null ? oldNum : 10, mach: oldNum != null ? oldNum : 10, lab: oldNum != null ? oldNum : 10 };
+    } else {
+      // 缺项兜底
+      if(settings.markupPct.fil  == null) settings.markupPct.fil  = 10;
+      if(settings.markupPct.elec == null) settings.markupPct.elec = 10;
+      if(settings.markupPct.mach == null) settings.markupPct.mach = 10;
+      if(settings.markupPct.lab  == null) settings.markupPct.lab  = 10;
     }
-    if(settings.laborHourly == null) settings.laborHourly = 65;
     delete settings.markup;
+    if(settings.laborHourly == null) settings.laborHourly = 65;
     if(settings.currency == null) settings.currency = "¥";
     if(settings.theme == null) settings.theme = "dark";
     if(settings.lowStock == null) settings.lowStock = 200;

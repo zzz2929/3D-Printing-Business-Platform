@@ -155,6 +155,7 @@
         <div class="row" style="margin-top:14px">
           <button class="btn" id="saveBtn">保存为打印记录</button>
           <button class="btn ghost" id="toOrderBtn" data-goto="order">去开订单</button>
+          <button class="btn ghost" id="cancelEditBtn" style="display:none" title="放弃本次修改">取消编辑</button>
           <span class="muted" id="homeMsg"></span>
         </div>
       </div>
@@ -172,6 +173,7 @@
             <div><label>客户微信 / 联系方式</label><input id="oWx" type="text" placeholder="如 wxid_xxx" /></div>
             <div><label>客户称呼（可选）</label><input id="oName" type="text" placeholder="如 张老板" /></div>
             <div><label>报价金额（应收）<i class="dot"></i></label><input id="oQuote" type="number" min="0" step="0.01" placeholder="谈好的总价" /></div>
+            <div><label>克重报价（元 / g）</label><input id="oQuotePerGram" type="number" min="0" step="0.01" placeholder="如 0.30" /><div class="hint">按耗材克数 × 单价自动算报价</div></div>
           </div>
           <div class="sect">
             <div class="sect-label">收款 · 支持定金 + 尾款多笔</div>
@@ -233,6 +235,7 @@
               <label class="line cb-line"><input type="checkbox" id="ocbMach" checked><span class="cb-txt">机器折旧 · 时长 × 每小时机器成本</span><span id="oMach">0.00</span></label>
               <label class="line cb-line"><input type="checkbox" id="ocbLab" checked><span class="cb-txt">人工 · 时薪 × 处理分钟 ÷ 60</span><span id="oLab">0.00</span></label>
               <div class="line"><span>额外成本合计（始终计入）</span><span id="oEc">0.00</span></div>
+              <div class="line hl"><span>建议报价（计入项成本+各自加成）</span><span id="oSug">—</span></div>
               <div class="line hl"><span>利润率</span><span id="oMargin">—</span></div>
             </div>
           </div>
@@ -364,41 +367,55 @@
         <button data-p="update" type="button">关于</button>
       </div>
       <div class="set-pane" id="setp-general">
-        <div class="col2">
+        <div class="set-grid">
+          <!-- 卡片 1：成本与价格 -->
           <div class="card">
             <div class="card-head"><h2>成本与价格</h2></div>
-            <div class="grid g2">
-              <div><label>结算货币</label><select id="setCur">
-                <option value="¥">¥ 人民币</option>
-                <option value="$">$ 美元</option>
-                <option value="€">€ 欧元</option>
-                <option value="£">£ 英镑</option>
-                <option value="HK$">HK$ 港币</option>
-                <option value="NT$">NT$ 新台币</option>
-                <option value="₩">₩ 韩元</option>
-                <option value="¥JP">¥ 日元</option>
+            <div class="set-fields">
+              <div class="field-row"><label>结算货币</label><select id="setCur">
+                <option value="¥">¥ 人民币</option><option value="$">$ 美元</option><option value="€">€ 欧元</option>
+                <option value="£">£ 英镑</option><option value="HK$">HK$ 港币</option><option value="NT$">NT$ 新台币</option>
+                <option value="₩">₩ 韩元</option><option value="¥JP">¥ 日元</option>
               </select></div>
-              <div><label>低库存预警（g）</label><input id="setLow" type="number" min="0" step="10" /><div class="hint">仪表盘会提示低于此值的耗材</div></div>
-              <div><label>人工时薪（元 / 小时）</label><input id="setLabor" type="number" min="0" step="1" /><div class="hint">接单沟通 + 售后交付的综合时薪</div></div>
-              <div><label>利润加成（%）</label><input id="setPct" type="number" min="0" step="1" /><div class="hint">建议报价 = 全部成本 ×（1 + 加成%）</div></div>
-              <div><label>默认处理耗时（分钟）</label><input id="setLeadMin" type="number" min="0" step="1" /><div class="hint">计算器打开时自动带入</div></div>
+              <div class="field-row"><label>低库存预警（g）</label><input id="setLow" type="number" min="0" step="10" /><div class="hint">仪表盘会提示低于此值的耗材</div></div>
+              <div class="field-row"><label>人工时薪（元 / 小时）</label><input id="setLabor" type="number" min="0" step="1" /><div class="hint">接单沟通 + 售后交付的综合时薪</div></div>
+              <div class="field-group">
+                <div class="group-title">利润加成（%）</div>
+                <div class="group-hint">建议报价 = 各项勾选成本 ×（1 + 对应加成%）后汇总</div>
+                <div class="field-row compact"><label>耗材</label><input id="setPctFil" type="number" min="0" step="1" placeholder="%" /></div>
+                <div class="field-row compact"><label>电费</label><input id="setPctElec" type="number" min="0" step="1" placeholder="%" /></div>
+                <div class="field-row compact"><label>机器</label><input id="setPctMach" type="number" min="0" step="1" placeholder="%" /></div>
+                <div class="field-row compact"><label>人工</label><input id="setPctLab" type="number" min="0" step="1" placeholder="%" /></div>
+              </div>
+              <div class="field-row"><label>默认处理耗时（分钟）</label><input id="setLeadMin" type="number" min="0" step="1" /><div class="hint">计算器打开时自动带入</div></div>
             </div>
           </div>
+
+          <!-- 卡片 2：单据与外观 -->
           <div class="card">
             <div class="card-head"><h2>单据与外观</h2></div>
-            <div class="grid g2">
-              <div><label>订单号前缀</label><input id="setOrdPrefix" type="text" maxlength="10" placeholder="ORD" /><div class="hint">自动单号形如 前缀-日期-序号</div></div>
-              <div><label>启动页</label><select id="setStart">
-                <option value="dash">仪表盘</option>
-                <option value="calc">计算器</option>
-                <option value="order">开单</option>
-                <option value="olist">订单列表</option>
+            <div class="set-fields">
+              <div class="field-row"><label>订单号前缀</label><input id="setOrdPrefix" type="text" maxlength="10" placeholder="ORD" /><div class="hint">自动单号形如 前缀-日期-序号</div></div>
+              <div class="field-row"><label>启动页</label><select id="setStart">
+                <option value="dash">仪表盘</option><option value="calc">计算器</option>
+                <option value="order">开单</option><option value="olist">订单列表</option>
               </select><div class="hint">打开应用时默认显示的页面</div></div>
-              <div><label>界面字号</label><select id="setFontSize"><option value="0.9">较小</option><option value="1" selected>标准</option><option value="1.1">较大</option><option value="1.2">特大</option></select><div class="hint">整体缩放界面文字</div></div>
-              <div><label>字体风格</label><select id="setFont"><option value="sys">系统默认</option><option value="serif">衬线书卷</option><option value="rounded">圆润亲和</option><option value="kai">楷体手写</option></select></div>
-              <div><label>外观</label><select id="setTheme"><option value="dark">深色 · 机库琥珀</option><option value="light">浅色 · 简约</option><option value="nord">极地蓝 · Nord</option><option value="matcha">抹茶绿</option><option value="sunset">暖阳橙</option><option value="rose">玫瑰粉</option><option value="paper">素纸 · 护眼</option></select></div>
+              <div class="field-row"><label>界面字号</label><select id="setFontSize">
+                <option value="0.9">较小</option><option value="1" selected>标准</option>
+                <option value="1.1">较大</option><option value="1.2">特大</option>
+              </select><div class="hint">整体缩放界面文字</div></div>
+              <div class="field-row"><label>字体风格</label><select id="setFont">
+                <option value="sys">系统默认</option><option value="serif">衬线书卷</option>
+                <option value="rounded">圆润亲和</option><option value="kai">楷体手写</option>
+              </select></div>
+              <div class="field-row"><label>外观</label><select id="setTheme">
+                <option value="dark">深色 · 机库琥珀</option><option value="light">浅色 · 简约</option>
+                <option value="nord">极地蓝 · Nord</option><option value="matcha">抹茶绿</option>
+                <option value="sunset">暖阳橙</option><option value="rose">玫瑰粉</option>
+                <option value="paper">素纸 · 护眼</option>
+              </select></div>
             </div>
-            <div class="row" style="margin-top:12px">
+            <div class="set-foot">
               <button class="btn ghost sm" id="showOnboard">重新显示新手引导</button>
             </div>
           </div>
