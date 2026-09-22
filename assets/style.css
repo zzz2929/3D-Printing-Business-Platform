@@ -345,6 +345,31 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 .ord .acts{display:flex;gap:6px;margin-top:11px;flex-wrap:wrap;align-items:center}
 .ord .acts select{width:auto;padding:5px 26px 5px 8px;font-size:12px}
 
+/* ---------- 打印记录卡 ---------- */
+.rec{
+  border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:10px 0;
+  background:var(--panel2);transition:border-color .15s;
+}
+.rec:hover{border-color:var(--line2)}
+.rec .top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.rec .t-l{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.rec .t-l .sw{width:13px;height:13px;border-radius:4px;flex:0 0 13px;margin:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)}
+.rec .t-l .date{font-family:var(--mono);font-size:11.5px;color:var(--faint);white-space:nowrap}
+.rec .t-l .mat{font-weight:700;font-size:14px}
+.rec .t-l .type{font-size:10.5px;color:var(--sub);background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:1px 8px;white-space:nowrap}
+.rec .t-l .pri{font-size:12px;color:var(--sub)}
+.rec .total{font-family:var(--mono);font-size:17px;font-weight:700;color:var(--ok);white-space:nowrap}
+.rec .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px 16px;margin-top:10px;padding-top:9px;border-top:1px dashed var(--line)}
+.rec .cell{display:flex;flex-direction:column;gap:2px;min-width:0}
+.rec .cell .k{font-size:10.5px;color:var(--faint);letter-spacing:.04em}
+.rec .cell .v{font-size:12.5px;color:var(--ink);font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rec .costs{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--sub);margin-top:9px;padding-top:8px;border-top:1px dashed var(--line)}
+.rec .costs b{font-family:var(--mono);font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+.rec .costs .tot b{color:var(--ok)}
+.rec .note{margin-top:9px;font-size:12px;line-height:1.6;color:var(--sub);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 9px;word-break:break-word}
+.rec .acts{display:flex;gap:6px;margin-top:11px;flex-wrap:wrap}
+@media(max-width:640px){.rec .grid{grid-template-columns:repeat(2,1fr)}}
+
 .filter-bar{display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin-bottom:12px}
 @media(max-width:640px){.filter-bar{grid-template-columns:1fr}}
 
