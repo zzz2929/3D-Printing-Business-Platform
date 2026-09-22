@@ -657,7 +657,6 @@ $("saveBtn").addEventListener("click", () => {
         S.saveRec(); S.saveMat();
         $("cancelEditBtn").style.display = "none"; $("saveBtn").textContent = "保存为打印记录";
         editingRecId = null;
-        $("rGrams").value = ""; $("rHoursH").value = "0"; $("rHoursM").value = "0"; $("rMin").value = ""; $("rNote").value = "";
         $("homeMsg").textContent = "已更新：" + m.name + " · 计入成本 " + S.money(all) + " · 库存剩 " + S.fmt(m.remaining, 0) + "g";
         toast("记录已更新，库存已同步 " + randFace());
         fillSelects(); calc();
@@ -673,7 +672,6 @@ $("saveBtn").addEventListener("click", () => {
       consumed:g, note });
     m.remaining = Math.max(0, S.num(m.remaining) - g); // 自动扣减库存
     S.saveRec(); S.saveMat();
-    $("rGrams").value = ""; $("rHoursH").value = "0"; $("rHoursM").value = "0"; $("rMin").value = ""; $("rNote").value = "";
     $("homeMsg").textContent = "已保存：" + m.name + " · 计入成本 " + S.money(all) + " · 库存剩 " + S.fmt(m.remaining, 0) + "g";
     toast("记录已保存，库存已扣减 " + randFace());
     fillSelects(); calc();
@@ -686,8 +684,24 @@ $("saveBtn").addEventListener("click", () => {
     $("cancelEditBtn").style.display = "none";
     $("rGrams").value = ""; $("rHoursH").value = "0"; $("rHoursM").value = "0"; $("rMin").value = ""; $("rNote").value = "";
     $("homeMsg").textContent = "";
+    applyDefaultLeadMin(); // 取消编辑后按默认处理耗时回到新打印状态
     fillSelects(); calc();
     toast("已取消编辑");
+  });
+
+  /* 清除：手动清空本次打印输入（保存后不再自动清空） */
+  $("clearCalcBtn").addEventListener("click", () => {
+    editingRecId = null;
+    $("saveBtn").textContent = "保存为打印记录";
+    $("cancelEditBtn").style.display = "none";
+    $("selMat").value = ""; $("selPri").value = "";
+    $("rGrams").value = ""; $("rHoursH").value = "0"; $("rHoursM").value = "0"; $("rMin").value = ""; $("rNote").value = "";
+    ["cbFil","cbElec","cbMach","cbLab"].forEach(id => $(id).checked = true);
+    $("homeMsg").textContent = "";
+    lastCalc = null;
+    applyDefaultLeadMin(); // 清除后重新填入默认处理耗时
+    fillSelects(); calc();
+    toast("已清除本次打印输入");
   });
 
   /* 去开订单：把计算器数据自动填入新增订单 */
@@ -832,6 +846,7 @@ $("saveBtn").addEventListener("click", () => {
     $("oFName").value = ""; $("oFSize").value = ""; $("oFNote").value = ""; $("oNote").value = "";
     $("ordMsg").textContent = ""; orderCalc();
   }
+    $("clearOrdBtn").addEventListener("click", () => { resetOrdForm(); toast("已清除订单表单"); });
   $("cancelOrd").addEventListener("click", resetOrdForm);
 
   $("saveOrd").addEventListener("click", () => {
@@ -862,7 +877,8 @@ $("saveBtn").addEventListener("click", () => {
     S.saveOrd();
     toast((editingOrdId ? "已更新：" : "已保存：") + no + (rec.profit >= 0 ? " " + randFace() : "（这单亏了，下次报高点呀）"));
     const newAch = checkAch();
-    resetOrdForm(); renderOrders();
+    if(!editingOrdId) resetOrdForm();
+    renderOrders();
     if(newAch.length) setTimeout(() => toast("🏆 解锁成就：" + newAch.join("、")), 900);
   });
 
@@ -1042,6 +1058,7 @@ $("saveBtn").addEventListener("click", () => {
     document.querySelectorAll(".sw-p").forEach(x => x.classList.toggle("on", x.getAttribute("data-c") === (m.color || "").toLowerCase()));
     document.querySelector("#page-mats .card").scrollIntoView({ behavior:"smooth", block:"start" });
   }
+    $("clearMatBtn").addEventListener("click", () => { resetMatForm(); toast("已清除耗材表单"); });
   $("cancelEditMat").addEventListener("click", resetMatForm);
   $("addMat").addEventListener("click", () => {
     const brand = $("mBrand").value.trim(), type = $("mType").value.trim();
@@ -1061,7 +1078,7 @@ $("saveBtn").addEventListener("click", () => {
       toast("耗材已添加");
     }
     S.saveMat();
-    resetMatForm();
+    if(!editingMatId) resetMatForm(); // 新增后清空便于继续添加；编辑保存后保留选项
     renderMaterials(); fillSelects(); calc();
   });
   function renderMaterials(){
@@ -1652,6 +1669,7 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
     $("pUtil").value = S.num(p.utilization) || 50;
     document.querySelector("#page-printers .card").scrollIntoView({ behavior:"smooth", block:"start" });
   }
+    $("clearPriBtn").addEventListener("click", () => { resetPriForm(); toast("已清除打印机表单"); });
   $("cancelEditPri").addEventListener("click", resetPriForm);
   $("addPri").addEventListener("click", () => {
     const model = $("pModel").value.trim();
@@ -1669,7 +1687,7 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
       toast("打印机已添加");
     }
     S.savePri();
-    resetPriForm();
+    if(!editingPriId) resetPriForm(); // 新增后清空便于继续添加；编辑保存后保留选项
     renderPrinters(); fillSelects(); calc();
   });
   function renderPrinters(){
@@ -1751,15 +1769,45 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
     const box = $("recList");
     if(!S.records.length){ box.innerHTML = '<div class="empty">还没有打印记录<br><span class="hint">去「计算器」算第一笔</span></div>'; return; }
     if(!rs.length){ box.innerHTML = '<div class="empty">没有符合筛选条件的记录</div>'; return; }
-    box.innerHTML = `<table><thead><tr><th>日期</th><th>耗材</th><th>打印机</th><th class="num">克</th><th class="num">时/分</th><th class="num">材+电</th><th class="num">机+人</th><th class="num">合计</th><th></th></tr></thead><tbody>` +
-      rs.map(r => `<tr><td>${S.esc(r.date)}</td>
-        <td><span class="sw" style="background:${S.esc(r.matColor || "#888")}"></span>${S.esc(r.matName || "")}${r.note ? `<div class="hint">${S.esc(r.note)}</div>` : ""}</td>
-        <td>${S.esc(r.priName || "")}</td>
-        <td class="num">${S.fmt(r.grams, 1)}</td><td class="num">${S.fmt(r.hours, 1)}${S.num(r.handlingMin) ? `<div class="hint">处理 ${S.fmt(r.handlingMin, 0)} 分</div>` : ""}</td>
-        <td class="num">${S.money(S.num(r.cFil) + S.num(r.cElec))}</td>
-        <td class="num">${S.money(S.num(r.cMach) + S.num(r.cLab))}</td>
-<td class="num tot">${S.money(r.total)}</td>
-        <td><button class="btn ghost sm" data-edtr="${r.id}" title="编辑这条记录">编</button><button class="btn primary ghost sm" data-ordr="${r.id}">单</button><button class="btn danger ghost sm" data-delr="${r.id}">删</button></td></tr>`).join("") + "</tbody></table>";
+    box.innerHTML = rs.map(r => {
+      const g = S.num(r.grams), h = S.num(r.hours);
+      const cFil = S.num(r.cFil), cElec = S.num(r.cElec), cMach = S.num(r.cMach), cLab = S.num(r.cLab);
+      const sug = S.num(r.sug), tot = S.num(r.total);
+      const cells = [["用量", g > 0 ? S.fmt(g, 1) + " g" : "—"], ["时长", h > 0 ? S.fmt(h, 1) + " h" : "—"]];
+      if(S.num(r.handlingMin) > 0) cells.push(["处理", S.fmt(S.num(r.handlingMin), 0) + " 分"]);
+      if(S.num(r.pricePerKg) > 0) cells.push(["耗材单价", S.money(S.num(r.pricePerKg)) + "/kg"]);
+      if(S.num(r.powerW) > 0) cells.push(["功率", S.fmt(S.num(r.powerW), 0) + " W"]);
+      if(S.num(r.elecPrice) > 0) cells.push(["电价", S.money(S.num(r.elecPrice)) + "/度"]);
+      if(sug > 0) cells.push(["建议报价", S.money(sug)]);
+      if(g > 0) cells.push(["单克成本", S.money(tot / g)]);
+      if(h > 0) cells.push(["单时成本", S.money(tot / h)]);
+      return `<div class="rec">
+        <div class="top">
+          <div class="t-l">
+            <span class="date">${S.esc(r.date || "")}</span>
+            <span class="sw" style="background:${S.esc(r.matColor || "#888")}"></span>
+            <span class="mat">${S.esc(r.matName || "未知耗材")}</span>
+            ${r.matType ? `<span class="type">${S.esc(r.matType)}</span>` : ""}
+            ${r.priName ? `<span class="pri">${S.esc(r.priName)}</span>` : ""}
+          </div>
+          <div class="total">${S.money(tot)}</div>
+        </div>
+        <div class="grid">${cells.map(([k, v]) => `<div class="cell"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}</div>
+        <div class="costs">
+          <span>耗材 <b>${S.money(cFil)}</b></span>
+          <span>电费 <b>${S.money(cElec)}</b></span>
+          <span>机器 <b>${S.money(cMach)}</b></span>
+          <span>人工 <b>${S.money(cLab)}</b></span>
+          <span class="tot">合计 <b>${S.money(tot)}</b></span>
+        </div>
+        ${r.note ? `<div class="note">${S.esc(r.note)}</div>` : ""}
+        <div class="acts">
+          <button class="btn ghost sm" data-edtr="${r.id}" title="编辑这条记录">编辑</button>
+          <button class="btn primary ghost sm" data-ordr="${r.id}" title="用这条记录开单">开单</button>
+          <button class="btn danger ghost sm" data-delr="${r.id}" title="删除这条记录">删除</button>
+        </div>
+      </div>`;
+    }).join("");
     // 编辑记录：回填计算器表单并进入编辑模式
     box.querySelectorAll("[data-edtr]").forEach(b => b.addEventListener("click", () => {
       const r = S.records.find(x => x.id === b.getAttribute("data-edtr")); if(!r) return;
@@ -1928,7 +1976,10 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
     lab: Math.max(0, S.num($("setPctLab").value))
   } });
   ["setPctFil","setPctElec","setPctMach","setPctLab"].forEach(id => $(id).addEventListener("change", () => { _mkUp(); calc(); orderCalc(); }));
-  $("setLeadMin").addEventListener("change", () => { S.setSettings({ leadMin:Math.max(0, S.num($("setLeadMin").value)) }); });
+  $("setLeadMin").addEventListener("change", () => {
+    S.setSettings({ leadMin:Math.max(0, S.num($("setLeadMin").value)) });
+    applyDefaultLeadMin(); // 改动后立即同步到计算器“处理耗时”
+  });
   $("setOrdPrefix").addEventListener("change", () => { S.setSettings({ ordPrefix:$("setOrdPrefix").value.trim().toUpperCase() || "ORD" }); });
   $("setStart").addEventListener("change", () => { S.setSettings({ startPage:$("setStart").value }); });
   $("setTheme").addEventListener("change", () => {
@@ -2466,9 +2517,13 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
     m.innerHTML = html; m.value = "0";
   })();
 
+  /* 默认处理耗时：计算器“处理耗时”为空时自动填入（打开应用 / 设置变更 / 清除表单后都会调用） */
+  function applyDefaultLeadMin(){
+    if(!$("rMin").value && S.settings.leadMin != null) $("rMin").value = S.settings.leadMin;
+  }
   function refreshAll(){
     applyTheme(); applyFont(); updateMeta(); renderSettings(); fillSelects(); loadVersion();
-    if(!$("rMin").value && S.settings.leadMin != null) $("rMin").value = S.settings.leadMin; // 默认处理耗时
+    applyDefaultLeadMin(); // 默认处理耗时（计算器为空时填入）
     resetOrdForm(); calc();
     renderDash(); renderOrders(); renderMaterials(); renderPrinters(); renderRecords();
     $("headDate").textContent = S.today();

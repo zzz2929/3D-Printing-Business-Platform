@@ -155,6 +155,7 @@
         <div class="row" style="margin-top:14px">
           <button class="btn" id="saveBtn">保存为打印记录</button>
           <button class="btn ghost" id="toOrderBtn" data-goto="order">去开订单</button>
+          <button class="btn ghost" id="clearCalcBtn" title="清空本次打印的输入">清除</button>
           <button class="btn ghost" id="cancelEditBtn" style="display:none" title="放弃本次修改">取消编辑</button>
           <span class="muted" id="homeMsg"></span>
         </div>
@@ -242,6 +243,7 @@
 
           <div class="row" style="margin-top:14px">
             <button class="btn" id="saveOrd">保存订单</button>
+            <button class="btn ghost" id="clearOrdBtn" type="button">清除</button>
             <button class="btn ghost" id="cancelOrd" type="button" style="display:none">取消编辑</button>
             <button class="btn ghost" id="viewListBtn" type="button" data-goto="olist">查看订单列表</button>
             <span class="muted" id="ordMsg"></span>
@@ -296,6 +298,7 @@
         <div class="row" style="margin-top:10px" id="colorPresets"></div>
         <div class="row" style="margin-top:12px">
           <button class="btn" id="addMat">添加耗材</button>
+          <button class="btn gray" id="clearMatBtn" type="button">清除</button>
           <button class="btn gray" id="cancelEditMat" type="button" style="display:none">取消编辑</button>
         </div>
       </div>
@@ -321,6 +324,7 @@
         </div>
         <div class="row" style="margin-top:12px">
           <button class="btn" id="addPri">添加打印机</button>
+          <button class="btn gray" id="clearPriBtn" type="button">清除</button>
           <button class="btn gray" id="cancelEditPri" type="button" style="display:none">取消编辑</button>
         </div>
       </div>
@@ -835,7 +839,7 @@
 <script src="assets/vendor/flatpickr/flatpickr.min.js?v=64"></script>
 <script src="assets/vendor/flatpickr/zh.js?v=64"></script>
 <script src="assets/store.js?v=64"></script>
-<script src="assets/app.js?v=64"></script>
+<script src="assets/app.js?v=67"></script>
 <script>
 /* 保存即刷新：Node 服务端监听到前端文件变更时经 /__reload (SSE) 通知页面自动 reload。
    仅 Node/Docker 宿主提供该通道；Workers/Vercel 或本地 file:// 打开时连接失败即静默停用。 */
