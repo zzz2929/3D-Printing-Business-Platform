@@ -326,7 +326,12 @@ const Store = (function(){
         saving = Math.max(0, saving - 1); dirty.add(col); emit("error");
         // 检测 401：支持 "HTTP 401" 格式（来自 throw Error("HTTP " + r.status)）
         // 也支持直接返回 401 的 fetch 错误
-        if(e.message && (e.message.indexOf("401") >= 0 || e.status === 401)){ location.reload(); return; }
+        if(mode === "server" && e.message && (e.message.indexOf("401") >= 0 || e.status === 401)){
+          // 会话失效：不整页刷新（会清空已填表单），改为弹登录门；重新登录后自动重试保存
+          auth.ok = false;
+          emitAuthChange();
+          return;
+        }
         console.warn("保存失败", col, e);
       }
     }
@@ -457,6 +462,7 @@ const Store = (function(){
     auth.role = u.role; auth.userId = u.id; auth.username = u.username; auth.perms = u.perms || null; auth.email = u.email || "";
     await tryLoad();
     emitAuthChange();
+    if(dirty.size) flush(); // 会话失效期间未保存成功的数据，登录后自动重试
   }
   /* 开放模式下创建第一个管理员（服务端首个注册用户自动为 admin），成功后整站转为密码保护 */
   async function createAdmin(username, pw){

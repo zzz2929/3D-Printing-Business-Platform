@@ -681,8 +681,12 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
   border:none;background:transparent;color:var(--sub);
   padding:8px 18px;font-size:13.5px;cursor:pointer;font-family:inherit;
   border-bottom:2px solid transparent;margin-bottom:-1px;
-  border-radius:0;transition:color .15s,border-color .15s
+  border-radius:0;transition:color .15s,border-color .15s;
+  display:inline-flex;align-items:center;gap:7px
 }
+.set-tabs button .ic{width:14px;height:14px;flex:0 0 14px}
+.set-tabs button:hover .ic{transform:translateY(-1px)}
+.set-tabs button .ic{transition:transform .15s}
 .set-tabs button:hover{color:var(--ink)}
 .set-tabs button.on{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
 
@@ -978,3 +982,15 @@ input.valid{border-color:var(--ok, #3ddc97) !important}
   .bambu-lan .bl-name,.bambu-lan .bl-host{flex:1 1 46%}
   .bambu-lan .bl-code{flex:1 1 100%;order:3}
 }
+
+/* 总成本勾选面板（记录页总成本 / 仪表盘成本） */
+.cpbtn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;margin-left:7px;padding:0;border:1px solid var(--line2);border-radius:7px;background:linear-gradient(180deg,var(--panel2),var(--panel));color:var(--sub);cursor:pointer;vertical-align:middle;box-shadow:0 1px 3px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.045);transition:color .18s,border-color .18s,background .18s,box-shadow .18s}
+.cpbtn svg{width:13px;height:13px;display:block}
+.cpbtn:hover{color:var(--accent);background:var(--accent-dim);box-shadow:0 0 0 3px var(--accent-dim)}
+.cpbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cost-pick{position:fixed;z-index:999;width:210px;padding:12px 14px;border:1px solid var(--line,rgba(128,128,128,.35));border-radius:10px;background:var(--bg,var(--card,#fff));color:var(--fg,#222);box-shadow:0 6px 24px rgba(0,0,0,.18)}
+.cost-pick .cp-title{font-weight:600;margin-bottom:8px;font-size:13px}
+.cost-pick label{display:flex;align-items:center;gap:6px;padding:4px 0;font-size:13px;cursor:pointer}
+.cost-pick input[type=checkbox]{width:15px;height:15px;accent-color:var(--ok,#3a8)}
+.cost-pick .cp-foot{margin-top:8px;text-align:right}
+.cost-pick .cp-foot .btn{padding:3px 14px;font-size:12px}
