@@ -11,6 +11,10 @@
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
   function fx(fn){ if(!window.gsap || reduceMotion) return; try{ fn(window.gsap); }catch(e){} }
 
+  /* 总成本勾选面板的齿轮按钮（打印记录总成本 / 仪表盘营收·利润 共用） */
+  const CPBTN_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+  const CPBTN = '<button class="cpbtn" data-costpick title="勾选计入哪些成本" aria-label="勾选计入哪些成本" aria-haspopup="true">' + CPBTN_ICON + '</button>';
+
   const PAGE_TITLES = { dash:"仪表盘", calc:"成本计算器", order:"开单", olist:"订单列表", mats:"耗材库房", printers:"打印机", records:"打印记录", settings:"设置" };
   const RENDERERS = {};
 
@@ -523,13 +527,116 @@ function goto(tab){
     return out;
   }
 
+  /* ---------- 总成本勾选：统计计入哪些成本项（记录页总成本 / 仪表盘成本共用） ---------- */
+  let statsIncl = { fil:true, elec:true, mach:true, lab:true };
+  const STATS_INCL_KEY = "pp3d_statsincl_v1";
+  function loadStatsIncl(){
+    try{
+      const s = JSON.parse(localStorage.getItem(STATS_INCL_KEY) || "null");
+      if(s && typeof s === "object") Object.assign(statsIncl, { fil:!!s.fil, elec:!!s.elec, mach:!!s.mach, lab:!!s.lab });
+    }catch(_){}
+  }
+  function saveStatsIncl(){
+    try{ localStorage.setItem(STATS_INCL_KEY, JSON.stringify(statsIncl)); }catch(_){}
+  }
+  function statsCostOf(r){ // 打印记录：按勾选口径计算成本
+    return (statsIncl.fil ? S.num(r.cFil) : 0) + (statsIncl.elec ? S.num(r.cElec) : 0)
+         + (statsIncl.mach ? S.num(r.cMach) : 0) + (statsIncl.lab ? S.num(r.cLab) : 0);
+  }
+  function orderCostOf(o){ // 订单：新版订单按勾选四项；历史订单（无四项）按保存的合计全额计入
+    if(!Object.prototype.hasOwnProperty.call(o, "cFil")) return S.num(o.totalCost);
+    return (statsIncl.fil ? S.num(o.cFil) : 0) + (statsIncl.elec ? S.num(o.cElec) : 0)
+         + (statsIncl.mach ? S.num(o.cMach) : 0) + (statsIncl.lab ? S.num(o.cLab) : 0);
+  }
+  function reRenderStats(){
+    if(currentTab === "records") renderRecords();
+    else if(currentTab === "dash") renderDash();
+  }
+  function mountCostPick(){
+    loadStatsIncl();
+    if(!$("costPickPanel")){
+      const wrap = document.createElement("div");
+      wrap.innerHTML = '<div class="cost-pick" id="costPickPanel" hidden>' +
+        '<div class="cp-title">总成本计入哪些成本项</div>' +
+        [["fil","耗材费"],["elec","电费"],["mach","机器折旧"],["lab","人工费"]]
+          .map(([k, t]) => `<label><input type="checkbox" data-cp="${k}" ${statsIncl[k] ? "checked" : ""}> ${t}</label>`).join("") +
+        '<div class="cp-foot"><button class="btn sm" id="cpDone">完成</button></div></div>';
+      document.body.appendChild(wrap.firstElementChild);
+    }
+    const panel = $("costPickPanel");
+    panel.querySelectorAll("[data-cp]").forEach(cb => cb.addEventListener("change", () => {
+      statsIncl[cb.getAttribute("data-cp")] = cb.checked;
+      saveStatsIncl();
+      reRenderStats();
+    }));
+    $("cpDone").addEventListener("click", () => { panel.hidden = true; });
+  }
+  document.addEventListener("click", (e) => {
+    const trig = e.target.closest ? e.target.closest("[data-costpick]") : null;
+    const panel = $("costPickPanel");
+    if(trig && panel){
+      const r = trig.getBoundingClientRect();
+      panel.hidden = !panel.hidden;
+      if(!panel.hidden){
+        panel.style.left = Math.max(8, Math.min(window.innerWidth - 230, r.left)) + "px";
+        panel.style.top = (r.bottom + 6) + "px";
+      }
+      fx(g => {
+        g.fromTo(trig, { scale: 0.82 }, { scale: 1, duration: 0.4, ease: "back.out(2.5)", clearProps: "transform" });
+        g.to(trig.querySelector("svg"), { rotation: "+=90_cw", duration: 0.35, ease: "power2.out", transformOrigin: "50% 50%", overwrite: "auto" });
+      });
+      return;
+    }
+    if(panel && !panel.hidden && !(e.target.closest && e.target.closest("#costPickPanel"))) panel.hidden = true;
+  });
+
+  /* 齿轮按钮微交互：悬停旋转 / 键盘聚焦转动 / 点击回弹（GSAP 不可达或系统开启「减少动态效果」时自动降级为静态样式） */
+  const gearSvg = b => b && b.querySelector("svg");
+  document.addEventListener("mouseover", e => {
+    const b = e.target.closest ? e.target.closest(".cpbtn[data-costpick]") : null;
+    if(!b || b.dataset.hov === "1") return;
+    b.dataset.hov = "1";
+    fx(g => g.to(gearSvg(b), { rotation: 180, duration: 0.55, ease: "power2.out", transformOrigin: "50% 50%", overwrite: "auto" }));
+  });
+  document.addEventListener("mouseout", e => {
+    const b = e.target.closest ? e.target.closest(".cpbtn[data-costpick]") : null;
+    if(!b) return;
+    if(e.relatedTarget && b.contains(e.relatedTarget)) return;
+    b.dataset.hov = "";
+    fx(g => g.to(gearSvg(b), { rotation: 0, duration: 0.4, ease: "power2.out", transformOrigin: "50% 50%", overwrite: "auto" }));
+  });
+  document.addEventListener("focus", e => {
+    const b = e.target.closest ? e.target.closest(".cpbtn[data-costpick]") : null;
+    if(!b) return;
+    fx(g => g.to(gearSvg(b), { rotation: 90, duration: 0.45, ease: "power2.out", transformOrigin: "50% 50%", overwrite: "auto" }));
+  }, true);
+  document.addEventListener("blur", e => {
+    const b = e.target.closest ? e.target.closest(".cpbtn[data-costpick]") : null;
+    if(!b) return;
+    fx(g => g.to(gearSvg(b), { rotation: 0, duration: 0.35, ease: "power2.out", transformOrigin: "50% 50%", overwrite: "auto" }));
+  }, true);
+
+  /* 导航「设置」齿轮：悬停旋转（GSAP 不可达或系统开启「减少动态效果」时自动降级为静态样式） */
+  document.addEventListener("mouseover", e => {
+    const b = e.target.closest ? e.target.closest('.nav button[data-tab="settings"]') : null;
+    if(!b || b.dataset.hov === "1") return;
+    b.dataset.hov = "1";
+    fx(g => g.to(b.querySelector("svg.ic"), { rotation: 180, duration: 0.55, ease: "power2.out", transformOrigin: "50% 50%", overwrite: "auto" }));
+  });
+  document.addEventListener("mouseout", e => {
+    const b = e.target.closest ? e.target.closest('.nav button[data-tab="settings"]') : null;
+    if(!b) return;
+    if(e.relatedTarget && b.contains(e.relatedTarget)) return;
+    b.dataset.hov = "";
+    fx(g => g.to(b.querySelector("svg.ic"), { rotation: 0, duration: 0.4, ease: "power2.out", transformOrigin: "50% 50%", overwrite: "auto" }));
+  });
   function renderDash(){
     if(!$("dashFrom").value){ const rr = dashRange(); $("dashFrom").value = rr.from; $("dashTo").value = rr.to; if(dashPick) dashPick.sync(); }
     const r = { from:$("dashFrom").value, to:$("dashTo").value };
     const title = dashSel.preset ? { "7d":"近7天", "6m":"近6个月", "5y":"近5年", "month":"本月" }[dashSel.preset] : "所选区间";
     const inP = S.orders.filter(o => o.status !== "canceled" && inRange(o, r));
     const rev = inP.reduce((s,o) => s + S.num(o.received), 0);
-    const cost = inP.reduce((s,o) => s + S.num(o.totalCost), 0);
+    const cost = inP.reduce((s,o) => s + orderCostOf(o), 0);
     const profit = rev - cost;
     const st = S.orderStats();
     const prog = S.orders.filter(o => inRange(o, r));
@@ -538,7 +645,7 @@ function goto(tab){
 
     $("dashRangeTitle").textContent = title + "经营";
     $("dashStats").innerHTML = [
-      ["营收 · 利润", S.money(rev), `利润 ${S.money(profit)} · 利润率 ${rev > 0 ? (profit / rev * 100).toFixed(1) : 0}% · ${inP.length} 单`, profit >= 0 ? "up" : "down"],
+      ["营收 · 利润 " + CPBTN, S.money(rev), `利润 ${S.money(profit)} · 利润率 ${rev > 0 ? (profit / rev * 100).toFixed(1) : 0}% · ${inP.length} 单`, profit >= 0 ? "up" : "down"],
       ["待收款（全部）", S.money(st.due), st.due > 0 ? "有未结订单" : "已结清", st.due > 0 ? "down" : ""],
       ["进行中订单", String(active), title + "已完成 " + doneN + " 单", "hi"],
       ["累计订单", String(st.count), "历史总数 · 已完成 " + S.orders.filter(o => o.status === "done").length + " 单", ""]
@@ -598,7 +705,13 @@ function goto(tab){
   let editingRecId = null; // 正在编辑的打印记录 id（非空时保存按钮走更新逻辑）
   function calc(){
     const m = S.matById($("selMat").value), p = S.priById($("selPri").value);
-    const g = S.num($("rGrams").value), h = S.num($("rHoursH").value) + S.num($("rHoursM").value) / 60, min = S.num($("rMin").value);
+    const qty = Math.max(1, S.num($("rQty").value) || 1);
+    const g = S.num($("rGrams").value);
+    const sh = S.num($("rHoursH").value) + S.num($("rHoursM").value) / 60; // 单个打印时长（h）
+    const totHv = S.num($("rTotHoursH").value) + S.num($("rTotHoursM").value) / 60; // 总打印时长（h），可手动选择
+    const h = totHv > 0 ? totHv : qty * sh;
+    const min = S.num($("rMin").value);
+
     $("matHint").textContent = m ? `单价 ${S.money(S.num(m.pricePerKg))}/kg · 剩余 ${S.fmt(m.remaining, 0)}g` : "必选：去「耗材」页添加";
     $("priHint").textContent = p ? `功率 ${S.num(p.powerW)}W · 电价 ${S.num(p.elecPrice)} 元/度 · 机器 ${S.money(S.machineRate(p))}/h` : "可选：不选则只算耗材与人工";
     const c = S.computePrint(m, p, g, h);
@@ -627,21 +740,141 @@ function goto(tab){
     if(incl.mach) sugParts.push(`机器+${S.fmt(mp.mach, 0)}%`);
     if(incl.lab)  sugParts.push(`人工+${S.fmt(mp.lab, 0)}%`);
     $("costSug").textContent = sug > 0 ? S.money(sug) + "（" + sugParts.join(" ") + "）" : "—";
-    lastCalc = { matId:$("selMat").value, priId:$("selPri").value, g, h, min, note:$("rNote").value.trim(), sug, incl };
-    return { m, p, g, h, min, c, lab, all, sug, incl };
+    lastCalc = { matId:$("selMat").value, priId:$("selPri").value, qty, g, h, sh, min, note:$("rNote").value.trim(), sug, incl };
+    saveCalcState();
+    return { m, p, qty, g, h, sh, min, c, lab, all, sug, incl };
   }
-  ["selMat","selPri","rGrams","rHoursH","rHoursM","rMin","cbFil","cbElec","cbMach","cbLab"].forEach(id => $(id).addEventListener("input", calc));
+  ["selMat","selPri","rMin","cbFil","cbElec","cbMach","cbLab"].forEach(id => $(id).addEventListener("input", calc));
+  /* 打印数量 × 单个克重 ↔ 总克重 联动（以最后编辑的字段为基准，避免互相覆盖） */
+  let gAnchor = "grams"; // 最后一次用户编辑的克重字段：grams / gPer / qty
+    $("rQty").addEventListener("input", () => {
+    const qty = Math.max(1, S.num($("rQty").value) || 1);
+    const gPer = S.num($("rGPer").value);
+    if(gAnchor !== "grams" && gPer > 0){ $("rGrams").value = Math.round(qty * gPer * 10) / 10; }
+    else if(S.num($("rGrams").value) > 0){ $("rGPer").value = Math.round(S.num($("rGrams").value) / qty * 10) / 10; }
+    gAnchor = "qty";
+    /* 时长联动：单个时长是锚点时总时间=qty×单个；总时间是锚点时保持总时间、反推单个 */
+    if(hAnchor !== "total" || !(S.num($("rTotHoursH").value) + S.num($("rTotHoursM").value) / 60 > 0)){
+      syncTotalHours();
+    }else{
+      const t = S.num($("rTotHoursH").value) + S.num($("rTotHoursM").value) / 60;
+      if(t > 0) setSingleFromTotal(t, qty);
+    }
+    calc();
+  });
+  $("rGPer").addEventListener("input", () => {
+    const qty = Math.max(1, S.num($("rQty").value) || 1);
+    if(S.num($("rGPer").value) > 0) $("rGrams").value = Math.round(qty * S.num($("rGPer").value) * 10) / 10;
+    gAnchor = "gPer";
+    calc();
+  });
+  $("rGrams").addEventListener("input", () => {
+    const qty = Math.max(1, S.num($("rQty").value) || 1);
+    const grams = S.num($("rGrams").value);
+    if(grams > 0) $("rGPer").value = Math.round(grams / qty * 10) / 10;
+    gAnchor = "grams";
+    calc();
+  });
 
-$("saveBtn").addEventListener("click", () => {
-    const { m, p, g, h, min, c, lab, all, incl } = calc();
+  /* 单个打印时长 ↔ 总打印时间 联动（以最后编辑的字段为基准） */
+  let hAnchor = "single"; // 最后编辑的时长字段：single=单个打印时长 / total=总打印时间
+    function syncTotalHours(){
+    const qty = Math.max(1, S.num($("rQty").value) || 1);
+    const sh = S.num($("rHoursH").value) + S.num($("rHoursM").value) / 60;
+    const total = qty * sh;
+    if(total > 0){
+      const th = Math.floor(total);
+      const tm = Math.round((total - th) * 60);
+      $("rTotHoursH").value = String(th);
+      $("rTotHoursM").value = String(Math.min(55, Math.round(tm / 5) * 5));
+    }else{
+      $("rTotHoursH").value = "0";
+      $("rTotHoursM").value = "0";
+    }
+  }
+  function setSingleFromTotal(t, qty){
+    const sh = t / Math.max(1, qty || 1);
+    $("rHoursH").value = String(Math.floor(sh));
+    const mins = Math.round((sh - Math.floor(sh)) * 60);
+    $("rHoursM").value = String(Math.min(55, Math.round(mins / 5) * 5));
+  }
+  $("rHoursH").addEventListener("input", () => { hAnchor = "single"; syncTotalHours(); calc(); });
+  $("rHoursM").addEventListener("input", () => { hAnchor = "single"; syncTotalHours(); calc(); });
+    ["rTotHoursH","rTotHoursM"].forEach(id => $(id).addEventListener("input", () => {
+    hAnchor = "total";
+    const qty = Math.max(1, S.num($("rQty").value) || 1);
+    const t = S.num($("rTotHoursH").value) + S.num($("rTotHoursM").value) / 60;
+    if(t > 0) setSingleFromTotal(t, qty);
+    calc();
+  }));
+  /* 计算器表单本地持久化：整页刷新（会话过期重登 / 保存即刷新 / 手动刷新）后自动恢复已填选项 */
+  const CALC_KEY = "pp3d_calcform_v1";
+  let calcStateReady = false; // 初始化恢复完成后才允许写入持久化
+  function saveCalcState(){
+    if(!calcStateReady) return;
+    try{
+      localStorage.setItem(CALC_KEY, JSON.stringify({
+        selMat:$("selMat").value, selPri:$("selPri").value,
+        rQty:$("rQty").value, rGPer:$("rGPer").value, rGrams:$("rGrams").value,
+        rHoursH:$("rHoursH").value, rHoursM:$("rHoursM").value, rTotHoursH:$("rTotHoursH").value, rTotHoursM:$("rTotHoursM").value,
+        rMin:$("rMin").value, rNote:$("rNote").value,
+        cbFil:$("cbFil").checked, cbElec:$("cbElec").checked, cbMach:$("cbMach").checked, cbLab:$("cbLab").checked,
+        gAnchor, hAnchor
+      }));
+    }catch(_){}
+  }
+  function restoreCalcState(){
+    try{
+      const s = JSON.parse(localStorage.getItem(CALC_KEY) || "null");
+      if(!s || typeof s !== "object") return;
+      if(s.selMat) $("selMat").value = s.selMat;
+      if(s.selPri) $("selPri").value = s.selPri;
+      if(s.rQty) $("rQty").value = s.rQty;
+      if(s.rGPer != null) $("rGPer").value = String(s.rGPer);
+      if(s.rGrams != null) $("rGrams").value = String(s.rGrams);
+      if(s.rHoursH != null) $("rHoursH").value = String(s.rHoursH);
+      if(s.rHoursM != null) $("rHoursM").value = String(s.rHoursM);
+      if(s.rTotHoursH != null) $("rTotHoursH").value = String(s.rTotHoursH);
+      if(s.rTotHoursM != null) $("rTotHoursM").value = String(s.rTotHoursM);
+      /* 兼容旧版数字存档：rTotHours → 拆成时/分 */
+      if(s.rTotHours != null && s.rTotHoursH == null && s.rTotHoursM == null){
+        const tv = S.num(s.rTotHours);
+        if(tv > 0){
+          $("rTotHoursH").value = String(Math.floor(tv));
+          $("rTotHoursM").value = String(Math.min(55, Math.round((tv - Math.floor(tv)) * 60 / 5) * 5));
+        }
+      }
+      if(s.rMin) $("rMin").value = s.rMin;
+      if(s.rNote) $("rNote").value = s.rNote;
+      if(s.cbFil != null) $("cbFil").checked = !!s.cbFil;
+      if(s.cbElec != null) $("cbElec").checked = !!s.cbElec;
+      if(s.cbMach != null) $("cbMach").checked = !!s.cbMach;
+      if(s.cbLab != null) $("cbLab").checked = !!s.cbLab;
+      if(s.gAnchor && ["grams","gPer","qty"].includes(s.gAnchor)) gAnchor = s.gAnchor;
+      if(s.hAnchor && ["single","total"].includes(s.hAnchor)) hAnchor = s.hAnchor;
+    }catch(_){}
+  }
+
+  /* 防重复保存：保存成功后按钮禁用，表单有任何输入（或清除/取消/编辑）才恢复 */
+  function enableSaveBtn(){
+    const b = $("saveBtn");
+    b.disabled = false;
+    b.textContent = editingRecId ? "保存修改" : "保存为打印记录";
+  }
+  document.addEventListener("input", (e) => {
+    if(e.target && e.target.closest("#page-calc")) enableSaveBtn();
+  }, true);
+  $("saveBtn").addEventListener("click", () => {
+    const { m, p, g, h, sh, min, c, lab, all, incl } = calc();
     if(!m){ $("homeMsg").textContent = "请先选择耗材（必填）"; toast("耗材为必填项"); return; }
-    if(g <= 0){ $("homeMsg").textContent = "请填写耗材用量（必填）"; toast("耗材用量为必填项"); return; }
+    if(g <= 0){ $("homeMsg").textContent = "请填写总克重（必填）"; toast("总克重为必填项"); return; }
     if(all <= 0){ $("homeMsg").textContent = "至少勾选一项成本计入"; toast("请至少勾选一项成本"); return; }
+    $("saveBtn").disabled = true; $("saveBtn").textContent = "已保存"; // 防连点：保存成功后禁用，修改表单才恢复
     const note = $("rNote").value.trim();
     /* 编辑模式：更新原记录并联动库存（先回补旧克数，再按新材料/新克数扣减） */
     if(editingRecId){
       const i = S.records.findIndex(r => r.id === editingRecId);
-      if(i < 0){ editingRecId = null; toast("原记录已不存在，已退出编辑"); }
+      if(i < 0){ editingRecId = null; toast("原记录已不存在，已退出编辑"); enableSaveBtn(); }
       else {
         const old = S.records[i];
         const om = S.matById(old.materialId);
@@ -649,13 +882,13 @@ $("saveBtn").addEventListener("click", () => {
         S.records[i] = Object.assign({}, old, {
           materialId:m.id, matName:m.name, matType:m.type, matColor:m.color, pricePerKg:S.num(m.pricePerKg),
           printerId:p ? p.id : null, priName:p ? p.name : null, powerW:p ? S.num(p.powerW) : 0, elecPrice:p ? S.num(p.elecPrice) : 0,
-          grams:g, hours:h, handlingMin:min, cFil:c.cFil, cElec:c.cElec, cMach:c.cMach, cLab:lab, total:all, sug:lastCalc && lastCalc.sug,
+          grams:g, qty:S.num($("rQty").value) || 1, gPer:S.num($("rGPer").value) || 0, singleHours:sh, hours:h, handlingMin:min, cFil:c.cFil, cElec:c.cElec, cMach:c.cMach, cLab:lab, total:all, sug:lastCalc && lastCalc.sug,
           inclFil:incl.fil, inclElec:incl.elec, inclMach:incl.mach, inclLab:incl.lab,
           consumed:g, note
         });
         m.remaining = Math.max(0, S.num(m.remaining) - g);
         S.saveRec(); S.saveMat();
-        $("cancelEditBtn").style.display = "none"; $("saveBtn").textContent = "保存为打印记录";
+        $("cancelEditBtn").style.display = "none";
         editingRecId = null;
         $("homeMsg").textContent = "已更新：" + m.name + " · 计入成本 " + S.money(all) + " · 库存剩 " + S.fmt(m.remaining, 0) + "g";
         toast("记录已更新，库存已同步 " + randFace());
@@ -667,7 +900,7 @@ $("saveBtn").addEventListener("click", () => {
     S.records.unshift({ id:S.uid(), date:S.today(), created:Date.now(),
       materialId:m.id, matName:m.name, matType:m.type, matColor:m.color, pricePerKg:S.num(m.pricePerKg),
       printerId:p ? p.id : null, priName:p ? p.name : null, powerW:p ? S.num(p.powerW) : 0, elecPrice:p ? S.num(p.elecPrice) : 0,
-      grams:g, hours:h, handlingMin:min, cFil:c.cFil, cElec:c.cElec, cMach:c.cMach, cLab:lab, total:all, sug:lastCalc && lastCalc.sug,
+      grams:g, qty:S.num($("rQty").value) || 1, gPer:S.num($("rGPer").value) || 0, singleHours:sh, hours:h, handlingMin:min, cFil:c.cFil, cElec:c.cElec, cMach:c.cMach, cLab:lab, total:all, sug:lastCalc && lastCalc.sug,
       inclFil:incl.fil, inclElec:incl.elec, inclMach:incl.mach, inclLab:incl.lab,
       consumed:g, note });
     m.remaining = Math.max(0, S.num(m.remaining) - g); // 自动扣减库存
@@ -682,9 +915,10 @@ $("saveBtn").addEventListener("click", () => {
     editingRecId = null;
     $("saveBtn").textContent = "保存为打印记录";
     $("cancelEditBtn").style.display = "none";
-    $("rGrams").value = ""; $("rHoursH").value = "0"; $("rHoursM").value = "0"; $("rMin").value = ""; $("rNote").value = "";
+    $("rGrams").value = ""; $("rQty").value = "1"; $("rGPer").value = ""; $("rHoursH").value = "0"; $("rHoursM").value = "0"; $("rTotHoursH").value = "0"; $("rTotHoursM").value = "0"; $("rMin").value = ""; $("rNote").value = ""; hAnchor = "single";
     $("homeMsg").textContent = "";
     applyDefaultLeadMin(); // 取消编辑后按默认处理耗时回到新打印状态
+    enableSaveBtn();
     fillSelects(); calc();
     toast("已取消编辑");
   });
@@ -695,11 +929,12 @@ $("saveBtn").addEventListener("click", () => {
     $("saveBtn").textContent = "保存为打印记录";
     $("cancelEditBtn").style.display = "none";
     $("selMat").value = ""; $("selPri").value = "";
-    $("rGrams").value = ""; $("rHoursH").value = "0"; $("rHoursM").value = "0"; $("rMin").value = ""; $("rNote").value = "";
+    $("rGrams").value = ""; $("rQty").value = "1"; $("rGPer").value = ""; $("rHoursH").value = "0"; $("rHoursM").value = "0"; $("rTotHoursH").value = "0"; $("rTotHoursM").value = "0"; $("rMin").value = ""; $("rNote").value = ""; hAnchor = "single";
     ["cbFil","cbElec","cbMach","cbLab"].forEach(id => $(id).checked = true);
     $("homeMsg").textContent = "";
     lastCalc = null;
     applyDefaultLeadMin(); // 清除后重新填入默认处理耗时
+    enableSaveBtn();
     fillSelects(); calc();
     toast("已清除本次打印输入");
   });
@@ -864,7 +1099,7 @@ $("saveBtn").addEventListener("click", () => {
       grams:S.num($("oG").value), hours:S.num($("oH").value), handlingMin:S.num($("oMin").value),
       printCost:(c.incl.fil ? c.fil : 0) + (c.incl.elec ? c.elec : 0) + (c.incl.mach ? c.mach : 0) + (c.incl.lab ? c.lab : 0),
       inclFil:c.incl.fil, inclElec:c.incl.elec, inclMach:c.incl.mach, inclLab:c.incl.lab,
-      extras:c.extras, extraCost:c.ec, totalCost:c.ct,
+      extras:c.extras, extraCost:c.ec, totalCost:c.ct, cFil:c.fil, cElec:c.elec, cMach:c.mach, cLab:c.lab,
       received:c.rv, payments:c.pays, profit:c.profit,
       modelFile:{ name:$("oFName").value.trim(), size:$("oFSize").value.trim(), note:$("oFNote").value.trim() },
       note:$("oNote").value.trim(),
@@ -1741,12 +1976,11 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
     recFilt.mat = fm.value; recFilt.pri = fp.value;
 
     const rs = S.records;
-    const tFil = rs.reduce((s,r) => s + S.num(r.cFil), 0), tElec = rs.reduce((s,r) => s + S.num(r.cElec), 0);
-    const total = tFil + tElec, sumH = rs.reduce((s,r) => s + S.num(r.hours), 0), sumG = rs.reduce((s,r) => s + S.num(r.grams), 0);
+    const total = rs.reduce((s,r) => s + statsCostOf(r), 0), sumH = rs.reduce((s,r) => s + S.num(r.hours), 0), sumG = rs.reduce((s,r) => s + S.num(r.grams), 0);
     $("stats").innerHTML = [
       ["总记录", String(rs.length), "", ""],
       ["总耗材 / 时长", S.fmt(sumG, 0) + " g · " + S.fmt(sumH, 1) + " h", "", ""],
-      ["总成本", S.money(total), "", "hi"],
+      ["总成本 " + CPBTN, S.money(total), "", "hi"],
       ["单克 / 单时成本", (sumG > 0 ? S.money(total / sumG) : "—") + " · " + (sumH > 0 ? S.money(total / sumH) : "—"), "", ""]
     ].map(([k, v, s, cls]) => `<div class="stat ${cls}"><div class="k">${k}</div><div class="v" style="font-size:${v.length > 14 ? "16px" : "19px"}">${v}</div></div>`).join("");
 
@@ -1773,7 +2007,11 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
       const g = S.num(r.grams), h = S.num(r.hours);
       const cFil = S.num(r.cFil), cElec = S.num(r.cElec), cMach = S.num(r.cMach), cLab = S.num(r.cLab);
       const sug = S.num(r.sug), tot = S.num(r.total);
-      const cells = [["用量", g > 0 ? S.fmt(g, 1) + " g" : "—"], ["时长", h > 0 ? S.fmt(h, 1) + " h" : "—"]];
+      const rq = S.num(r.qty);
+      const cells = [];
+      if(rq > 1) cells.push(["数量", rq + " 件"]);
+      cells.push(["用量", g > 0 ? S.fmt(g, 1) + " g" : "—"], [rq > 1 ? "总时长" : "时长", h > 0 ? S.fmt(h, 1) + " h" : "—"]);
+      if(rq > 1 && h > 0) cells.push(["单个时长", S.fmt(h / rq, 2) + " h"]);
       if(S.num(r.handlingMin) > 0) cells.push(["处理", S.fmt(S.num(r.handlingMin), 0) + " 分"]);
       if(S.num(r.pricePerKg) > 0) cells.push(["耗材单价", S.money(S.num(r.pricePerKg)) + "/kg"]);
       if(S.num(r.powerW) > 0) cells.push(["功率", S.fmt(S.num(r.powerW), 0) + " W"]);
@@ -1818,16 +2056,24 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
       $("selMat").value = r.materialId || "";
       $("selPri").value = r.printerId || "";
       $("rGrams").value = r.grams != null ? String(r.grams) : "";
-      $("rHoursH").value = String(Math.floor(S.num(r.hours)));
-      const mins = Math.round((S.num(r.hours) - Math.floor(S.num(r.hours))) * 60);
-      $("rHoursM").value = String(Math.min(55, Math.round(mins / 5) * 5));
+      $("rQty").value = S.num(r.qty) > 0 ? String(r.qty) : "1";
+      $("rGPer").value = S.num(r.grams) > 0 ? String(Math.round(S.num(r.grams) / Math.max(1, S.num(r.qty) || 1) * 10) / 10) : "";
+      /* 单个打印时长：优先用记录保存的单个时长，旧数据按 总时长 ÷ 数量 反推 */
+      const sh0 = r.singleHours != null ? S.num(r.singleHours) : S.num(r.hours) / Math.max(1, S.num(r.qty) || 1);
+      $("rHoursH").value = String(Math.floor(sh0));
+      const mins0 = Math.round((sh0 - Math.floor(sh0)) * 60);
+      $("rHoursM").value = String(Math.min(55, Math.round(mins0 / 5) * 5));
+      const th0 = S.num(r.hours) || 0;
+      $("rTotHoursH").value = String(Math.floor(th0));
+      $("rTotHoursM").value = String(Math.min(55, Math.round((th0 - Math.floor(th0)) * 60 / 5) * 5));
+      hAnchor = "total"; // 编辑记录：以总打印时间为事实，改数量时保持总时间、反推单个时长
       $("rMin").value = r.handlingMin != null ? String(r.handlingMin) : "";
       $("rNote").value = r.note || "";
       $("cbFil").checked = r.inclFil !== false;
       $("cbElec").checked = r.inclElec !== false;
       $("cbMach").checked = r.inclMach !== false;
       $("cbLab").checked = r.inclLab !== false;
-      $("saveBtn").textContent = "保存修改";
+      enableSaveBtn();
       $("cancelEditBtn").style.display = "";
       $("homeMsg").textContent = "编辑中：" + S.esc(r.matName || "");
       calc();
@@ -1940,6 +2186,10 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
   $("setTabs").addEventListener("click", e => {
     const b = e.target.closest("button[data-p]"); if(!b) return;
     activeSetPane = b.getAttribute("data-p"); renderSetTabs();
+    fx(g => {
+      const ic = b.querySelector("svg.ic");
+      if(ic) g.fromTo(ic, { scale: 0.55, rotation: -14 }, { scale: 1, rotation: 0, duration: 0.4, ease: "back.out(2)", clearProps: "transform" });
+    });
   });
 
   /* ============ 设置 ============ */
@@ -2507,7 +2757,7 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
   updateSyncLed("saved");
 
   /* 时长下拉（闹钟样式） */
-  (function fillDuration(){
+    (function fillDuration(){
     const h = $("rHoursH"), m = $("rHoursM");
     let html = "";
     for(let i = 0; i <= 48; i++) html += `<option value="${i}">${i}</option>`;
@@ -2515,6 +2765,12 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
     html = "";
     for(let i = 0; i < 60; i += 5) html += `<option value="${i}">${String(i).padStart(2, "0")}</option>`;
     m.innerHTML = html; m.value = "0";
+    /* 总打印时间下拉：小时范围放宽到 200（覆盖 数量×单个 的批量场景） */
+    const th = $("rTotHoursH"), tm = $("rTotHoursM");
+    html = "";
+    for(let i = 0; i <= 200; i++) html += `<option value="${i}">${i}</option>`;
+    th.innerHTML = html; th.value = "0";
+    tm.innerHTML = m.innerHTML; tm.value = "0";
   })();
 
   /* 默认处理耗时：计算器“处理耗时”为空时自动填入（打开应用 / 设置变更 / 清除表单后都会调用） */
@@ -2604,12 +2860,15 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
   });
   $("setUpdateUrl").addEventListener("change", () => S.setSettings({ updateUrl:$("setUpdateUrl").value.trim() }));
 
+  mountCostPick(); // 总成本勾选面板（含恢复上次勾选）
+
   /* ---------- 登录门 ---------- */
   let appStarted = false;
   function appStart(){
     if(appStarted) return; appStarted = true;
     refreshAll(); applyPerms(); applyLogoutVisibility();
     loadBambu(); // 拓竹连接状态（耗材页卡片）
+    restoreCalcState(); calcStateReady = true; // 恢复上次计算器选项，此后输入即持久化
     // 按当前 hash 落页（goto 内部会拦下无权限的页面）
     goto((location.hash.match(/^#\/(\w+)/) || [])[1] || currentTab || "dash");
     // 首启优先级：开放模式 + 未完成首启设置 → 向导；否则常规新手引导
