@@ -412,6 +412,7 @@ function goto(tab){
       const cards = page.querySelectorAll(":scope > .card");
       if(cards.length) g.from(cards, { y:12, autoAlpha:0, duration:0.32, stagger:0.06, ease:"power2.out", clearProps:"all" });
     });
+    navStartLoop(); // 激活态图标常驻动效随页面切换重启
   }
   $("nav").addEventListener("click", e => {
     const b = e.target.closest("button[data-tab]"); if(!b) return;
@@ -429,8 +430,11 @@ function goto(tab){
   function matOpts(){ return '<option value="">— 选择耗材 —</option>' + S.materials.map(m => `<option value="${m.id}">${S.esc(m.name)} · 剩 ${S.fmt(m.remaining, 0)}g</option>`).join(""); }
   function priOpts(){ return '<option value="">— 选择打印机（可选） —</option>' + S.printers.map(p => `<option value="${p.id}">${S.esc(p.name)}（${S.num(p.powerW)}W）</option>`).join(""); }
   function fillSelects(){
-    ["selMat","oMat"].forEach(id => { const el = $(id), v = el.value; el.innerHTML = matOpts(); el.value = v; });
+    const selMatEl = $("selMat"); // 主耗材选择器由耗材区动态渲染
+    if(selMatEl){ const v = selMatEl.value; selMatEl.innerHTML = matOpts(); selMatEl.value = v; }
+    if($("oMat")){ const el = $("oMat"), v = el.value; el.innerHTML = matOpts(); el.value = v; }
     ["selPri","oPri"].forEach(id => { const el = $(id), v = el.value; el.innerHTML = priOpts(); el.value = v; });
+    if($("extraMats")) renderMatRows(); // 重建耗材区（主耗材行 + 附加行），保留已选值
   }
 
   /* ============ 仪表盘 ============ */
@@ -616,20 +620,58 @@ function goto(tab){
     fx(g => g.to(gearSvg(b), { rotation: 0, duration: 0.35, ease: "power2.out", transformOrigin: "50% 50%", overwrite: "auto" }));
   }, true);
 
-  /* 导航「设置」齿轮：悬停旋转（GSAP 不可达或系统开启「减少动态效果」时自动降级为静态样式） */
-  document.addEventListener("mouseover", e => {
-    const b = e.target.closest ? e.target.closest('.nav button[data-tab="settings"]') : null;
+  /* 导航图标微交互：悬停动效（仪表盘/计算器/开单/订单/耗材/打印机/打印记录/设置）
+     GSAP 不可达或系统开启「减少动态效果」时自动降级为静态样式 */
+  const NAV_HOVER = {
+    dash:{ y:-2, scale:1.1 }, calc:{ y:-2, scale:1.1 }, order:{ y:-2, scale:1.1 },
+    olist:{ y:-2, scale:1.1 }, mats:{ rotation:45, scale:1.1 }, printers:{ y:-3, rotation:-4 },
+    records:{ y:-2, scale:1.1 }, settings:{ rotation:180 }
+  };
+  const navIconOf = b => b && b.querySelector("svg.ic");
+  const navHoverIn = b => {
     if(!b || b.dataset.hov === "1") return;
     b.dataset.hov = "1";
-    fx(g => g.to(b.querySelector("svg.ic"), { rotation: 180, duration: 0.55, ease: "power2.out", transformOrigin: "50% 50%", overwrite: "auto" }));
+    stopNavLoop(); // 悬停期间暂停激活态常驻动效，避免相互覆盖
+    const v = NAV_HOVER[b.getAttribute("data-tab")];
+    if(!v) return;
+    fx(g => g.to(navIconOf(b), Object.assign({}, v, { duration: 0.5, ease: "back.out(1.6)", transformOrigin: "50% 50%", overwrite: "auto" })));
+  };
+  const navHoverOut = b => {
+    if(!b) return;
+    b.dataset.hov = "";
+    const v = NAV_HOVER[b.getAttribute("data-tab")];
+    if(!v) return;
+    fx(g => g.to(navIconOf(b), { rotation: 0, y: 0, scale: 1, duration: 0.4, ease: "power2.out", transformOrigin: "50% 50%", overwrite: "auto", onComplete: navStartLoop }));
+  };
+  document.addEventListener("mouseover", e => {
+    const b = e.target.closest ? e.target.closest(".nav button[data-tab]") : null;
+    if(b) navHoverIn(b);
   });
   document.addEventListener("mouseout", e => {
-    const b = e.target.closest ? e.target.closest('.nav button[data-tab="settings"]') : null;
+    const b = e.target.closest ? e.target.closest(".nav button[data-tab]") : null;
     if(!b) return;
     if(e.relatedTarget && b.contains(e.relatedTarget)) return;
-    b.dataset.hov = "";
-    fx(g => g.to(b.querySelector("svg.ic"), { rotation: 0, duration: 0.4, ease: "power2.out", transformOrigin: "50% 50%", overwrite: "auto" }));
+    navHoverOut(b);
   });
+
+  /* 激活态导航图标：常驻轻动效（齿轮 / 线轴缓慢旋转，其余轻微呼吸上浮；GSAP 不可达或系统开启「减少动态效果」时自动跳过） */
+  let navLoopTween = null;
+  function stopNavLoop(){ if(navLoopTween){ navLoopTween.kill(); navLoopTween = null; } }
+  function navStartLoop(){
+    stopNavLoop();
+    const b = document.querySelector(".nav button.on");
+    if(!b || !window.gsap || reduceMotion) return;
+    const ic = b.querySelector("svg.ic");
+    if(!ic) return;
+    const tab = b.getAttribute("data-tab");
+    if(tab === "settings"){
+      navLoopTween = gsap.to(ic, { rotation: 360, duration: 8, ease: "none", repeat: -1, transformOrigin: "50% 50%" });
+    } else if(tab === "mats"){
+      navLoopTween = gsap.to(ic, { rotation: 360, duration: 10, ease: "none", repeat: -1, transformOrigin: "50% 50%" });
+    } else {
+      navLoopTween = gsap.fromTo(ic, { y: 1.5 }, { y: -1.5, duration: 2.2, ease: "sine.inOut", yoyo: true, repeat: -1 });
+    }
+  }
   function renderDash(){
     if(!$("dashFrom").value){ const rr = dashRange(); $("dashFrom").value = rr.from; $("dashTo").value = rr.to; if(dashPick) dashPick.sync(); }
     const r = { from:$("dashFrom").value, to:$("dashTo").value };
@@ -701,6 +743,23 @@ function goto(tab){
   }
 
 /* ============ 计算器 ============ */
+  /* ---------- 多耗材：一条打印记录可消耗多种耗材 ---------- */
+  function recMats(r){
+    if(Array.isArray(r.mats) && r.mats.length) return r.mats;
+    if(!r || !r.materialId) return [];
+    return [{ materialId:r.materialId, matName:r.matName, matColor:r.matColor, grams:S.num(r.grams), pricePerKg:S.num(r.pricePerKg) }];
+  }
+  function matsGramSum(mats){ return (mats||[]).reduce((s,x) => s + S.num(x.grams), 0); }
+  function matsCost(mats){ return (mats||[]).reduce((s,x) => s + S.num(x.pricePerKg)/1000 * S.num(x.grams), 0); }
+  function matsLabel(mats, withG){ return (mats||[]).map(x => (x.matName || "未知耗材") + (withG && S.num(x.grams) > 0 ? " " + S.fmt(S.num(x.grams),1) + "g" : "")).join(" · "); }
+  function applyMatsStock(r, sign){
+    recMats(r).forEach(x => {
+      const m = S.matById(x.materialId); if(!m) return;
+      const g = S.num(x.grams); if(!(g > 0)) return;
+      if(sign < 0) m.remaining = Math.max(0, S.num(m.remaining) - g);
+      else m.remaining = Math.min(S.num(m.spool), S.num(m.remaining) + g);
+    });
+  }
   let lastCalc = null; // 供「去开订单」自动带入
   let editingRecId = null; // 正在编辑的打印记录 id（非空时保存按钮走更新逻辑）
   function calc(){
@@ -714,7 +773,14 @@ function goto(tab){
 
     $("matHint").textContent = m ? `单价 ${S.money(S.num(m.pricePerKg))}/kg · 剩余 ${S.fmt(m.remaining, 0)}g` : "必选：去「耗材」页添加";
     $("priHint").textContent = p ? `功率 ${S.num(p.powerW)}W · 电价 ${S.num(p.elecPrice)} 元/度 · 机器 ${S.money(S.machineRate(p))}/h` : "可选：不选则只算耗材与人工";
-    const c = S.computePrint(m, p, g, h);
+    /* 附加耗材：同一打印消耗多种耗材时按明细合计耗材成本与总克数 */
+    const extras = extraMatsFromDom();
+    const gExtra = extras.reduce((s,x) => s + x.grams, 0);
+    const gTotal = g + gExtra;
+    const c = S.computePrint(m, p, gTotal, h);
+    c.cFil = (m ? S.num(m.pricePerKg)/1000 * g : 0) + extras.reduce((s,x) => { const mm = S.matById(x.matId); return s + (mm ? S.num(mm.pricePerKg)/1000 * x.grams : 0); }, 0);
+    const et = $("extraTot"); if(et) et.textContent = extras.length ? "耗材成本 " + S.money(c.cFil) : "同一打印消耗多种耗材时在此添加";
+    const rt = $("rGTotal"); if(rt) rt.value = gTotal > 0 ? S.fmt(gTotal, 1) : "0";
     const lab = (m || p || min) ? S.laborCost(min) : 0;
     /* 勾选才计入总成本；未勾选项半透明展示，金额仍可见 */
     const incl = { fil:$("cbFil").checked, elec:$("cbElec").checked, mach:$("cbMach").checked, lab:$("cbLab").checked };
@@ -740,18 +806,67 @@ function goto(tab){
     if(incl.mach) sugParts.push(`机器+${S.fmt(mp.mach, 0)}%`);
     if(incl.lab)  sugParts.push(`人工+${S.fmt(mp.lab, 0)}%`);
     $("costSug").textContent = sug > 0 ? S.money(sug) + "（" + sugParts.join(" ") + "）" : "—";
-    lastCalc = { matId:$("selMat").value, priId:$("selPri").value, qty, g, h, sh, min, note:$("rNote").value.trim(), sug, incl };
+    lastCalc = { matId:$("selMat").value, priId:$("selPri").value, qty, g:gTotal, gMain:g, h, sh, min, note:$("rNote").value.trim(), sug, incl, mats: extras.map(x => ({ matId:x.matId, grams:x.grams })) };
     saveCalcState();
-    return { m, p, qty, g, h, sh, min, c, lab, all, sug, incl };
+    return { m, p, qty, g, gMain:g, gTotal, h, sh, min, c, lab, all, sug, incl, extras };
   }
-  ["selMat","selPri","rMin","cbFil","cbElec","cbMach","cbLab"].forEach(id => $(id).addEventListener("input", calc));
+  ["selPri","rMin","cbFil","cbElec","cbMach","cbLab"].forEach(id => $(id).addEventListener("input", calc));
+  /* 附加耗材行：DOM 为唯一事实源；仅在增删行/材料刷新/回填时重建，输入时仅更新提示与成本 */
+  function extraMatsFromDom(){
+    return [...document.querySelectorAll("#extraMats .em-row:not(.mat-main)")].map(row => ({
+      matId: row.querySelector(".em-mat").value,
+      grams: S.num(row.querySelector(".em-g").value)
+    })).filter(x => x.matId && x.grams > 0);
+  }
+  function renderMatRows(state, append){
+    const box = $("extraMats"); if(!box) return;
+    const prev = { sel: $("selMat") ? $("selMat").value : "", grams: $("rGrams") ? $("rGrams").value : "" };
+    const rows = state && Array.isArray(state) ? state : [...box.querySelectorAll(".em-row:not(.mat-main)")].map(row => ({ matId: row.querySelector(".em-mat").value, grams: row.querySelector(".em-g").value }));
+    if(append) rows.push({ matId:"", grams:"" });
+    box.innerHTML =
+      '<div class="em-row mat-main"><label class="em-lab">耗材<i class="dot"></i></label>' +
+        '<select id="selMat" class="em-mat">' + matOpts() + '</select>' +
+        '<input id="rGrams" class="em-g" type="number" min="0" step="0.1" placeholder="主耗材克数" value="' + S.esc(String(prev.grams)) + '">' +
+        '<span class="em-unit">g</span>' +
+        '<span class="em-hint" id="matHint">—</span></div>' +
+      '<div class="em-head">附加耗材 <span class="em-tip" id="extraTot"></span></div>' +
+      rows.map((o, i) => {
+        const matId = o.matId || "", grams = o.grams != null ? o.grams : "";
+        const m = matId ? S.matById(matId) : null;
+        const opts = '<option value="">— 选择耗材 —</option>' + S.materials.map(x => `<option value="${x.id}" ${x.id === matId ? "selected" : ""}>${S.esc(S.matLabel(x))} · 剩 ${S.fmt(x.remaining,0)}g</option>`).join("");
+        return `<div class="em-row" data-i="${i}"><select class="em-mat" aria-label="附加耗材">${opts}</select><input class="em-g" type="number" min="0" step="0.1" placeholder="克数" value="${S.esc(String(grams))}"><span class="em-unit">g</span><button class="em-del" type="button" title="移除该耗材">×</button><span class="em-hint">${m ? "单价 " + S.money(S.num(m.pricePerKg)) + "/kg · 剩余 " + S.fmt(m.remaining,0) + "g" : "必选耗材后填克数"}</span></div>`;
+      }).join("") +
+      '<button class="btn ghost sm em-add" type="button">＋ 添加耗材</button>';
+    const sm = $("selMat"); if(sm && prev.sel) sm.value = prev.sel;
+    if(window.gsap && !reduceMotion){ try{ gsap.fromTo(box.querySelectorAll(".em-row:not(.mat-main)"), { autoAlpha:0, y:6 }, { autoAlpha:1, y:0, duration:0.22, stagger:0.04, ease:"power2.out", clearProps:"all" }); }catch(_){} }
+  }
+  const emBox = $("extraMats");
+  if(emBox){
+    emBox.addEventListener("change", e => { if(e.target.closest(".em-row")) calc(); });
+    emBox.addEventListener("input", e => {
+      const row = e.target.closest(".em-row"); if(!row || e.target.id === "rGrams") return;
+      /* 附加耗材克数变化：按总克数口径联动单个克数（总克数 = 主耗材 + 附加合计） */
+      if(e.target.classList.contains("em-g") && gAnchor !== "gPer"){
+        const qty = Math.max(1, S.num($("rQty").value) || 1);
+        if(S.num($("rGrams").value) > 0 || gExtraSum() > 0) $("rGPer").value = Math.round((S.num($("rGrams").value) + gExtraSum()) / qty * 10) / 10;
+      }
+      calc();
+    });
+    emBox.addEventListener("click", e => {
+      const del = e.target.closest(".em-del");
+      if(del){ del.closest(".em-row").remove(); calc(); return; }
+      const add = e.target.closest(".em-add");
+      if(add){ renderMatRows(null, true); calc(); }
+    });
+  }
   /* 打印数量 × 单个克重 ↔ 总克重 联动（以最后编辑的字段为基准，避免互相覆盖） */
-  let gAnchor = "grams"; // 最后一次用户编辑的克重字段：grams / gPer / qty
-    $("rQty").addEventListener("input", () => {
+  let gAnchor = "grams"; // 最后一次用户编辑的克数字段：grams（主耗材）/ gPer / qty
+  function gExtraSum(){ return extraMatsFromDom().reduce((s,x) => s + x.grams, 0); }
+  $("rQty").addEventListener("input", () => {
     const qty = Math.max(1, S.num($("rQty").value) || 1);
     const gPer = S.num($("rGPer").value);
-    if(gAnchor !== "grams" && gPer > 0){ $("rGrams").value = Math.round(qty * gPer * 10) / 10; }
-    else if(S.num($("rGrams").value) > 0){ $("rGPer").value = Math.round(S.num($("rGrams").value) / qty * 10) / 10; }
+    if(gAnchor === "gPer" && gPer > 0){ const v = qty * gPer - gExtraSum(); $("rGrams").value = Math.max(0, Math.round(v * 10) / 10); }
+    else if(S.num($("rGrams").value) > 0 || gExtraSum() > 0){ $("rGPer").value = Math.round((S.num($("rGrams").value) + gExtraSum()) / qty * 10) / 10; }
     gAnchor = "qty";
     /* 时长联动：单个时长是锚点时总时间=qty×单个；总时间是锚点时保持总时间、反推单个 */
     if(hAnchor !== "total" || !(S.num($("rTotHoursH").value) + S.num($("rTotHoursM").value) / 60 > 0)){
@@ -764,14 +879,16 @@ function goto(tab){
   });
   $("rGPer").addEventListener("input", () => {
     const qty = Math.max(1, S.num($("rQty").value) || 1);
-    if(S.num($("rGPer").value) > 0) $("rGrams").value = Math.round(qty * S.num($("rGPer").value) * 10) / 10;
+    if(S.num($("rGPer").value) > 0){ const v = qty * S.num($("rGPer").value) - gExtraSum(); $("rGrams").value = Math.max(0, Math.round(v * 10) / 10); }
     gAnchor = "gPer";
     calc();
   });
-  $("rGrams").addEventListener("input", () => {
+  /* rGrams 由耗材区动态渲染（主耗材行），用 document 级委托绑定输入联动 */
+  document.addEventListener("input", e => {
+    if(!e.target || e.target.id !== "rGrams") return;
     const qty = Math.max(1, S.num($("rQty").value) || 1);
     const grams = S.num($("rGrams").value);
-    if(grams > 0) $("rGPer").value = Math.round(grams / qty * 10) / 10;
+    if(grams > 0 || gExtraSum() > 0) $("rGPer").value = Math.round((grams + gExtraSum()) / qty * 10) / 10;
     gAnchor = "grams";
     calc();
   });
@@ -819,7 +936,7 @@ function goto(tab){
         rHoursH:$("rHoursH").value, rHoursM:$("rHoursM").value, rTotHoursH:$("rTotHoursH").value, rTotHoursM:$("rTotHoursM").value,
         rMin:$("rMin").value, rNote:$("rNote").value,
         cbFil:$("cbFil").checked, cbElec:$("cbElec").checked, cbMach:$("cbMach").checked, cbLab:$("cbLab").checked,
-        gAnchor, hAnchor
+        gAnchor, hAnchor, extraRows: extraMatsFromDom().map(x => ({ matId:x.matId, grams:x.grams }))
       }));
     }catch(_){}
   }
@@ -852,6 +969,8 @@ function goto(tab){
       if(s.cbLab != null) $("cbLab").checked = !!s.cbLab;
       if(s.gAnchor && ["grams","gPer","qty"].includes(s.gAnchor)) gAnchor = s.gAnchor;
       if(s.hAnchor && ["single","total"].includes(s.hAnchor)) hAnchor = s.hAnchor;
+      if(Array.isArray(s.extraRows)) renderMatRows(s.extraRows.map(x => ({ matId:x.matId || "", grams:x.grams != null ? x.grams : "" })));
+      calc(); // 恢复完成立即重算总克数与成本显示
     }catch(_){}
   }
 
@@ -866,8 +985,9 @@ function goto(tab){
   }, true);
   $("saveBtn").addEventListener("click", () => {
     const { m, p, g, h, sh, min, c, lab, all, incl } = calc();
+    const extras = extraMatsFromDom();
     if(!m){ $("homeMsg").textContent = "请先选择耗材（必填）"; toast("耗材为必填项"); return; }
-    if(g <= 0){ $("homeMsg").textContent = "请填写总克重（必填）"; toast("总克重为必填项"); return; }
+    if(g <= 0){ $("homeMsg").textContent = "请填写主耗材克重（必填）"; toast("主耗材克重为必填项"); return; }
     if(all <= 0){ $("homeMsg").textContent = "至少勾选一项成本计入"; toast("请至少勾选一项成本"); return; }
     $("saveBtn").disabled = true; $("saveBtn").textContent = "已保存"; // 防连点：保存成功后禁用，修改表单才恢复
     const note = $("rNote").value.trim();
@@ -877,36 +997,43 @@ function goto(tab){
       if(i < 0){ editingRecId = null; toast("原记录已不存在，已退出编辑"); enableSaveBtn(); }
       else {
         const old = S.records[i];
-        const om = S.matById(old.materialId);
-        if(om && S.num(old.consumed) > 0){ om.remaining = Math.min(S.num(om.spool), S.num(om.remaining) + S.num(old.consumed)); }
+        applyMatsStock(old, +1); // 先按旧记录明细回补库存（旧单耗材记录自动派生）
+        const mats = [{ materialId:m.id, matName:m.name, matColor:m.color, grams:g, pricePerKg:S.num(m.pricePerKg) }]
+          .concat(extras.map(x => { const mm = S.matById(x.matId); return { materialId:x.matId, matName:mm ? mm.name : null, matColor:mm ? mm.color : null, grams:x.grams, pricePerKg:S.num(mm ? mm.pricePerKg : 0) }; }));
+        const gTotal2 = mats.reduce((s,x) => s + S.num(x.grams), 0);
         S.records[i] = Object.assign({}, old, {
+          mats,
           materialId:m.id, matName:m.name, matType:m.type, matColor:m.color, pricePerKg:S.num(m.pricePerKg),
           printerId:p ? p.id : null, priName:p ? p.name : null, powerW:p ? S.num(p.powerW) : 0, elecPrice:p ? S.num(p.elecPrice) : 0,
-          grams:g, qty:S.num($("rQty").value) || 1, gPer:S.num($("rGPer").value) || 0, singleHours:sh, hours:h, handlingMin:min, cFil:c.cFil, cElec:c.cElec, cMach:c.cMach, cLab:lab, total:all, sug:lastCalc && lastCalc.sug,
+          grams:gTotal2, qty:S.num($("rQty").value) || 1, gPer:S.num($("rGPer").value) || 0, singleHours:sh, hours:h, handlingMin:min, cFil:c.cFil, cElec:c.cElec, cMach:c.cMach, cLab:lab, total:all, sug:lastCalc && lastCalc.sug,
           inclFil:incl.fil, inclElec:incl.elec, inclMach:incl.mach, inclLab:incl.lab,
-          consumed:g, note
+          consumed:gTotal2, note
         });
-        m.remaining = Math.max(0, S.num(m.remaining) - g);
+        applyMatsStock(S.records[i], -1); // 再按新明细扣减
         S.saveRec(); S.saveMat();
         $("cancelEditBtn").style.display = "none";
         editingRecId = null;
-        $("homeMsg").textContent = "已更新：" + m.name + " · 计入成本 " + S.money(all) + " · 库存剩 " + S.fmt(m.remaining, 0) + "g";
-        toast("记录已更新，库存已同步 " + randFace());
+        $("homeMsg").textContent = "已更新：" + (mats.length > 1 ? mats.length + " 种耗材 · 总 " + S.fmt(gTotal2,1) + "g" : m.name + " · " + S.fmt(gTotal2,1) + "g") + " · 计入成本 " + S.money(all);
+        toast("记录已更新，库存已按耗材逐项同步 " + randFace());
         fillSelects(); calc();
         if(currentTab === "records") renderRecords();
         return;
       }
     }
-    S.records.unshift({ id:S.uid(), date:S.today(), created:Date.now(),
+    const mats = [{ materialId:m.id, matName:m.name, matColor:m.color, grams:g, pricePerKg:S.num(m.pricePerKg) }]
+      .concat(extras.map(x => { const mm = S.matById(x.matId); return { materialId:x.matId, matName:mm ? mm.name : null, matColor:mm ? mm.color : null, grams:x.grams, pricePerKg:S.num(mm ? mm.pricePerKg : 0) }; }));
+    const gTotal2 = mats.reduce((s,x) => s + S.num(x.grams), 0);
+    const rec0 = { id:S.uid(), date:S.today(), created:Date.now(), mats,
       materialId:m.id, matName:m.name, matType:m.type, matColor:m.color, pricePerKg:S.num(m.pricePerKg),
       printerId:p ? p.id : null, priName:p ? p.name : null, powerW:p ? S.num(p.powerW) : 0, elecPrice:p ? S.num(p.elecPrice) : 0,
-      grams:g, qty:S.num($("rQty").value) || 1, gPer:S.num($("rGPer").value) || 0, singleHours:sh, hours:h, handlingMin:min, cFil:c.cFil, cElec:c.cElec, cMach:c.cMach, cLab:lab, total:all, sug:lastCalc && lastCalc.sug,
+      grams:gTotal2, qty:S.num($("rQty").value) || 1, gPer:S.num($("rGPer").value) || 0, singleHours:sh, hours:h, handlingMin:min, cFil:c.cFil, cElec:c.cElec, cMach:c.cMach, cLab:lab, total:all, sug:lastCalc && lastCalc.sug,
       inclFil:incl.fil, inclElec:incl.elec, inclMach:incl.mach, inclLab:incl.lab,
-      consumed:g, note });
-    m.remaining = Math.max(0, S.num(m.remaining) - g); // 自动扣减库存
+      consumed:gTotal2, note };
+    S.records.unshift(rec0);
+    applyMatsStock(rec0, -1); // 按明细逐项扣减库存
     S.saveRec(); S.saveMat();
-    $("homeMsg").textContent = "已保存：" + m.name + " · 计入成本 " + S.money(all) + " · 库存剩 " + S.fmt(m.remaining, 0) + "g";
-    toast("记录已保存，库存已扣减 " + randFace());
+    $("homeMsg").textContent = "已保存：" + (mats.length > 1 ? mats.length + " 种耗材 · 总 " + S.fmt(gTotal2,1) + "g" : m.name + " · " + S.fmt(gTotal2,1) + "g") + " · 计入成本 " + S.money(all);
+    toast("记录已保存，库存已按耗材逐项扣减 " + randFace());
     fillSelects(); calc();
     if(currentTab === "records") renderRecords();
   });
@@ -1993,18 +2120,18 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
 
   function renderRecList(){
     let rs = S.records.slice();
-    if(recFilt.mat !== "all") rs = rs.filter(r => r.materialId === recFilt.mat);
+    if(recFilt.mat !== "all") rs = rs.filter(r => recMats(r).some(x => x.materialId === recFilt.mat));
     if(recFilt.pri !== "all") rs = rs.filter(r => r.printerId === recFilt.pri);
     if(recFilt.from) rs = rs.filter(r => (r.date || "") >= recFilt.from);
     if(recFilt.to) rs = rs.filter(r => (r.date || "") <= recFilt.to);
     if(recFilt.q){
-      rs = rs.filter(r => [r.matName, r.note, r.priName].some(v => String(v || "").toLowerCase().includes(recFilt.q)));
+      rs = rs.filter(r => [matsLabel(recMats(r), false), r.note, r.priName].some(v => String(v || "").toLowerCase().includes(recFilt.q)));
     }
     const box = $("recList");
     if(!S.records.length){ box.innerHTML = '<div class="empty">还没有打印记录<br><span class="hint">去「计算器」算第一笔</span></div>'; return; }
     if(!rs.length){ box.innerHTML = '<div class="empty">没有符合筛选条件的记录</div>'; return; }
     box.innerHTML = rs.map(r => {
-      const g = S.num(r.grams), h = S.num(r.hours);
+      const ms = recMats(r), g = S.num(r.grams), h = S.num(r.hours);
       const cFil = S.num(r.cFil), cElec = S.num(r.cElec), cMach = S.num(r.cMach), cLab = S.num(r.cLab);
       const sug = S.num(r.sug), tot = S.num(r.total);
       const rq = S.num(r.qty);
@@ -2012,8 +2139,9 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
       if(rq > 1) cells.push(["数量", rq + " 件"]);
       cells.push(["用量", g > 0 ? S.fmt(g, 1) + " g" : "—"], [rq > 1 ? "总时长" : "时长", h > 0 ? S.fmt(h, 1) + " h" : "—"]);
       if(rq > 1 && h > 0) cells.push(["单个时长", S.fmt(h / rq, 2) + " h"]);
+      if(ms.length > 1) cells.push(["耗材明细", matsLabel(ms, true)]);
       if(S.num(r.handlingMin) > 0) cells.push(["处理", S.fmt(S.num(r.handlingMin), 0) + " 分"]);
-      if(S.num(r.pricePerKg) > 0) cells.push(["耗材单价", S.money(S.num(r.pricePerKg)) + "/kg"]);
+      if(ms.length <= 1 && S.num(r.pricePerKg) > 0) cells.push(["耗材单价", S.money(S.num(r.pricePerKg)) + "/kg"]);
       if(S.num(r.powerW) > 0) cells.push(["功率", S.fmt(S.num(r.powerW), 0) + " W"]);
       if(S.num(r.elecPrice) > 0) cells.push(["电价", S.money(S.num(r.elecPrice)) + "/度"]);
       if(sug > 0) cells.push(["建议报价", S.money(sug)]);
@@ -2025,6 +2153,7 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
             <span class="date">${S.esc(r.date || "")}</span>
             <span class="sw" style="background:${S.esc(r.matColor || "#888")}"></span>
             <span class="mat">${S.esc(r.matName || "未知耗材")}</span>
+            ${ms.length > 1 ? `<span class="m-plus" title="${S.esc(matsLabel(ms, true))}">+${ms.length-1}</span>` : ""}
             ${r.matType ? `<span class="type">${S.esc(r.matType)}</span>` : ""}
             ${r.priName ? `<span class="pri">${S.esc(r.priName)}</span>` : ""}
           </div>
@@ -2053,9 +2182,11 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
       goto("calc");
       // 先确保选择器已填充（避免 goto 时 fillSelects 用旧空值覆盖）
       fillSelects();
-      $("selMat").value = r.materialId || "";
+      const ms = recMats(r);
+      $("selMat").value = (ms[0] && ms[0].materialId) || "";
       $("selPri").value = r.printerId || "";
-      $("rGrams").value = r.grams != null ? String(r.grams) : "";
+      $("rGrams").value = ms[0] && ms[0].grams != null ? String(ms[0].grams) : "";
+      renderMatRows(ms.slice(1).map(x => ({ matId:x.materialId || "", grams:x.grams != null ? x.grams : "" }))); // 耗材区回填（主耗材由上方 selMat/rGrams 设置，附加行在此回填）
       $("rQty").value = S.num(r.qty) > 0 ? String(r.qty) : "1";
       $("rGPer").value = S.num(r.grams) > 0 ? String(Math.round(S.num(r.grams) / Math.max(1, S.num(r.qty) || 1) * 10) / 10) : "";
       /* 单个打印时长：优先用记录保存的单个时长，旧数据按 总时长 ÷ 数量 反推 */
@@ -2102,8 +2233,8 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
     box.querySelectorAll("[data-delr]").forEach(b => b.addEventListener("click", async () => {
       const r = S.records.find(x => x.id === b.getAttribute("data-delr")); if(!r) return;
       if(await confirmBox("删除这条记录？" + (S.num(r.consumed) > 0 ? "\n对应库存会加回。" : ""))){
-        const m = S.matById(r.materialId);
-        if(m && S.num(r.consumed) > 0){ m.remaining = Math.min(S.num(m.spool), S.num(m.remaining) + S.num(r.consumed)); S.saveMat(); fillSelects(); }
+        applyMatsStock(r, +1); // 按明细逐项回补库存
+        if(recMats(r).some(x => S.matById(x.materialId))){ S.saveMat(); fillSelects(); }
         const i = S.records.indexOf(r);
         if(i >= 0) S.records.splice(i, 1);
         S.saveRec(); renderRecords(); toast("已删除");
@@ -2119,9 +2250,9 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
   $("csvBtn").addEventListener("click", () => {
     if(!S.records.length){ toast("没有记录可导出"); return; }
     const head = ["日期","耗材","类型","打印机","克数(g)","时长(h)","处理分钟","耗材+电费","机器折旧","人工","合计","备注"];
-    const rows = S.records.map(r => [r.date, r.matName, r.matType, r.priName, S.num(r.grams), S.num(r.hours),
+    const rows = S.records.map(r => { const ms = recMats(r); return [r.date, ms.length > 1 ? matsLabel(ms, false) : r.matName, r.matType, r.priName, S.num(r.grams), S.num(r.hours),
       S.num(r.handlingMin), (S.num(r.cFil) + S.num(r.cElec)).toFixed(2), S.num(r.cMach).toFixed(2),
-      S.num(r.cLab).toFixed(2), S.num(r.total).toFixed(2), r.note || ""]);
+      S.num(r.cLab).toFixed(2), S.num(r.total).toFixed(2), r.note || ""]; });
     const csv = "\uFEFF" + [head].concat(rows).map(r => r.map(c => '"' + String(c == null ? "" : c).replace(/"/g, '""') + '"').join(",")).join("\r\n");
     download("3d-printing-business_records_" + S.today() + ".csv", csv, "text/csv;charset=utf-8");
     toast("CSV 已导出");
@@ -2145,8 +2276,13 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
   });
   $("clrBtn").addEventListener("click", async () => {
     if(!S.records.length){ toast("没有记录"); return; }
-    if(await confirmBox("清空全部 " + S.records.length + " 条打印记录？不可恢复。")){
-      S.records.splice(0); S.saveRec(); renderRecords(); toast("已清空");
+    const g0 = S.records.reduce((s,r) => s + S.num(r.consumed), 0);
+    if(await confirmBox("清空全部 " + S.records.length + " 条打印记录？不可恢复。" + (g0 > 0 ? "\n对应耗材库存会全部加回。" : ""))){
+      S.records.forEach(r => applyMatsStock(r, +1)); // 清空前逐条按明细回补库存
+      const touched = S.records.some(r => recMats(r).some(x => S.matById(x.materialId)));
+      S.records.splice(0); S.saveRec();
+      if(touched){ S.saveMat(); fillSelects(); }
+      renderRecords(); toast("已清空，库存已加回");
     }
   });
 
