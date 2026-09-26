@@ -318,7 +318,7 @@ const Store = (function(){
           const r = await fetch("/api/" + col, { method:"PUT", headers:{ "content-type":"application/json" }, body: JSON.stringify(val) });
           if(!r.ok) throw new Error("HTTP " + r.status);
         }else{
-          lsSet(LEGACY[col === "settings" ? "set" : col === "achievements" ? "ach" : col], val);
+          lsSet(LEGACY[{materials:"mat",printers:"pri",records:"rec",orders:"ord",settings:"set",achievements:"ach"}[col]], val);
         }
         saving--;
         if(saving <= 0){ saving = 0; emit("saved"); }
