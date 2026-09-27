@@ -8,9 +8,9 @@ COPY index.html sw.js manifest.webmanifest icon.svg /app/
 COPY assets /app/assets
 COPY server /app/server
 
-ENV PORT=2929 DATA_DIR=/data
+ENV PORT=12929 DATA_DIR=/data
 VOLUME /data
-EXPOSE 2929
+EXPOSE 12929
 HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1:$PORT/api/version >/dev/null 2>&1 || exit 1
 
 CMD ["node", "server/index.mjs"]

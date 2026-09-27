@@ -1,5 +1,5 @@
 /* 3D打印业务平台 Node 宿主：静态文件 + REST API + 文件存储
-   环境变量：PORT（默认 2929）、DATA_DIR（默认 ./data）、NO_WATCH=1 关闭「保存即刷新」 */
+   环境变量：PORT（默认 12929）、DATA_DIR（默认 ./data）、NO_WATCH=1 关闭「保存即刷新」 */
 import http from "node:http";
 import { readFile, readdir } from "node:fs/promises";
 import { watch } from "node:fs";
@@ -13,7 +13,7 @@ import { log } from "./logger.mjs";
 import { perf } from "./perf.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const PORT = Number(process.env.PORT) || 2929;
+const PORT = Number(process.env.PORT) || 12929;
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, "data");
 
 const store = fileStore(DATA_DIR);
@@ -138,15 +138,16 @@ const server = http.createServer(async (req, res) => {
     const buf = out.body ? Buffer.from(await out.arrayBuffer()) : null;
     res.end(buf);
 
-    // 记录响应日志
+    // 记录响应日志 + 性能追踪
     const duration = Date.now() - startTime;
     const level = out.status >= 500 ? "error" : out.status >= 400 ? "warn" : "debug";
     reqLog[level]("Request completed", { method: req.method, url: req.url, status: out.status, duration });
-    perf.mark("http", req.method, out.status >= 400 ? "error" : "success", duration);
+    perf.endRequest(reqId, req.method, req.url, out.status, startTime);
   }catch(err){
     const duration = Date.now() - startTime;
     reqLog.error("Request failed", { method: req.method, url: req.url, error: err.message, stack: err.stack, duration });
-    perf.mark("http", req.method, "exception", duration);
+    perf.recordError("http", err.message, reqId, { method: req.method, url: req.url, stack: err.stack });
+    perf.endRequest(reqId, req.method, req.url, 500, startTime);
     res.writeHead(500, { "content-type": "application/json" });
     res.end(JSON.stringify({ error: "internal error" }));
   }

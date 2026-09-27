@@ -9,7 +9,7 @@ import { createAuth, tokenCookie, CLEAR_COOKIE } from "./auth.mjs";
 import { appVersion } from "./version.mjs";
 import { cloudLogin, cloudSendCode, fetchAll } from "./bambu.mjs";
 import { log } from "./logger.mjs";
-import { perf, traceStore } from "./perf.mjs";
+import { perf, traceStore, wrapRequest } from "./perf.mjs";
 
 const DATA_COLS = ["materials", "printers", "records", "orders", "settings", "achievements"];
 
@@ -27,6 +27,12 @@ async function readBody(req){
 export function createRouter(store, mailer){
   const auth = createAuth(store, mailer);
 
+  // 追踪器：在 createRouter 闭包内定义，让 serveData / handleAdminData 也能访问
+  const tracedStore = {
+    get: (col) => traceStore(col).wrap("get", (k) => store.get(k)),
+    set: (col) => traceStore(col).wrap("set", (k, v) => store.set(k, v))
+  };
+
   return async function handle(req){
     const url = new URL(req.url);
     if(!url.pathname.startsWith("/api/")) return null;
@@ -34,9 +40,6 @@ export function createRouter(store, mailer){
     const reqId = req.headers.get("x-request-id") || crypto.randomBytes(4).toString("hex");
     const reqLog = log.child({ reqId });
     const startTime = Date.now();
-
-    // 追踪器
-    const tracer = (col) => traceStore(col);
 
     try {
       /* ---- 日志查询（仅管理员）---- */
@@ -397,6 +400,10 @@ export function createRouter(store, mailer){
     }
 
     return handleData(req, user);
+    } catch(err){
+      reqLog.error("Request handler error", { method: req.method, url: req.url, error: err.message, stack: err.stack });
+      return json({ error:"internal error" }, 500);
+    }
   };
 
   /* 处理数据：开放模式用共享集合（无前缀），登录用户用 u_{id}_ 前缀 */
@@ -413,9 +420,7 @@ export function createRouter(store, mailer){
       if(req.method === "GET"){
         const all = {};
         for(const c of DATA_COLS){
-          const t0 = Date.now();
-          all[c] = await tracer(c)(prefix + c);
-          perf.mark("store", c, "read", Date.now() - t0);
+          all[c] = await tracedStore.get(c)(prefix + c);
         }
         return json(all);
       }
@@ -424,9 +429,7 @@ export function createRouter(store, mailer){
         if(!body || typeof body !== "object") return json({ error:"bad body" }, 400);
         for(const c of DATA_COLS){
           if(body[c] !== undefined){
-            const t0 = Date.now();
-            await tracer(c)(prefix + c, body[c]);
-            perf.mark("store", c, "write", Date.now() - t0);
+            await tracedStore.set(c)(prefix + c, body[c]);
           }
         }
         return json({ ok:true });
@@ -436,17 +439,13 @@ export function createRouter(store, mailer){
 
     if(!DATA_COLS.includes(col)) return json({ error:"unknown collection" }, 404);
     if(req.method === "GET"){
-      const t0 = Date.now();
-      const data = await tracer(col)(prefix + col);
-      perf.mark("store", col, "read", Date.now() - t0);
+      const data = await tracedStore.get(col)(prefix + col);
       return json(data);
     }
     if(req.method === "PUT"){
       const body = await readBody(req);
       if(body === null) return json({ error:"bad body" }, 400);
-      const t0 = Date.now();
-      await tracer(col)(prefix + col, body);
-      perf.mark("store", col, "write", Date.now() - t0);
+      await tracedStore.set(col)(prefix + col, body);
       return json({ ok:true });
     }
     return json({ error:"method not allowed" }, 405);
@@ -460,7 +459,6 @@ export function createRouter(store, mailer){
     if(col !== "all-data") return json({ error:"unknown collection" }, 404);
     if(req.method !== "GET") return json({ error:"method not allowed" }, 405);
 
-    const t0 = Date.now();
     const users = await auth.listUsers(admin);
     if(users.error) return json(users, 403);
     const result = {};
@@ -468,12 +466,9 @@ export function createRouter(store, mailer){
       const prefix = "u_" + u.id + "_";
       result[u.id] = { user: u, data: {} };
       for(const c of DATA_COLS){
-        const t1 = Date.now();
-        result[u.id].data[c] = await tracer(c)(prefix + c);
-        perf.mark("store", c, "adminRead", Date.now() - t1);
+        result[u.id].data[c] = await tracedStore.get(c)(prefix + c);
       }
     }
-    perf.mark("admin", "all-data", "read", Date.now() - t0);
     return json(result);
   }
 }

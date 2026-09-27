@@ -1,10 +1,10 @@
 services:
   3d-printing-business:
-    image: zzz2929/3d-printing-business:latest
+    image: zzz12929/3d-printing-business:latest
     container_name: 3d-printing-business
     restart: unless-stopped
     ports:
-      - "2929:2929"
+      - "12929:12929"
     volumes:
       - 3d-printing-business-data:/data
 
