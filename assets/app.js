@@ -797,7 +797,9 @@ function goto(tab){
   let lastCalc = null; // 供「去开订单」自动带入
   let editingRecId = null; // 正在编辑的打印记录 id（非空时保存按钮走更新逻辑）
   function calc(){
-    const m = S.matById($("selMat").value), p = S.priById($("selPri").value);
+    const selMatEl = $("selMat"), selPriEl = $("selPri");
+    if(!selMatEl || !selPriEl) return; // 耗材区还未渲染（首次访问 calc 页时），直接返回
+    const m = S.matById(selMatEl.value), p = S.priById(selPriEl.value);
     const qty = Math.max(1, S.num($("rQty").value) || 1);
     const g = S.num($("rGrams").value);
     const sh = S.num($("rHoursH").value) + S.num($("rHoursM").value) / 60; // 单个打印时长（h）
@@ -2986,7 +2988,7 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
     const el = $("updResult"); el.className = "upd-result " + cls; el.innerHTML = html; el.hidden = false;
   }
   // 默认更新源（可被用户自定义 URL 覆盖）
-  const DEFAULT_UPDATE_URL = "https://raw.githubusercontent.com/zzz2929/3D-Printing-Business-Platform/main/version.json";
+  const DEFAULT_UPDATE_URL = "https://raw.githubusercontent.com/zzz12929/3D-Printing-Business-Platform/main/version.json";
   $("checkUpd").addEventListener("click", async () => {
     const customUrl = ($("setUpdateUrl").value || "").trim();
     const url = customUrl || DEFAULT_UPDATE_URL;
@@ -3507,7 +3509,7 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
         ? (cfg.debug ? "邮件服务已启用（调试模式：验证码打印到服务端日志，不真实发信）。" : "邮件服务已启用。配置后用户可绑定邮箱并使用「忘记密码」。")
         : "邮件服务未启用。配置并保存后，用户可绑定邮箱并使用「忘记密码」。";
     }catch(e){
-      card.hidden = true; // 非 2929 旧服务端等场景没有该接口
+      card.hidden = true; // 非 12929 旧服务端等场景没有该接口
     }
   }
   function smtpFormCfg(){

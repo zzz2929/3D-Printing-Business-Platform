@@ -74,7 +74,7 @@
 ```bash
 npm install          # 安装依赖（nodemailer）
 npm start            # 等价于 node server/index.mjs
-# → http://localhost:2929
+# → http://localhost:12929
 ```
 
 数据存放在 `./data/*.json`，可用 `DATA_DIR` 环境变量改变位置。
@@ -83,7 +83,7 @@ npm start            # 等价于 node server/index.mjs
 
 ### 方式一：Cloudflare Workers
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/zzz2929/3D-Printing-Business-Platform)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/zzz12929/3D-Printing-Business-Platform)
 
 **点击上方按钮即可完成部署：**
 
@@ -101,7 +101,7 @@ npm start            # 等价于 node server/index.mjs
 
 ### 方式二：Vercel
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fzzz2929%2F3D-Printing-Business-Platform)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fzzz12929%2F3D-Printing-Business-Platform)
 
 **点击上方按钮即可完成部署：**
 
@@ -120,11 +120,11 @@ npm start            # 等价于 node server/index.mjs
 
 ```bash
 docker run -d --name 3d-printing-business --restart unless-stopped \
-  -p 2929:2929 -v 3d-printing-business-data:/data \
-  zzz2929/3d-printing-business:latest
+  -p 12929:12929 -v 3d-printing-business-data:/data \
+  zzz12929/3d-printing-business:latest
 ```
 
-或在 NAS 的 Docker 界面中搜索镜像 `zzz2929/3d-printing-business` 创建容器。
+或在 NAS 的 Docker 界面中搜索镜像 `zzz12929/3d-printing-business` 创建容器。
 
 **从源码构建运行**：
 
@@ -132,13 +132,13 @@ docker run -d --name 3d-printing-business --restart unless-stopped \
 docker compose up -d   # 数据持久化在 named volume 3d-printing-business-data（容器内 /data）
 ```
 
-访问 `http://<设备IP>:2929`。
+访问 `http://<设备IP>:12929`。
 
 ### 方式四：裸跑 Node / NAS 直跑
 
 ```bash
 npm install          # 安装依赖（nodemailer）
-DATA_DIR=/vol1/3d-printing-business-data PORT=2929 npm start
+DATA_DIR=/vol1/3d-printing-business-data PORT=12929 npm start
 ```
 
 ### 方式五：命令行部署到 Cloudflare / Vercel（可选）
@@ -159,7 +159,7 @@ npx vercel --prod   # 生产部署；Upstash 环境变量在 Vercel 面板或 ve
 
 | 变量                          | 默认值     | 说明                                                                               | 适用平台      |
 | ----------------------------- | ---------- | ---------------------------------------------------------------------------------- | ------------- |
-| `PORT`                      | `2929`   | HTTP 监听端口                                                                      | Node / Docker |
+| `PORT`                      | `12929`   | HTTP 监听端口                                                                      | Node / Docker |
 | `DATA_DIR`                  | `./data` | JSON 数据目录                                                                      | Node / Docker |
 | `SMTP_HOST`                 | 未设置     | SMTP 服务器地址；**推荐在设置页配置**（见下方「SMTP 配置详解」），此处仅兜底 | 全部          |
 | `SMTP_PORT`                 | 自动       | 端口（465 自动启用 TLS）                                                           | 全部          |

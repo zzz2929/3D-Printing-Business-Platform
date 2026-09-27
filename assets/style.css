@@ -467,8 +467,9 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 .combo-pop-confirm{padding:6px 12px;font-size:13px;border:none;border-radius:4px;background:var(--accent);color:#fff;cursor:pointer;font-family:inherit;white-space:nowrap}
 .combo-pop-confirm:hover{opacity:.85}
 /* ---------- select 圆角弹层增强（拦截原生直角弹层，展示圆角选项面板） ---------- */
+/* 弹层使用 fixed 定位（JS 写入的 top/left 是 viewport 坐标），避免被祖先的 position:relative 影响 */
 .sel-pop{
-  position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:60;
+  position:fixed;z-index:60;
   background:var(--panel);border:1px solid var(--line2);border-radius:8px;
   box-shadow:0 12px 32px rgba(0,0,0,.35);max-height:230px;overflow:auto;display:none;
   scrollbar-width:thin;scrollbar-color:var(--line2) transparent;
