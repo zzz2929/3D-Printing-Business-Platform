@@ -426,6 +426,40 @@ function goto(tab){
     if(t && t !== currentTab) goto(t);
   });
 
+  /* ---------- select 圆角弹层增强：拦截浏览器原生直角弹层，改用圆角面板 ---------- */
+  function enhanceSelect(sel){
+    if(!sel || sel.dataset.selEnh) return; sel.dataset.selEnh = "1";
+    const pop = document.createElement("div"); pop.className = "sel-pop";
+    sel.parentNode.appendChild(pop);
+    const close = () => pop.classList.remove("open");
+    const open = () => {
+      const r = sel.getBoundingClientRect();
+      pop.style.top = (r.bottom + 4) + "px";
+      pop.style.left = r.left + "px";
+      pop.style.width = r.width + "px";
+      pop.innerHTML = [...sel.options].map(o => `<button type="button" class="sel-opt${o.value === sel.value ? " on" : ""}" data-v="${S.esc(o.value)}">${S.esc(o.textContent)}</button>`).join("");
+      pop.classList.add("open");
+    };
+    sel.addEventListener("mousedown", e => { // 拦截原生弹层
+      e.preventDefault(); e.stopPropagation();
+      pop.classList.contains("open") ? close() : open();
+    });
+    sel.addEventListener("keydown", e => {
+      if(e.key === "Enter" || e.key === " " || e.key === "ArrowDown"){ e.preventDefault(); open(); }
+      if(e.key === "Escape") close();
+    });
+    pop.addEventListener("mousedown", e => e.preventDefault());
+    pop.addEventListener("click", e => {
+      const b = e.target.closest(".sel-opt"); if(!b) return;
+      sel.value = b.getAttribute("data-v");
+      sel.dispatchEvent(new Event("change", { bubbles:true }));
+      close(); sel.focus();
+    });
+    document.addEventListener("click", e => { if(!sel.contains(e.target) && !pop.contains(e.target)) close(); });
+    document.addEventListener("keydown", e => { if(e.key === "Escape") close(); });
+    window.addEventListener("scroll", close, { passive:true });
+    window.addEventListener("resize", close);
+  }
   /* ---------- 选择器填充 ---------- */
   function matOpts(){ return '<option value="">— 选择耗材 —</option>' + S.materials.map(m => `<option value="${m.id}">${S.esc(m.name)} · 剩 ${S.fmt(m.remaining, 0)}g</option>`).join(""); }
   function priOpts(){ return '<option value="">— 选择打印机（可选） —</option>' + S.printers.map(p => `<option value="${p.id}">${S.esc(p.name)}（${S.num(p.powerW)}W）</option>`).join(""); }
@@ -826,7 +860,7 @@ function goto(tab){
     box.innerHTML =
       '<div class="em-row mat-main"><label class="em-lab">耗材<i class="dot"></i></label>' +
         '<select id="selMat" class="em-mat">' + matOpts() + '</select>' +
-        '<input id="rGrams" class="em-g" type="number" min="0" step="0.1" placeholder="主耗材克数" value="' + S.esc(String(prev.grams)) + '">' +
+        '<input id="rGrams" class="em-g" type="number" min="0" step="0.1" placeholder="耗材克数" value="' + S.esc(String(prev.grams)) + '">' +
         '<span class="em-unit">g</span>' +
         '<span class="em-hint" id="matHint">—</span></div>' +
       '<div class="em-head">附加耗材 <span class="em-tip" id="extraTot"></span></div>' +
@@ -839,6 +873,7 @@ function goto(tab){
       '<button class="btn ghost sm em-add" type="button">＋ 添加耗材</button>';
     const sm = $("selMat"); if(sm && prev.sel) sm.value = prev.sel;
     if(window.gsap && !reduceMotion){ try{ gsap.fromTo(box.querySelectorAll(".em-row:not(.mat-main)"), { autoAlpha:0, y:6 }, { autoAlpha:1, y:0, duration:0.22, stagger:0.04, ease:"power2.out", clearProps:"all" }); }catch(_){} }
+    box.querySelectorAll("select").forEach(enhanceSelect); // 动态渲染的下拉也走圆角弹层
   }
   const emBox = $("extraMats");
   if(emBox){
@@ -3727,6 +3762,7 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
     if(mode === "auth"){ applyLogoutVisibility(); showLoginGate(); return; } // 服务端要求登录
     appStart();
     loadUserMgmt();
+    document.querySelectorAll("select").forEach(enhanceSelect); // 所有下拉统一圆角弹层
   });
   if("serviceWorker" in navigator){
     window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));

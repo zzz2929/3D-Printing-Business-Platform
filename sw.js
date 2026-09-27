@@ -10,9 +10,9 @@ const ASSETS = [
   "assets/vendor/flatpickr/flatpickr.min.css?v=64",
   "assets/vendor/flatpickr/flatpickr.min.js?v=64",
   "assets/vendor/flatpickr/zh.js?v=64",
-  "assets/style.css?v=68",
+  "assets/style.css?v=70",
   "assets/store.js?v=72",
-  "assets/app.js?v=80"
+  "assets/app.js?v=81"
 ];
 
 self.addEventListener("install", (e) => {

@@ -4,9 +4,12 @@
    鉴权：createAuth(store)；已配置用户时，除 auth/* 外的所有 /api/* 都需要有效会话
    用户数据隔离：通过 users/{userId}/ 前缀区分 */
 
+import crypto from "node:crypto";
 import { createAuth, tokenCookie, CLEAR_COOKIE } from "./auth.mjs";
 import { appVersion } from "./version.mjs";
 import { cloudLogin, cloudSendCode, fetchAll } from "./bambu.mjs";
+import { log } from "./logger.mjs";
+import { perf, traceStore } from "./perf.mjs";
 
 const DATA_COLS = ["materials", "printers", "records", "orders", "settings", "achievements"];
 
@@ -28,28 +31,66 @@ export function createRouter(store, mailer){
     const url = new URL(req.url);
     if(!url.pathname.startsWith("/api/")) return null;
     const path = url.pathname.slice(5);
+    const reqId = req.headers.get("x-request-id") || crypto.randomBytes(4).toString("hex");
+    const reqLog = log.child({ reqId });
+    const startTime = Date.now();
 
-    /* ---- 版本信息（无需会话） ---- */
-    if(path === "version" && req.method === "GET"){
-      return json(appVersion());
-    }
+    // 追踪器
+    const tracer = (col) => traceStore(col);
 
-    /* ---- 认证相关端点（无需会话） ---- */
-    if(path === "auth" && req.method === "GET"){
-      const configured = await auth.configured();
-      if(!configured){
-        return json({ required:false, ok:false, setup:false, openMode:true });
+    try {
+      /* ---- 日志查询（仅管理员）---- */
+      if(path === "logs" && req.method === "GET"){
+        const user = await auth.verify(req);
+        if(!user) return json({ error:"请先登录" }, 401);
+        if(user.role !== "admin") return json({ error:"只有管理员可以查看日志" }, 403);
+
+        const { queryLogs } = await import("./logger.mjs");
+        const params = new URL(req.url).searchParams;
+        const result = queryLogs({
+          level: params.get("level") || undefined,
+          keyword: params.get("keyword") || undefined,
+          startTime: params.get("startTime") || undefined,
+          endTime: params.get("endTime") || undefined,
+          limit: Math.min(Number(params.get("limit")) || 100, 500),
+          offset: Number(params.get("offset")) || 0
+        });
+        return json(result);
       }
-      const user = await auth.verify(req);
-      return json({ required:true, ok:!!user, setup:false, openMode:false, user: user || null });
-    }
 
-    // 注册（开放模式或首个管理员）
-    if(path === "register" && req.method === "POST"){
-      const body = await readBody(req);
-      const { username, password, role } = body || {};
-      if(!await auth.configured()){
-        // 开放模式，首个注册的是管理员
+      /* ---- 性能快照（仅管理员）---- */
+      if(path === "perf" && req.method === "GET"){
+        const user = await auth.verify(req);
+        if(!user) return json({ error:"请先登录" }, 401);
+        if(user.role !== "admin") return json({ error:"只有管理员可以查看性能数据" }, 403);
+
+        const { perf } = await import("./perf.mjs");
+        return json(perf.getSnapshot());
+      }
+
+      /* ---- 版本信息（无需会话） ---- */
+      if(path === "version" && req.method === "GET"){
+        reqLog.debug("API: version");
+        return json(appVersion());
+      }
+
+      /* ---- 认证相关端点（无需会话） ---- */
+      if(path === "auth" && req.method === "GET"){
+        const configured = await auth.configured();
+        if(!configured){
+          return json({ required:false, ok:false, setup:false, openMode:true });
+        }
+        const user = await auth.verify(req);
+        return json({ required:true, ok:!!user, setup:false, openMode:false, user: user || null });
+      }
+
+      // 注册（开放模式或首个管理员）
+      if(path === "register" && req.method === "POST"){
+        reqLog.info("User register attempt", { username: ((await readBody(req)) || {}).username });
+        const body = await readBody(req);
+        const { username, password, role } = body || {};
+        if(!await auth.configured()){
+          // 开放模式，首个注册的是管理员
         const result = await auth.register(username, password, "admin");
         if(result.error) return json({ error:result.error }, 400);
         const token = await auth.issueTokenForUser(result.user);
@@ -371,24 +412,41 @@ export function createRouter(store, mailer){
     if(col === "data"){
       if(req.method === "GET"){
         const all = {};
-        for(const c of DATA_COLS) all[c] = await store.get(prefix + c);
+        for(const c of DATA_COLS){
+          const t0 = Date.now();
+          all[c] = await tracer(c)(prefix + c);
+          perf.mark("store", c, "read", Date.now() - t0);
+        }
         return json(all);
       }
       if(req.method === "PUT"){
         const body = await readBody(req);
         if(!body || typeof body !== "object") return json({ error:"bad body" }, 400);
-        for(const c of DATA_COLS) if(body[c] !== undefined) await store.set(prefix + c, body[c]);
+        for(const c of DATA_COLS){
+          if(body[c] !== undefined){
+            const t0 = Date.now();
+            await tracer(c)(prefix + c, body[c]);
+            perf.mark("store", c, "write", Date.now() - t0);
+          }
+        }
         return json({ ok:true });
       }
       return json({ error:"method not allowed" }, 405);
     }
 
     if(!DATA_COLS.includes(col)) return json({ error:"unknown collection" }, 404);
-    if(req.method === "GET") return json(await store.get(prefix + col));
+    if(req.method === "GET"){
+      const t0 = Date.now();
+      const data = await tracer(col)(prefix + col);
+      perf.mark("store", col, "read", Date.now() - t0);
+      return json(data);
+    }
     if(req.method === "PUT"){
       const body = await readBody(req);
       if(body === null) return json({ error:"bad body" }, 400);
-      await store.set(prefix + col, body);
+      const t0 = Date.now();
+      await tracer(col)(prefix + col, body);
+      perf.mark("store", col, "write", Date.now() - t0);
       return json({ ok:true });
     }
     return json({ error:"method not allowed" }, 405);
@@ -402,6 +460,7 @@ export function createRouter(store, mailer){
     if(col !== "all-data") return json({ error:"unknown collection" }, 404);
     if(req.method !== "GET") return json({ error:"method not allowed" }, 405);
 
+    const t0 = Date.now();
     const users = await auth.listUsers(admin);
     if(users.error) return json(users, 403);
     const result = {};
@@ -409,9 +468,12 @@ export function createRouter(store, mailer){
       const prefix = "u_" + u.id + "_";
       result[u.id] = { user: u, data: {} };
       for(const c of DATA_COLS){
-        result[u.id].data[c] = await store.get(prefix + c);
+        const t1 = Date.now();
+        result[u.id].data[c] = await tracer(c)(prefix + c);
+        perf.mark("store", c, "adminRead", Date.now() - t1);
       }
     }
+    perf.mark("admin", "all-data", "read", Date.now() - t0);
     return json(result);
   }
 }
