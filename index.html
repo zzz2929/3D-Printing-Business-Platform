@@ -28,7 +28,7 @@
 <link rel="apple-touch-icon" href="icon.svg" />
 <link rel="icon" href="icon.svg" type="image/svg+xml" />
 <link rel="stylesheet" href="assets/vendor/flatpickr/flatpickr.min.css?v=64" />
-<link rel="stylesheet" href="assets/style.css?v=71" />
+<link rel="stylesheet" href="assets/style.css?v=72" />
 </head>
 <body>
 
@@ -190,26 +190,31 @@
             <div><label>状态</label><select id="oStatus"></select></div>
             <div><label>客户微信 / 联系方式</label><input id="oWx" type="text" placeholder="如 wxid_xxx" /></div>
             <div><label>客户称呼（可选）</label><input id="oName" type="text" placeholder="如 张老板" /></div>
-            <div><label>报价金额（应收）<i class="dot"></i></label><input id="oQuote" type="number" min="0" step="0.01" placeholder="谈好的总价" /></div>
-            <div><label>克重报价（元 / g）</label><input id="oQuotePerGram" type="number" min="0" step="0.01" placeholder="如 0.30" /><div class="hint">按耗材克数 × 单价自动算报价</div></div>
+            <div><label>单个报价（元 / 件）<i class="dot"></i></label><input id="oQuote" type="number" min="0" step="0.01" placeholder="每个的价格" /><div class="hint" id="oQuoteTotal">应收总额 = 单价 × 各笔收款件数</div></div>
+            <div><label>克重报价（元 / g）</label><input id="oQuotePerGram" type="number" min="0" step="0.01" placeholder="如 0.30" /><div class="hint">按单个克重 × 单价自动算报价</div></div>
           </div>
           <div class="sect">
-            <div class="sect-label">收款 · 支持定金 + 尾款多笔</div>
+            <div class="sect-label">收款 · 一批打印可对应多条收款 / 多个客户，每笔填件数</div>
             <div id="oPayments"></div>
             <button class="btn ghost sm" id="addPay" type="button">加一笔收款</button>
             <div class="row" style="margin-top:6px">
               <span class="muted">已收合计 <b class="tot" id="recvTotal">0.00</b></span>
               <span class="muted">待收 <b class="loss" id="dueTotal">0.00</b></span>
+              <span class="muted" id="payQtyTotal"></span>
             </div>
           </div>
           <div class="sect">
             <div class="sect-label">打印成本 · 耗材 + 电 + 机器折旧 + 人工</div>
             <div class="grid g4">
-              <div><label>耗材</label><select id="oMat"></select></div>
               <div><label>打印机</label><select id="oPri"></select></div>
-              <div><label>克数（g）</label><input id="oG" type="number" min="0" step="0.1" placeholder="如 42" /></div>
-              <div><label>时长（h）</label><input id="oH" type="number" min="0" step="0.1" placeholder="如 6.5" /></div>
+              <div><label>打印数量（件）</label><input id="oQty" type="number" min="1" step="1" value="1" placeholder="本批打印件数" /><div class="hint">单个克重 × 数量 = 总克重</div></div>
+              <div><label>单个克重（g）</label><input id="oGPer" type="number" min="0" step="0.1" placeholder="每个的用量" /><div class="hint">主耗材每个打印件用量</div></div>
+              <div><label>总时长（h）</label><input id="oH" type="number" min="0" step="0.1" placeholder="如 6.5" /></div>
               <div><label>处理耗时（分钟）</label><input id="oMin" type="number" min="0" step="1" placeholder="接单沟通+交付" /><div class="hint">按人工时薪折算</div></div>
+            </div>
+            <div id="ordMats">
+              <div class="em-row mat-main"><label class="em-lab">耗材<i class="dot"></i></label><select id="oMat" class="em-mat"></select><input id="oG" class="em-g" type="number" min="0" step="0.1" placeholder="总克重"><span class="em-unit">g</span><span class="em-hint" id="oMatHint">—</span></div>
+              <div id="ordExtraRows"></div>
             </div>
           </div>
           <div class="sect">
@@ -249,6 +254,7 @@
             <div class="lcd-lines">
               <div class="lcd-label" style="padding:2px 0 4px">计入 · 勾选后计入本单成本</div>
               <label class="line cb-line"><input type="checkbox" id="ocbFil" checked><span class="cb-txt">耗材费 · 材料单价 ÷ 1000 × 克数</span><span id="oPc">0.00</span></label>
+              <div id="oMatsCost"></div>
               <label class="line cb-line"><input type="checkbox" id="ocbElec" checked><span class="cb-txt">电费 · 功率 ÷ 1000 × 时长 × 电价</span><span id="oElec">0.00</span></label>
               <label class="line cb-line"><input type="checkbox" id="ocbMach" checked><span class="cb-txt">机器折旧 · 时长 × 每小时机器成本</span><span id="oMach">0.00</span></label>
               <label class="line cb-line"><input type="checkbox" id="ocbLab" checked><span class="cb-txt">人工 · 时薪 × 处理分钟 ÷ 60</span><span id="oLab">0.00</span></label>
@@ -855,8 +861,8 @@
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
 <script src="assets/vendor/flatpickr/flatpickr.min.js?v=64"></script>
 <script src="assets/vendor/flatpickr/zh.js?v=64"></script>
-<script src="assets/store.js?v=72"></script>
-<script src="assets/app.js?v=82"></script>
+<script src="assets/store.js?v=74"></script>
+<script src="assets/app.js?v=94"></script>
 <script>
 /* 保存即刷新：Node 服务端监听到前端文件变更时经 /__reload (SSE) 通知页面自动 reload。
    仅 Node/Docker 宿主提供该通道；Workers/Vercel 或本地 file:// 打开时连接失败即静默停用。 */
