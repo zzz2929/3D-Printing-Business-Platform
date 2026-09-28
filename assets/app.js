@@ -732,7 +732,7 @@ function goto(tab){
     $("dashRangeTitle").textContent = title + "经营";
     $("dashStats").innerHTML = [
       ["营收 · 利润 " + CPBTN, S.money(rev), `利润 ${S.money(profit)} · 利润率 ${rev > 0 ? (profit / rev * 100).toFixed(1) : 0}% · ${inP.length} 单`, profit >= 0 ? "up" : "down"],
-      ["待收款（全部）", S.money(st.due), st.due > 0 ? "有未结订单" : "已结清", st.due > 0 ? "down" : ""],
+      ["待收款（全部）", S.money(st.due), st.due > 0 ? (prog.filter(o => o.status === "partial").length > 0 ? prog.filter(o => o.status === "partial").length + " 单部分收款" : "有未结订单") : "已结清", st.due > 0 ? "down" : ""],
       ["进行中订单", String(active), title + "已完成 " + doneN + " 单", "hi"],
       ["累计订单", String(st.count), "历史总数 · 已完成 " + S.orders.filter(o => o.status === "done").length + " 单", ""]
     ].map(([k, v, s, cls]) => `<div class="stat ${cls}"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join("");
@@ -1123,6 +1123,7 @@ function goto(tab){
     fillSelects(); calc();
     toast("已清除本次打印输入");
   });
+  $("clearCalcTop").addEventListener("click", () => $("clearCalcBtn").click()); // 顶部清空：复用底部逻辑
 
   /* 去开订单：把计算器数据自动填入新增订单（含数量、单/总克重、多耗材、单个报价） */
   $("toOrderBtn").addEventListener("click", () => {
@@ -1290,6 +1291,12 @@ function goto(tab){
     const ct = (incl.fil ? c.cFil : 0) + (incl.elec ? c.cElec : 0) + (incl.mach ? c.cMach : 0) + (incl.lab ? lab : 0) + ec;
     const profit = rv - ct, due = Math.max(0, quote - rv);
     const est = quote - ct; // 预估利润 = 报价 − 成本（按报价口径）
+    /* 打印数量 ≥ 2 时显示单件参考：单件成本（总成本均摊）/ 单个报价 */
+    const eachLine = $("oEachLine");
+    if(eachLine){
+      if(batch > 1){ eachLine.hidden = false; $("oEach").textContent = `成本 ${S.money(ct / batch)} · 报价 ${S.money(priceEach)}/件`; }
+      else eachLine.hidden = true;
+    }
     const big = $("oProfit");
     big.textContent = (profit < 0 ? "-" : "") + S.money(Math.abs(profit)).replace(S.settings.currency, "");
     big.className = "lcd-big " + (profit >= 0 ? "ok" : "loss");
@@ -1297,6 +1304,12 @@ function goto(tab){
     estEl.textContent = (est < 0 ? "-" : "") + S.money(Math.abs(est)).replace(S.settings.currency, "");
     estEl.className = "lcd-big sub " + (est >= 0 ? "" : "loss");
     $("oPc").textContent = S.money(c.cFil);
+    /* 打印机提示（与计算器 priHint 同款） */
+    const ph = $("oPriHint");
+    if(ph) ph.textContent = p ? `功率 ${S.num(p.powerW)}W · 电价 ${S.num(p.elecPrice)} 元/度 · 机器 ${S.money(S.machineRate(p))}/h` : "可选：不选则只算耗材与人工";
+    /* 耗材总克重（只读，主 + 附加合计，与计算器 rGTotal 同口径） */
+    const gt = $("oGTotal");
+    if(gt) gt.value = gEach * batch > 0 ? S.fmt(gEach * batch, 1) : "0";
     /* 主耗材行提示（与计算器 matHint 同款） */
     const mh = $("oMatHint");
     if(mh) mh.textContent = m ? `单价 ${S.money(S.num(m.pricePerKg))}/kg · 剩余 ${S.fmt(m.remaining,0)}g · 主耗材成本 ${S.money(S.num(m.pricePerKg)/1000 * gramsMain)}` : "必选：去「耗材」页添加";
@@ -1383,6 +1396,7 @@ function goto(tab){
     $("ordMsg").textContent = ""; orderCalc();
   }
     $("clearOrdBtn").addEventListener("click", () => { resetOrdForm(); toast("已清除订单表单"); });
+  $("clearOrdTop").addEventListener("click", () => $("clearOrdBtn").click()); // 顶部清空：复用底部逻辑
   $("cancelOrd").addEventListener("click", resetOrdForm);
 
   $("saveOrd").addEventListener("click", () => {
@@ -1390,11 +1404,15 @@ function goto(tab){
     const c = orderCalc();
     if(S.num($("oQuote").value) <= 0){ toast("请填写单个报价（必填，欠款跟踪依赖它）"); $("oQuote").focus(); return; }
     if(!(c.qty > 0)){ toast("请在收款里填写件数（每笔收款对应几个打印件）"); document.querySelector("#oPayments .pay-count").focus(); return; }
+    /* 收款驱动的状态推进：待报价/待付款 且已有收款、仍有欠款 → 自动转「部分收款」 */
+    let stVal = $("oStatus").value;
+    const autoPartial = (stVal === "quote" || stVal === "unpaid") && c.rv > 0 && c.due > 0;
+    if(autoPartial) stVal = "partial";
     const no = $("oNo").value.trim() || nextOrderNo();
     const m = S.matById($("oMat").value), p = S.priById($("oPri").value);
     const rec = {
       id: editingOrdId || S.uid(), orderNo:no, date:$("oDate").value || S.today(),
-      status:$("oStatus").value,
+      status:stVal,
       wechat:$("oWx").value.trim(), custName:$("oName").value.trim(),
       batchQty:oBatchVal(), // 批次打印件数（成本口径，由计算器带入或本区手填）
       qty:c.qty, priceEach:c.priceEach, quote:c.quote, // 应收总额 = 单价 × 各笔收款件数合计
@@ -1415,7 +1433,8 @@ function goto(tab){
       if(i >= 0) S.orders[i] = Object.assign(S.orders[i], rec, { created:S.orders[i].created });
     } else S.orders.unshift(rec);
     S.saveOrd();
-    toast((editingOrdId ? "已更新：" : "已保存：") + no + (rec.profit >= 0 ? " " + randFace() : "（这单亏了，下次报高点呀）"));
+    if(autoPartial) $("oStatus").value = stVal; // 表单状态下拉同步为自动推进后的值
+    toast((editingOrdId ? "已更新：" : "已保存：") + no + (autoPartial ? " · 已自动转为部分收款" : "") + (rec.profit >= 0 ? " " + randFace() : "（这单亏了，下次报高点呀）"));
     const newAch = checkAch();
     if(!editingOrdId) resetOrdForm();
     renderOrders();
@@ -1545,7 +1564,7 @@ function goto(tab){
     $("ordStats").innerHTML = [
       ["订单总数", String(st.count), "已取消不计", "", ""],
       ["累计营收", S.money(st.rev), "报价 " + S.money(st.quote), "", ""],
-      ["待收款", S.money(st.due), st.due > 0 ? "有未结订单" : "已结清", st.due > 0 ? "down" : "up", ""],
+      ["待收款", S.money(st.due), st.due > 0 ? (S.orders.filter(o => o.status === "partial").length > 0 ? S.orders.filter(o => o.status === "partial").length + " 单部分收款" : "有未结订单") : "已结清", st.due > 0 ? "down" : "up", ""],
       ["累计利润", S.money(st.profit), "利润率 " + (st.margin > 0 ? st.margin.toFixed(1) : 0) + " %", st.profit >= 0 ? "up" : "down", ""]
     ].map(([k, v, s, cls]) => `<div class="stat ${cls}"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join("");
     renderOrdList();

@@ -415,11 +415,24 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 .extras-row,.pay-row{display:flex;gap:6px;align-items:center;margin-bottom:7px}
 .extras-row .el{flex:1.2}
 .extras-row .ea{flex:.8}
-.pay-row .pd{flex:1.1}
-.pay-row .pay-count{flex:0 0 64px;min-width:0;text-align:center} /* 件数：紧凑固定宽，防止被全局 width:100% 拉满整行 */
+.pay-row .pd{flex:.7}
+.pay-row .pay-count{flex:0 0 96px;min-width:0;text-align:center} /* 件数：紧凑固定宽，防止被全局 width:100% 拉满整行 */
 .pay-row .pa{flex:.8}
 .pay-row .pn{flex:1.2}
 .extras-row button,.pay-row button{flex:0 0 auto}
+
+/* ---------- 表单操作按钮：吸底悬浮条（滚动时始终可及） ---------- */
+.action-float{
+  position:sticky;bottom:14px;z-index:45;
+  padding:10px 12px;
+  background:color-mix(in srgb, var(--panel) 88%, transparent);
+  backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
+  border:1px solid var(--line2);
+  border-radius:12px;
+  box-shadow:0 10px 28px rgba(0,0,0,.28);
+}
+[data-theme="light"] .action-float{box-shadow:0 10px 24px rgba(30,40,60,.16)}
 
 .col2{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
 .col2>.card{margin-bottom:14px;min-width:0} /* 防止内部横向滚动图表的 max-content 撑破网格轨道 */
