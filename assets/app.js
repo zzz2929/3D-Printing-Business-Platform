@@ -1123,7 +1123,6 @@ function goto(tab){
     fillSelects(); calc();
     toast("已清除本次打印输入");
   });
-  $("clearCalcTop").addEventListener("click", () => $("clearCalcBtn").click()); // 顶部清空：复用底部逻辑
 
   /* 去开订单：把计算器数据自动填入新增订单（含数量、单/总克重、多耗材、单个报价） */
   $("toOrderBtn").addEventListener("click", () => {
@@ -1396,7 +1395,6 @@ function goto(tab){
     $("ordMsg").textContent = ""; orderCalc();
   }
     $("clearOrdBtn").addEventListener("click", () => { resetOrdForm(); toast("已清除订单表单"); });
-  $("clearOrdTop").addEventListener("click", () => $("clearOrdBtn").click()); // 顶部清空：复用底部逻辑
   $("cancelOrd").addEventListener("click", resetOrdForm);
 
   $("saveOrd").addEventListener("click", () => {
@@ -3951,6 +3949,41 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
     S.setSettings({ openModeSkipped: true });
     toast("已跳过，本系统继续以开放模式运行");
   });
+
+  /* 吸底操作条两态：落位（融入卡片）/ 悬浮（浮起为独立卡片）。
+     滚动时按哨兵位置判定——哨兵（条的自然位置）滚到视口下方即悬浮态；GSAP 播放浮起动效，落位交还 CSS 过渡 */
+  const afBars = [...document.querySelectorAll(".action-float")];
+  afBars.forEach(bar => {
+    const sent = document.createElement("div");
+    sent.className = "af-sentinel";
+    bar.parentNode.insertBefore(sent, bar);
+    bar.__sent = sent;
+  });
+  let afLast = ""; // 上次整体状态，避免重复切换
+  function updateActionFloats(){
+    const sig = afBars.map(bar => bar.__sent.getBoundingClientRect().top >= innerHeight ? "1" : "0").join("");
+    if(sig === afLast) return;
+    afBars.forEach((bar, i) => {
+      if(bar.offsetParent === null) return; // 页面隐藏不切换
+      const stuck = sig[i] === "1";
+      if((bar.dataset.afStuck || "") === (stuck ? "1" : "")) return;
+      bar.dataset.afStuck = stuck ? "1" : "";
+      bar.classList.toggle("is-floating", stuck);
+        if(window.gsap && !reduceMotion && stuck){
+          try{ gsap.fromTo(bar, { y: 10, scale: 0.985 }, { y: 0, scale: 1, duration: 0.34, ease: "back.out(1.8)", clearProps: "transform" }); }catch(_){}
+        }
+    });
+    afLast = sig;
+  }
+  window.addEventListener("scroll", updateActionFloats, { passive:true });
+  window.addEventListener("resize", updateActionFloats);
+  /* 表单内容增删（加耗材行/明细行出现等）会改变页面高度但不触发 scroll——
+     用 ResizeObserver 盯住 body 高度，保证悬浮/落位状态不漏判 */
+  if(window.ResizeObserver){
+    new ResizeObserver(updateActionFloats).observe(document.body);
+  }
+  setInterval(updateActionFloats, 500); // 兜底轮询：覆盖内容高度变化的全部路径
+  updateActionFloats();
 
   Store.ready.then(mode => {
     if(mode === "auth"){ applyLogoutVisibility(); showLoginGate(); return; } // 服务端要求登录

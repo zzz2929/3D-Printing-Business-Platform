@@ -28,7 +28,7 @@
 <link rel="apple-touch-icon" href="icon.svg" />
 <link rel="icon" href="icon.svg" type="image/svg+xml" />
 <link rel="stylesheet" href="assets/vendor/flatpickr/flatpickr.min.css?v=64" />
-<link rel="stylesheet" href="assets/style.css?v=74" />
+<link rel="stylesheet" href="assets/style.css?v=77" />
 </head>
 <body>
 
@@ -130,7 +130,7 @@
     <!-- ============ 计算器 ============ -->
     <section id="page-calc" class="page">
       <div class="card">
-        <div class="card-head"><h2>本次打印</h2><span class="req-note"><i class="dot"></i>为必填项</span><button class="btn ghost sm" id="clearCalcTop" type="button">清空</button></div>
+        <div class="card-head"><h2>本次打印</h2><span class="req-note"><i class="dot"></i>为必填项</span></div>
         <div class="grid g2">
                     <div><label>打印机</label><select id="selPri"></select><div class="hint" id="priHint">—</div></div>
           <div style="grid-column:1/-1" id="extraMats"></div>
@@ -182,7 +182,7 @@
     <!-- ============ 开单 ============ -->
     <section id="page-order" class="page">
       <div class="card">
-        <div class="card-head"><h2 id="ordFormTitle">新增订单</h2><span class="req-note"><i class="dot"></i>为必填项</span><button class="btn ghost sm" id="clearOrdTop" type="button">清空</button></div>
+        <div class="card-head"><h2 id="ordFormTitle">新增订单</h2><span class="req-note"><i class="dot"></i>为必填项</span></div>
         <div id="ordFormBody">
           <div class="grid g3">
             <div><label>订单号</label><input id="oNo" type="text" placeholder="留空自动生成" /></div>
@@ -866,7 +866,7 @@
 <script src="assets/vendor/flatpickr/flatpickr.min.js?v=64"></script>
 <script src="assets/vendor/flatpickr/zh.js?v=64"></script>
 <script src="assets/store.js?v=75"></script>
-<script src="assets/app.js?v=98"></script>
+<script src="assets/app.js?v=106"></script>
 <script>
 /* 保存即刷新：Node 服务端监听到前端文件变更时经 /__reload (SSE) 通知页面自动 reload。
    仅 Node/Docker 宿主提供该通道；Workers/Vercel 或本地 file:// 打开时连接失败即静默停用。 */
