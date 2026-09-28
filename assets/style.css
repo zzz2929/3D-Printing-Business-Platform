@@ -421,18 +421,23 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 .pay-row .pn{flex:1.2}
 .extras-row button,.pay-row button{flex:0 0 auto}
 
-/* ---------- 表单操作按钮：吸底悬浮条（滚动时始终可及） ---------- */
+/* ---------- 表单操作按钮：吸底悬浮条（落位融入卡片，悬浮时浮起为独立卡片） ---------- */
 .action-float{
   position:sticky;bottom:14px;z-index:45;
   padding:10px 12px;
-  background:color-mix(in srgb, var(--panel) 88%, transparent);
-  backdrop-filter:blur(10px);
+  border:1px solid transparent;border-radius:12px;
+  background:transparent;
+  transition:background-color .25s ease,border-color .25s ease,box-shadow .25s ease,backdrop-filter .25s ease;
+}
+.action-float.is-floating{
+  background:color-mix(in srgb, var(--panel) 90%, transparent);
   -webkit-backdrop-filter:blur(10px);
-  border:1px solid var(--line2);
-  border-radius:12px;
+  backdrop-filter:blur(10px);
+  border-color:var(--line2);
   box-shadow:0 10px 28px rgba(0,0,0,.28);
 }
-[data-theme="light"] .action-float{box-shadow:0 10px 24px rgba(30,40,60,.16)}
+[data-theme="light"] .action-float.is-floating{box-shadow:0 10px 24px rgba(30,40,60,.16)}
+.af-sentinel{height:1px;margin:0;border:0} /* 1px：零高度元素不会产生 IntersectionObserver 相交记录 */
 
 .col2{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
 .col2>.card{margin-bottom:14px;min-width:0} /* 防止内部横向滚动图表的 max-content 撑破网格轨道 */
