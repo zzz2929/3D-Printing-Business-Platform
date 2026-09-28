@@ -778,8 +778,7 @@ function goto(tab){
       : '<div class="empty">暂无客户数据</div>';
     $("dashCustomers").querySelectorAll("tr[data-cust]").forEach(tr => tr.addEventListener("click", () => {
       filt.cust = tr.getAttribute("data-cust");
-      $("fSearch").value = filt.cust;
-      filt.q = filt.cust;
+      $("fCust").value = filt.cust;
       goto("olist");
     }));
 
@@ -1453,16 +1452,20 @@ function goto(tab){
   });
 
   /* 筛选 */
-  const filt = { q:"", status:"all", sort:"date-desc", from:"", to:"", cust:"" };
-  $("fSearch").addEventListener("input", () => { filt.q = $("fSearch").value.trim().toLowerCase(); renderOrdList(); });
+  const filt = { orderNo:"", cust:"", item:"", note:"", status:"all", sort:"date-desc", from:"", to:"" };
+  $("fOrderNo").addEventListener("input", () => { filt.orderNo = $("fOrderNo").value.trim().toLowerCase(); renderOrdList(); });
+  $("fCust").addEventListener("input", () => { filt.cust = $("fCust").value.trim().toLowerCase(); renderOrdList(); });
+  $("fItem").addEventListener("input", () => { filt.item = $("fItem").value.trim().toLowerCase(); renderOrdList(); });
+  $("fNote").addEventListener("input", () => { filt.note = $("fNote").value.trim().toLowerCase(); renderOrdList(); });
   $("fStatus").addEventListener("change", () => { filt.status = $("fStatus").value; renderOrdList(); });
   $("fSort").addEventListener("change", () => { filt.sort = $("fSort").value; renderOrdList(); });
   const fPick = initRangePicker("fRange", "fFrom", "fTo");
   $("fFrom").addEventListener("change", () => { filt.from = $("fFrom").value; renderOrdList(); });
   $("fTo").addEventListener("change", () => { filt.to = $("fTo").value; renderOrdList(); });
   $("fClear").addEventListener("click", () => {
-    Object.assign(filt, { q:"", status:"all", sort:"date-desc", from:"", to:"", cust:"" });
-    $("fSearch").value = ""; $("fStatus").value = "all"; $("fSort").value = "date-desc";
+    Object.assign(filt, { orderNo:"", cust:"", item:"", note:"", status:"all", sort:"date-desc", from:"", to:"" });
+    $("fOrderNo").value = ""; $("fCust").value = ""; $("fItem").value = ""; $("fNote").value = "";
+    $("fStatus").value = "all"; $("fSort").value = "date-desc";
     $("fFrom").value = ""; $("fTo").value = "";
     if(fPick) fPick.sync();
     renderOrdList();
@@ -1502,15 +1505,13 @@ function goto(tab){
 
   function renderOrdList(){
     let list = S.orders.slice();
+    if(filt.orderNo) list = list.filter(o => (o.orderNo || "").toLowerCase().includes(filt.orderNo));
+    if(filt.cust) list = list.filter(o => (o.wechat || "").toLowerCase().includes(filt.cust) || (o.custName || "").toLowerCase().includes(filt.cust));
+    if(filt.item) list = list.filter(o => (o.itemName || "").toLowerCase().includes(filt.item));
+    if(filt.note) list = list.filter(o => (o.note || "").toLowerCase().includes(filt.note));
     if(filt.status !== "all") list = list.filter(o => o.status === filt.status);
     if(filt.from) list = list.filter(o => (o.date || "") >= filt.from);
     if(filt.to) list = list.filter(o => (o.date || "") <= filt.to);
-    if(filt.cust) {
-      list = list.filter(o => (o.wechat || "").includes(filt.cust) || (o.custName || "").includes(filt.cust));
-    } else if(filt.q){
-      list = list.filter(o => [o.orderNo, o.itemName, o.wechat, o.custName, o.note, o.matName, o.modelFile && o.modelFile.name]
-        .some(v => String(v || "").toLowerCase().includes(filt.q)));
-    }
     const sorters = {
       "date-desc": (a,b) => String(b.date).localeCompare(String(a.date)) || (b.updated || 0) - (a.updated || 0),
       "date-asc": (a,b) => String(a.date).localeCompare(String(b.date)),
@@ -1541,12 +1542,16 @@ function goto(tab){
         ${mf ? `<div class="meta">${mf}${o.modelFile.note ? " · " + S.esc(o.modelFile.note) : ""}</div>` : ""}
         ${(o.payments && o.payments.length > 1) ? `<div class="meta">💰 ${o.payments.map(p => `${S.esc(p.custName || p.note || "收款")}${S.num(p.count) > 0 ? " " + S.num(p.count) + "件" : ""} ${S.money(p.amount)}`).join(" · ")}</div>` : ""}
         <div class="nums">
-          <span>报价 <b>${qty > 1 ? S.money(o.priceEach) + " × " + qty + " = " : ""}${S.money(o.quote)}</b></span>
-          <span>已收 <b>${S.money(o.received)}</b></span>
-          ${due > 0 ? `<span class="loss">待收 <b>${S.money(due)}</b></span>` : ""}
-          <span>成本 <b>${S.money(o.totalCost)}</b></span>
-          <span class="${est >= 0 ? "tot" : "loss"}">预估 <b>${S.money(est)}</b></span>
-          <span class="${profit >= 0 ? "tot" : "loss"}">利润 <b>${S.money(profit)}</b></span>
+          <div class="num-l">
+            <span class="nl-item"><em>报价</em><b>${S.money(o.quote)}</b></span>
+            <span class="nl-item"><em>已收</em><b>${S.money(o.received)}</b></span>
+            ${due > 0 ? `<span class="nl-item loss"><em>待收</em><b>${S.money(due)}</b></span>` : ""}
+          </div>
+          <div class="num-r">
+            <span class="nl-item"><em>成本</em><b>${S.money(o.totalCost)}</b></span>
+            <span class="nl-item ${est >= 0 ? "tot" : "loss"}"><em>预估</em><b>${S.money(est)}</b></span>
+            <span class="nl-item ${profit >= 0 ? "tot" : "loss"}"><em>利润</em><b>${S.money(profit)}</b></span>
+          </div>
         </div>
         ${o.note ? `<div class="meta">📝 ${S.esc(o.note)}</div>` : ""}
         <div class="acts">
