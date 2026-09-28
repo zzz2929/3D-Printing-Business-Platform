@@ -416,6 +416,7 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 .extras-row .el{flex:1.2}
 .extras-row .ea{flex:.8}
 .pay-row .pd{flex:1.1}
+.pay-row .pay-count{flex:0 0 64px;min-width:0;text-align:center} /* 件数：紧凑固定宽，防止被全局 width:100% 拉满整行 */
 .pay-row .pa{flex:.8}
 .pay-row .pn{flex:1.2}
 .extras-row button,.pay-row button{flex:0 0 auto}

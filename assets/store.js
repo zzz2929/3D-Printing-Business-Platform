@@ -366,6 +366,15 @@ const Store = (function(){
       if(!Array.isArray(o.extras)) o.extras = [];
       if(!Array.isArray(o.payments)) o.payments = num(o.received) > 0 ? [{ date:o.date || today(), amount:num(o.received), note:"" }] : [];
       if(o.handlingMin == null) o.handlingMin = 0;
+      /* 数量/单价/多耗材模型：quote 恒为应收总额，priceEach 为单个报价；
+         qty = 各笔收款件数合计（销售口径），batchQty = 批次打印件数（成本口径，由计算器带入） */
+      if(o.qty == null) o.qty = 1;
+      if(o.priceEach == null) o.priceEach = num(o.quote);
+      if(o.batchQty == null) o.batchQty = num(o.qty) || 1;
+      if(!Array.isArray(o.mats)) o.mats = o.materialId ? [{ materialId:o.materialId, matName:o.matName, matColor:o.matColor, grams:num(o.grams), pricePerKg:num(o.pricePerKg) }] : [];
+      if(o.gPer == null) o.gPer = num(o.grams) / Math.max(1, num(o.qty) || 1);
+      /* 旧单据单笔收款自动补件数，编辑时件数口径不缺 */
+      if(Array.isArray(o.payments) && o.payments.length === 1 && o.payments[0] && o.payments[0].count == null) o.payments[0].count = num(o.qty) || 1;
     });
     records.forEach(r => {
       if(r.consumed == null) r.consumed = num(r.grams);

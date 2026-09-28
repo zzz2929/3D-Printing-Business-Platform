@@ -89,8 +89,8 @@ export function createRouter(store, mailer){
 
       // 注册（开放模式或首个管理员）
       if(path === "register" && req.method === "POST"){
-        reqLog.info("User register attempt", { username: ((await readBody(req)) || {}).username });
-        const body = await readBody(req);
+        const body = await readBody(req); // body 只能读一次，日志复用已解析对象
+        reqLog.info("User register attempt", { username: (body || {}).username });
         const { username, password, role } = body || {};
         if(!await auth.configured()){
           // 开放模式，首个注册的是管理员
