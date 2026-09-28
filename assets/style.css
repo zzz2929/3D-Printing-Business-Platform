@@ -342,8 +342,11 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 .ord .no{font-weight:700;font-size:14px;font-family:var(--mono);letter-spacing:.02em}
 .ord .item-name{font-weight:600;font-size:13px;color:var(--sub);margin-left:8px}
 .ord .meta{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--sub);margin:8px 0 0}
-.ord .nums{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);color:var(--sub)}
-.ord .nums b{font-family:var(--mono);font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+.ord .nums{display:grid;grid-template-columns:1fr 1fr;gap:4px 20px;font-size:12.5px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);color:var(--sub)}
+.ord .nums .num-l,.ord .nums .num-r{display:flex;flex-wrap:wrap;gap:4px 14px}
+.ord .nums .nl-item{display:flex;align-items:baseline;gap:4px;min-width:0}
+.ord .nums .nl-item em{font-style:normal;color:var(--faint);font-size:11.5px;white-space:nowrap}
+.ord .nums .nl-item b{font-family:var(--mono);font-weight:700;font-size:13px;color:var(--ink);font-variant-numeric:tabular-nums}
 .ord .nums .tot b{color:var(--ok)}
 .ord .nums .loss b{color:var(--danger)}
 .ord .acts{display:flex;gap:6px;margin-top:11px;flex-wrap:wrap;align-items:center}
@@ -419,6 +422,7 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 .extras-row .el{flex:1.2}
 .extras-row .ea{flex:.8}
 .pay-row .pd{flex:.7}
+.pay-row .pcn{flex:0 0 100px;min-width:0}
 .pay-row .pay-count{flex:0 0 96px;min-width:0;text-align:center} /* 件数：紧凑固定宽，防止被全局 width:100% 拉满整行 */
 .pay-row .pa{flex:.8}
 .pay-row .pn{flex:1.2}
