@@ -113,6 +113,7 @@ const Store = (function(){
   const STATUSES = [
     { key:"quote",    label:"待报价", color:"#8b95a1" },
     { key:"unpaid",   label:"待付款", color:"#ff6b6b" },
+    { key:"partial",  label:"部分收款", color:"#f59f00" },
     { key:"printing", label:"打印中", color:"#4cc2ff" },
     { key:"shipped",  label:"已发货", color:"#b085f5" },
     { key:"done",     label:"已完成", color:"#3ecf8e" },
