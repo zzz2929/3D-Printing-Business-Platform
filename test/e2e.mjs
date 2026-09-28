@@ -325,7 +325,8 @@ ck("fetch source error readable", typeof r.j.sources[0].error === "string" && r.
 r = await api("POST", "/api/bambu", { mode:"cloud", cloud:{} });
 ck("mode=cloud blank fields keep email (留空保留)", r.status === 200 && r.j.config.mode === "cloud" && r.j.config.cloud.email === "me@x.com", JSON.stringify(r.j));
 r = await api("POST", "/api/bambu", { action:"fetch" });
-ck("cloud mode without token → 400 提示登录", r.status === 400 && /拓竹云还未登录/.test(r.j.error || ""), JSON.stringify(r.j));
+ck("cloud mode without token → per-source 提示登录", r.status === 200 && Array.isArray(r.j.sources) && r.j.sources.length === 2
+  && r.j.sources.every(s => s.ok === false && /拓竹云还未登录/.test(s.error || "")), JSON.stringify(r.j));
 r = await api("POST", "/api/bambu", { action:"cloudLogin" });
 ck("cloudLogin without account → 400", r.status === 400, JSON.stringify(r.j));
 r = await api("POST", "/api/bambu", { action:"cloudLogin", email:"13800138000" });

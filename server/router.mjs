@@ -357,14 +357,21 @@ export function createRouter(store, mailer){
             return json({ error: e.message || "登录失败" }, 400);
           }
         }
-        if(body.action === "fetch"){ // 立即抓取所有已配置来源的 AMS 快照
+        if(body.action === "fetch"){ // 立即抓取所有已配置来源的 AMS 快照 + 云端耗材库
           const cfg = await getCfg();
           try{
             const r = await fetchAll(cfg);
-            const brief = r.sources.map(s => ({ kind:s.kind, name:s.name, ok:s.ok, error:s.error || "",
-              devices: s.ok ? s.devices.map(d => ({ devId:d.devId, devName:d.devName, trayCount:d.trays.length })) : [] }));
-            const saved = Object.assign({}, cfg, { last:{ fetchedAt: r.fetchedAt, sources: brief } });
-            await store.set(cfgKey, saved);
+            if(r.newToken && cfg.cloud){ // 自动重登得到的新 token 持久化，避免每次抓取都重登
+              cfg.cloud.token = r.newToken;
+              cfg.last = { fetchedAt: r.fetchedAt,
+                sources: r.sources.map(s => ({ kind:s.kind, name:s.name, ok:s.ok, error:s.error || "",
+                  devices: s.ok ? s.devices.map(d => ({ devId:d.devId, devName:d.devName, trayCount:d.trays.length })) : [] })) };
+              await store.set(cfgKey, cfg);
+            }else{
+              const saved = Object.assign({}, cfg, { last:{ fetchedAt: r.fetchedAt, sources: r.sources.map(s => ({ kind:s.kind, name:s.name, ok:s.ok, error:s.error || "",
+                devices: s.ok ? s.devices.map(d => ({ devId:d.devId, devName:d.devName, trayCount:d.trays.length })) : [] })) } });
+              await store.set(cfgKey, saved);
+            }
             return json(r);
           }catch(e){
             return json({ error: e.message || "抓取失败" }, 400);

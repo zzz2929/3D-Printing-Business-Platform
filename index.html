@@ -135,10 +135,12 @@
                     <div><label>打印机</label><select id="selPri"></select><div class="hint" id="priHint">—</div></div>
           <div style="grid-column:1/-1" id="extraMats"></div>
           <div class="grid g3" style="grid-column:1/-1">
+            <div><label>物品名称</label><input id="rItem" type="text" placeholder="如 齿轮支架 / 手机壳" /></div>
             <div><label>打印数量<i class="dot"></i></label><input id="rQty" type="number" min="1" step="1" value="1" placeholder="如 1" /></div>
             <div><label>单个克数（g）</label><input id="rGPer" type="number" min="0" step="0.1" placeholder="如 42" /><div class="hint">每个打印件的耗材总用量</div></div>
-            <div><label>总克数（g）<i class="dot"></i></label><input id="rGTotal" type="text" readonly value="0" /><div class="hint">所有耗材合计，自动计算</div></div>
           </div>
+          <div class="grid g3" style="grid-column:1/-1">
+            <div><label>总克数（g）<i class="dot"></i></label><input id="rGTotal" type="text" readonly value="0" /><div class="hint">所有耗材合计，自动计算</div></div>
                     <div>
             <label>单个打印时长</label>
             <div class="alarm">
@@ -188,6 +190,7 @@
             <div><label>订单号</label><input id="oNo" type="text" placeholder="留空自动生成" /></div>
             <div><label>日期<i class="dot"></i></label><input id="oDate" type="date" /></div>
             <div><label>状态</label><select id="oStatus"></select></div>
+            <div><label>物品名称<i class="dot"></i></label><input id="oItem" type="text" placeholder="如 齿轮支架 / 手机壳" /></div>
             <div><label>客户微信 / 联系方式</label><input id="oWx" type="text" placeholder="如 wxid_xxx" /></div>
             <div><label>客户称呼（可选）</label><input id="oName" type="text" placeholder="如 张老板" /></div>
             <div><label>单个报价（元 / 件）<i class="dot"></i></label><input id="oQuote" type="number" min="0" step="0.01" placeholder="每个的价格" /><div class="hint" id="oQuoteTotal">应收总额 = 单价 × 各笔收款件数</div></div>
@@ -866,7 +869,7 @@
 <script src="assets/vendor/flatpickr/flatpickr.min.js?v=64"></script>
 <script src="assets/vendor/flatpickr/zh.js?v=64"></script>
 <script src="assets/store.js?v=75"></script>
-<script src="assets/app.js?v=106"></script>
+<script src="assets/app.js?v=108"></script>
 <script>
 /* 保存即刷新：Node 服务端监听到前端文件变更时经 /__reload (SSE) 通知页面自动 reload。
    仅 Node/Docker 宿主提供该通道；Workers/Vercel 或本地 file:// 打开时连接失败即静默停用。 */

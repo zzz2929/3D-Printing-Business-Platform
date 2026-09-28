@@ -175,6 +175,13 @@ function pushFullState(sock, sn, getSeq){
   try{ sock.write(encPublishQos1(_pushPktId++, "device/" + sn + "/request", JSON.stringify(payload))); }catch(e){}
 }
 
+/* 品牌规范化：AMS 报告的 tray_sub_brands 官方料为 "Bambu"，统一成平台预设品牌名，匹配与显示更一致 */
+function normBrand(b){
+  const s = String(b || "").trim();
+  if(/^bambu$/i.test(s)) return "Bambu Lab 拓竹";
+  return s;
+}
+
 /* ---------- 报告解析：print 报文 → 归一化托盘列表 ----------
    托盘：{ slot, ext, brand, type, color, weight, remain, remaining, uuid, tagUid, idx, name } */
 export function parseReport(payload, devIdFromTopic){
@@ -204,7 +211,7 @@ export function parseReport(payload, devIdFromTopic){
     if(!type && !color && !uuid) return null; // 空槽位
     return {
       slot: label, ext: !!ext, type,
-      brand: String(t.tray_sub_brands || "").trim(),
+      brand: normBrand(t.tray_sub_brands),
       color, weight, remain,
       remaining: remain != null ? Math.round(weight * remain / 100) : null,
       uuid, tagUid,
@@ -479,15 +486,89 @@ export async function fetchCloud({ region = "cn", email, token, timeoutMs = 1200
   return { devices };
 }
 
+/* ---------- 拓竹云端耗材库（Bambu Studio「云同步」的切片预设） ----------
+   GET /v1/iot-service/api/slicer/setting?version=1.0.0.0 列出全部预设（type=filament/printer/process），
+   列表项不含类型/颜色 → 逐个取详情（官方限速约 10/s：并发 3 + 间隔 120ms，条数上限防超时）。
+   返回 { items:[{ id, name, type, color, baseId }], failed, total } */
+function colorOf(v){
+  const s = String(v || "").trim().replace(/^#/, "");
+  if(/^[0-9a-fA-F]{6}$/.test(s)) return "#" + s.toUpperCase();
+  if(/^[0-9a-fA-F]{8}$/.test(s)) return "#" + s.slice(0, 6).toUpperCase();
+  if(/^[0-9a-fA-F]{3}$/.test(s)) return "#" + s.toUpperCase();
+  return "";
+}
+/* 预设名 → 品牌/类型解析：官方命名 "Bambu PLA Basic @X1C" → 拓竹品牌 + "PLA Basic" */
+function presetBrandType(name, type, baseId){
+  const n = String(name || "").replace(/@.*$/, "").trim();
+  if(/^(bambu\s*(lab)?|拓竹)/i.test(n)){
+    const rest = n.replace(/^(bambu\s*lab|bambu|拓竹)/i, "").trim();
+    return { brand: "Bambu Lab 拓竹", type: rest || type || "" };
+  }
+  if(/^G[A-Z]/.test(String(baseId || ""))) return { brand: "Bambu Lab 拓竹", type: type || n }; // 官方 RFID 前缀
+  return { brand: "", type: type || n };
+}
+export async function cloudPresetFilaments({ region = "cn", token, limit = 40 }){
+  const base = regionOf(region).api;
+  const H = { authorization: "Bearer " + token, "content-type": "application/json" };
+  const list = await restJson(base + "/v1/iot-service/api/slicer/setting?version=1.0.0.0", { headers: H }, 15000);
+  const entries = (list && (list.settings || list.list)) || (Array.isArray(list) ? list : []) || [];
+  const filaments = entries.filter(e => String((e && e.type) || "") === "filament" && (e.name || e.setting_id));
+  const chosen = Number.isFinite(limit) ? filaments.slice(0, limit) : filaments;
+  const results = new Array(chosen.length).fill(null);
+  let failed = 0, cursor = 0;
+  const worker = async () => {
+    while(cursor < chosen.length){
+      const i = cursor++;
+      const e = chosen[i];
+      try{
+        const d = await restJson(base + "/v1/iot-service/api/slicer/setting/" + encodeURIComponent(e.setting_id) + "?version=1.0.0.0", { headers: H }, 15000);
+        const content = (d && (d.setting || d.content)) || d || {};
+        const pick = v => (Array.isArray(v) ? v[0] : v);
+        const baseId = String(pick(content.filament_settings_id) || e.base_id || "").trim();
+        const bt = presetBrandType(e.name, String(pick(content.filament_type) || "").trim(), baseId);
+        results[i] = {
+          id: String(e.setting_id || e.id || ""),
+          name: String(e.name || "").trim(),
+          brand: bt.brand,
+          type: bt.type,
+          color: colorOf(pick(content.filament_colour)),
+          baseId
+        };
+      }catch(err){ failed++; }
+      await new Promise(r => setTimeout(r, 120)); // 官方限速 ~10/s，留裕量
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+  return { items: results.filter(Boolean), failed, total: chosen.length, skipped: Math.max(0, filaments.length - chosen.length) };
+}
+
 /* ---------- 汇总：根据配置抓取来源 ----------
-   cfg.mode = "lan" | "cloud" → 只抓对应来源（二选一）；
-   旧配置无 mode → 两种都抓（兼容升级前的既有配置）。
-   cfg = { mode?, lan:[{ name, host, code }], cloud:{ region, email, token } }
-   返回 { sources:[{ kind, name, ok, error?, devices:[{ devId, devName, trays }] }], fetchedAt } */
-export async function fetchAll(cfg, { lanTimeoutMs = 9000, cloudTimeoutMs = 15000 } = {}){
+   cfg.mode = "lan" | "cloud" → 只抓对应来源（二选一）；旧配置无 mode → 两种都抓（兼容旧配置）。
+   云连接自愈：存了密码且 token 缺失 → 自动登录补齐；MQTT 认证失败（token 过期）且存有密码 → 自动重登一次并重试。
+   cfg = { mode?, lan:[{ name, host, code }], cloud:{ region, email, password?, token } }
+   返回 { sources, fetchedAt, newToken? }（重登成功时带 newToken，由调用方持久化） */
+export async function fetchAll(cfg, { lanTimeoutMs = 9000, cloudTimeoutMs = 15000, withLibrary = true, libraryLimit = 40 } = {}){
   const sources = [];
   const jobs = [];
   const useLan = cfg.mode !== "cloud", useCloud = cfg.mode !== "lan";
+  const c = cfg.cloud || {};
+  let token = c.token || "";
+  let newToken = "";
+  // 自动补齐：存了密码但 token 缺失（上次登录后丢失 / 新账号只保存了密码）
+  if(useCloud && !token && c.password && c.email){
+    try{
+      const r = await cloudLogin({ region: c.region, account: c.email, password: c.password });
+      if(r.token){ token = r.token; newToken = r.token; }
+    }catch(e){ /* 需要验证码等情况 → 走下方正常失败提示 */ }
+  }
+  const relogin = async () => { // token 过期自愈：重登一次
+    if(!(c.password && c.email)) throw new Error("token 已过期：请重新登录拓竹账号");
+    const r = await cloudLogin({ region: c.region, account: c.email, password: c.password }).catch(e => { throw new Error("自动重登失败：" + e.message); });
+    if(!r.token) throw new Error("自动重登未成功：请重新登录拓竹账号");
+    token = r.token; newToken = r.token;
+    return token;
+  };
+  const isAuthError = e => /token|认证|过期|auth/i.test(String(e.message || ""));
   if(useLan) (Array.isArray(cfg.lan) ? cfg.lan : []).forEach((p, i) => {
     if(!p || !p.host) return;
     jobs.push(fetchLan({ host: p.host, code: p.code, timeoutMs: lanTimeoutMs })
@@ -495,16 +576,48 @@ export async function fetchAll(cfg, { lanTimeoutMs = 9000, cloudTimeoutMs = 1500
         devices:[{ devId: d.devId || "", devName: d.devName || p.name || p.host, devModel: d.devModel || "", trays: d.trays }] }))
       .catch(e => sources.push({ kind:"lan", name: p.name || ("局域网打印机 " + (i + 1)), host: p.host, ok:false, error: e.message })));
   });
-  const c = cfg.cloud || {};
-  if(useCloud && c.token){
-    jobs.push(fetchCloud({ region: c.region, email: c.email, token: c.token, timeoutMs: cloudTimeoutMs })
-      .then(d => sources.push({ kind:"cloud", name: "拓竹云 · " + (c.email || regionOf(c.region).label), region: c.region, ok:true, devices: d.devices }))
-      .catch(e => sources.push({ kind:"cloud", name: "拓竹云 · " + (c.email || regionOf(c.region).label), region: c.region, ok:false, error: e.message })));
+  if(useCloud && (token || (c.password && c.email))){
+    const cname = "拓竹云 · " + (c.email || regionOf(c.region).label);
+    jobs.push((async () => {
+      if(!token) throw new Error("拓竹云还未登录：请先登录拓竹账号或粘贴 accessToken");
+      let d;
+      try{
+        d = await fetchCloud({ region: c.region, email: c.email, token, timeoutMs: cloudTimeoutMs });
+      }catch(e){
+        if(!isAuthError(e)) throw e;
+        await relogin(); // token 过期自动重登后重试一次
+        d = await fetchCloud({ region: c.region, email: c.email, token, timeoutMs: cloudTimeoutMs });
+      }
+      sources.push({ kind:"cloud", name: cname, region: c.region, ok:true, devices: d.devices });
+    })().catch(e => sources.push({ kind:"cloud", name: cname, region: c.region, ok:false, error: e.message })));
+    if(withLibrary){ // 云端耗材库（切片预设）→ 以"云端耗材库"来源参与耗材同步
+      jobs.push((async () => {
+        if(!token) throw new Error("拓竹云还未登录：请先登录拓竹账号");
+        let lib;
+        try{
+          lib = await cloudPresetFilaments({ region: c.region, token, limit: libraryLimit });
+        }catch(e){
+          if(!isAuthError(e)) throw e;
+          await relogin();
+          lib = await cloudPresetFilaments({ region: c.region, token, limit: libraryLimit });
+        }
+        const trays = lib.items.map(f => ({
+          slot: "云端", ext: false,
+          type: f.type || "", brand: f.brand || "",
+          color: f.color || "", weight: 1000, remain: 100, remaining: 1000,
+          uuid: "", tagUid: "", idx: f.baseId || "", name: f.name || ""
+        }));
+        sources.push({ kind:"cloudlib", name: "云端耗材库" + (lib.items.length ? `（${lib.items.length} 项${lib.failed ? " · " + lib.failed + " 项读取失败" : ""}${lib.skipped ? " · 仅取前 " + lib.items.length + " 项" : ""}）` : ""), ok:true, library: true,
+          devices: lib.items.length ? [{ devId: "__cloudlib__", devName: "拓竹云端耗材库", devModel: "", trays }] : [] });
+      })().catch(e => sources.push({ kind:"cloudlib", name: "云端耗材库", ok:false, error: e.message })));
+    }
   }
   await Promise.all(jobs);
   if(!jobs.length) throw new Error(cfg.mode === "cloud"
     ? "拓竹云还未登录：请先登录拓竹账号或粘贴 accessToken"
     : "尚未配置连接：请先添加打印机或登录拓竹账号");
   sources.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "lan" ? -1 : 1));
-  return { sources, fetchedAt: Date.now() };
+  const out = { sources, fetchedAt: Date.now() };
+  if(newToken) out.newToken = newToken;
+  return out;
 }
