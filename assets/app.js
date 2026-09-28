@@ -760,18 +760,28 @@ function goto(tab){
     const recent = inP.slice().sort((a,b) => String(b.date).localeCompare(String(a.date))).slice(0, 5);
     $("dashRecent").innerHTML = recent.length ? recent.map(o => {
       const stt = S.stOf(o.status);
-      return `<div class="ord" style="margin:8px 0"><div class="top">
+      return `<div class="ord clickable" style="margin:8px 0" data-oid="${o.id}"><div class="top">
         <span class="no">${S.esc(o.orderNo)}</span>
+        ${o.itemName ? `<span class="item-name">${S.esc(o.itemName)}</span>` : ""}
         <span class="badge" style="--bc:${stt.color}"><i></i>${stt.label}</span></div>
         <div class="nums"><span>${S.esc(o.date)}</span><span>利润 <b class="${orderProfit(o) >= 0 ? "tot" : "loss"}">${S.money(orderProfit(o))}</b></span>${S.orderDue(o) > 0 ? `<span class="loss">待收 ${S.money(S.orderDue(o))}</span>` : ""}</div></div>`;
     }).join("") : '<div class="empty">' + (S.orders.length ? title + "没有订单" : "还没有订单<br><span class=\"hint\">去「开单」页开第一单</span>") + "</div>";
+    $("dashRecent").querySelectorAll(".ord[data-oid]").forEach(div => div.addEventListener("click", () => {
+      editOrder(div.getAttribute("data-oid"));
+    }));
 
     // 客户排行（期间内）
     const custs = S.byCustomer(inP).slice(0, 5);
     $("dashCustomers").innerHTML = custs.length
       ? `<table><thead><tr><th>客户</th><th class="num">单数</th><th class="num">利润</th></tr></thead><tbody>` +
-        custs.map(c => `<tr><td>${S.esc(c.name)}</td><td class="num">${c.n}</td><td class="num ${c.profit >= 0 ? "tot" : "loss"}">${S.money(c.profit)}</td></tr>`).join("") + "</tbody></table>"
+        custs.map(c => `<tr class="clickable" data-cust="${S.esc(c.name)}"><td>${S.esc(c.name)}</td><td class="num">${c.n}</td><td class="num ${c.profit >= 0 ? "tot" : "loss"}">${S.money(c.profit)}</td></tr>`).join("") + "</tbody></table>"
       : '<div class="empty">暂无客户数据</div>';
+    $("dashCustomers").querySelectorAll("tr[data-cust]").forEach(tr => tr.addEventListener("click", () => {
+      filt.cust = tr.getAttribute("data-cust");
+      $("fSearch").value = filt.cust;
+      filt.q = filt.cust;
+      goto("olist");
+    }));
 
     renderAch();
   }
@@ -989,7 +999,7 @@ function goto(tab){
     try{
       localStorage.setItem(CALC_KEY, JSON.stringify({
         selMat:$("selMat").value, selPri:$("selPri").value,
-        rQty:$("rQty").value, rGPer:$("rGPer").value, rGrams:$("rGrams").value,
+        rItem:$("rItem").value, rQty:$("rQty").value, rGPer:$("rGPer").value, rGrams:$("rGrams").value,
         rHoursH:$("rHoursH").value, rHoursM:$("rHoursM").value, rTotHoursH:$("rTotHoursH").value, rTotHoursM:$("rTotHoursM").value,
         rMin:$("rMin").value, rNote:$("rNote").value,
         cbFil:$("cbFil").checked, cbElec:$("cbElec").checked, cbMach:$("cbMach").checked, cbLab:$("cbLab").checked,
@@ -1003,6 +1013,7 @@ function goto(tab){
       if(!s || typeof s !== "object") return;
       if(s.selMat) $("selMat").value = s.selMat;
       if(s.selPri) $("selPri").value = s.selPri;
+      if(s.rItem != null) $("rItem").value = s.rItem;
       if(s.rQty){ $("rQty").value = s.rQty; gQtyLast = Math.max(1, S.num(s.rQty) || 1); }
       if(s.rGPer != null) $("rGPer").value = String(s.rGPer);
       if(s.rGrams != null) $("rGrams").value = String(s.rGrams);
@@ -1114,7 +1125,7 @@ function goto(tab){
     $("saveBtn").textContent = "保存为打印记录";
     $("cancelEditBtn").style.display = "none";
     $("selMat").value = ""; $("selPri").value = "";
-    $("rGrams").value = ""; $("rQty").value = "1"; $("rGPer").value = ""; $("rHoursH").value = "0"; $("rHoursM").value = "0"; $("rTotHoursH").value = "0"; $("rTotHoursM").value = "0"; $("rMin").value = ""; $("rNote").value = ""; hAnchor = "single"; gQtyLast = 1;
+    $("rItem").value = ""; $("rGrams").value = ""; $("rQty").value = "1"; $("rGPer").value = ""; $("rHoursH").value = "0"; $("rHoursM").value = "0"; $("rTotHoursH").value = "0"; $("rTotHoursM").value = "0"; $("rMin").value = ""; $("rNote").value = ""; hAnchor = "single"; gQtyLast = 1;
     ["cbFil","cbElec","cbMach","cbLab"].forEach(id => $(id).checked = true);
     $("homeMsg").textContent = "";
     lastCalc = null;
@@ -1143,6 +1154,7 @@ function goto(tab){
       $("ocbMach").checked = lastCalc.incl.mach;
       $("ocbLab").checked = lastCalc.incl.lab;
     }
+    if(lastCalc.itemName && !$("oItem").value) $("oItem").value = lastCalc.itemName;
     if(lastCalc.note && !$("oNote").value) $("oNote").value = lastCalc.note;
     if(lastCalc.sug > 0) $("oQuote").value = Math.ceil(lastCalc.sug / q); // 建议报价（总额）折算为单个
     $("oStatus").value = "quote";
@@ -1176,12 +1188,13 @@ function goto(tab){
   /* 收款行：一笔收款 = 一个客户拿走 n 件；金额自动 = 件数 × 单价（手改后不覆盖） */
   /* 批次打印件数（成本口径）：由计算器/打印记录带入或本区手填，单个克重 × 数量 = 总克重 */
   function oBatchVal(){ return Math.max(1, S.num($("oQty") ? $("oQty").value : 1) || 1); }
-  function payRow(date, count, amount, note){
+  function payRow(date, count, amount, note, custName){
     const d = document.createElement("div"); d.className = "pay-row";
     d.innerHTML = `<input class="pd" type="date" value="${S.esc(date)}" />
+      <input class="pcn" type="text" value="${S.esc(custName)}" placeholder="客户名" title="这笔收款的客户名" />
       <input class="pay-count" type="number" min="1" step="1" value="${S.num(count) || ""}" placeholder="件数" title="这笔收款对应几个打印件" />
       <input class="pa" type="number" min="0" step="0.01" value="${S.num(amount) || ""}" placeholder="金额" />
-      <input class="pn" type="text" value="${S.esc(note)}" placeholder="客户 / 备注（定金/尾款…）" />
+      <input class="pn" type="text" value="${S.esc(note)}" placeholder="备注（定金/尾款…）" />
       <button class="row-btn danger" type="button" title="删除此行"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>`;
     d.querySelector("button").addEventListener("click", () => { d.remove(); orderCalc(); });
     const amt = d.querySelector(".pa");
@@ -1191,7 +1204,7 @@ function goto(tab){
   }
   function getPayments(){
     return Array.from($("oPayments").children)
-      .map(r => ({ date:r.querySelector(".pd").value, count:Math.round(S.num(r.querySelector(".pay-count").value)), note:r.querySelector(".pn").value.trim(), amount:S.num(r.querySelector(".pa").value), el:r }))
+      .map(r => ({ date:r.querySelector(".pd").value, custName:r.querySelector(".pcn").value.trim(), count:Math.round(S.num(r.querySelector(".pay-count").value)), note:r.querySelector(".pn").value.trim(), amount:S.num(r.querySelector(".pa").value), el:r }))
       .filter(x => x.count > 0 || x.amount > 0);
   }
   $("addPay").addEventListener("click", () => { $("oPayments").appendChild(payRow(S.today(), "", "", "")); orderCalc(); });
@@ -1383,7 +1396,7 @@ function goto(tab){
     $("ordFormTitle").textContent = "新增订单";
     $("cancelOrd").style.display = "none"; $("ordFormBody").style.display = "";
     $("oNo").value = ""; $("oDate").value = S.today(); $("oStatus").value = "quote";
-    $("oWx").value = ""; $("oName").value = ""; $("oQuote").value = "";
+    $("oItem").value = ""; $("oWx").value = ""; $("oName").value = ""; $("oQuote").value = "";
     $("oQuote").dataset.auto = ""; $("oQuotePerGram").value = "";
     $("oGPer").value = ""; oGAnchor = "gPer"; $("oQty").value = "1";
     $("oMat").value = ""; $("oPri").value = ""; $("oG").value = ""; $("oH").value = ""; $("oMin").value = "";
@@ -1410,7 +1423,7 @@ function goto(tab){
     const m = S.matById($("oMat").value), p = S.priById($("oPri").value);
     const rec = {
       id: editingOrdId || S.uid(), orderNo:no, date:$("oDate").value || S.today(),
-      status:stVal,
+      status:stVal, itemName:$("oItem").value.trim(),
       wechat:$("oWx").value.trim(), custName:$("oName").value.trim(),
       batchQty:oBatchVal(), // 批次打印件数（成本口径，由计算器带入或本区手填）
       qty:c.qty, priceEach:c.priceEach, quote:c.quote, // 应收总额 = 单价 × 各笔收款件数合计
@@ -1440,7 +1453,7 @@ function goto(tab){
   });
 
   /* 筛选 */
-  const filt = { q:"", status:"all", sort:"date-desc", from:"", to:"" };
+  const filt = { q:"", status:"all", sort:"date-desc", from:"", to:"", cust:"" };
   $("fSearch").addEventListener("input", () => { filt.q = $("fSearch").value.trim().toLowerCase(); renderOrdList(); });
   $("fStatus").addEventListener("change", () => { filt.status = $("fStatus").value; renderOrdList(); });
   $("fSort").addEventListener("change", () => { filt.sort = $("fSort").value; renderOrdList(); });
@@ -1448,7 +1461,7 @@ function goto(tab){
   $("fFrom").addEventListener("change", () => { filt.from = $("fFrom").value; renderOrdList(); });
   $("fTo").addEventListener("change", () => { filt.to = $("fTo").value; renderOrdList(); });
   $("fClear").addEventListener("click", () => {
-    Object.assign(filt, { q:"", status:"all", sort:"date-desc", from:"", to:"" });
+    Object.assign(filt, { q:"", status:"all", sort:"date-desc", from:"", to:"", cust:"" });
     $("fSearch").value = ""; $("fStatus").value = "all"; $("fSort").value = "date-desc";
     $("fFrom").value = ""; $("fTo").value = "";
     if(fPick) fPick.sync();
@@ -1460,10 +1473,12 @@ function goto(tab){
     const qty = Math.max(1, S.num(o.qty) || 1);
     const lines = [
       "订单 " + (o.orderNo || "") + " · " + st.label,
+      (o.itemName ? "物品：" + o.itemName : ""),
       "日期：" + (o.date || ""),
       (o.custName ? "客户：" + o.custName : "") + (o.matName ? "\n耗材：" + o.matName + (o.grams ? " × " + S.fmt(o.grams, 1) + "g" : "") : ""),
       (qty > 1 ? "数量：" + qty + " 件 × " + S.money(o.priceEach) + "/件" : ""),
       "报价：" + S.money(o.quote), "已收：" + S.money(o.received),
+      (o.payments && o.payments.length) ? "收款：" + o.payments.map(p => (p.custName || "客户") + (S.num(p.count) > 0 ? " " + S.num(p.count) + "件" : "") + " " + S.money(p.amount)).join(" · ") : "",
       (S.orderDue(o) > 0 ? "待收：" + S.money(S.orderDue(o)) : ""),
       "总成本：" + S.money(o.totalCost),
       "预估利润（报价−成本）：" + S.money(S.num(o.quote) - S.num(o.totalCost)),
@@ -1490,8 +1505,10 @@ function goto(tab){
     if(filt.status !== "all") list = list.filter(o => o.status === filt.status);
     if(filt.from) list = list.filter(o => (o.date || "") >= filt.from);
     if(filt.to) list = list.filter(o => (o.date || "") <= filt.to);
-    if(filt.q){
-      list = list.filter(o => [o.orderNo, o.wechat, o.custName, o.note, o.matName, o.modelFile && o.modelFile.name]
+    if(filt.cust) {
+      list = list.filter(o => (o.wechat || "").includes(filt.cust) || (o.custName || "").includes(filt.cust));
+    } else if(filt.q){
+      list = list.filter(o => [o.orderNo, o.itemName, o.wechat, o.custName, o.note, o.matName, o.modelFile && o.modelFile.name]
         .some(v => String(v || "").toLowerCase().includes(filt.q)));
     }
     const sorters = {
@@ -1515,13 +1532,14 @@ function goto(tab){
       const mf = o.modelFile && o.modelFile.name ? `📎 ${S.esc(o.modelFile.name)}${o.modelFile.size ? " (" + S.esc(o.modelFile.size) + ")" : ""}` : "";
       return `<div class="ord">
         <div class="top"><span class="no">${S.esc(o.orderNo)}</span>
+          ${o.itemName ? `<span class="item-name">${S.esc(o.itemName)}</span>` : ""}
           <span class="badge" style="--bc:${st.color}"><i></i>${st.label}</span></div>
         <div class="meta"><span>📅 ${S.esc(o.date)}</span>
           ${qty > 1 ? `<span>📦 × ${qty} 件</span>` : ""}
           ${o.wechat ? `<span>💬 ${S.esc(o.wechat)}</span>` : ""}${o.custName ? `<span>🙋 ${S.esc(o.custName)}</span>` : ""}</div>
         ${oms.length > 1 ? `<div class="meta">🧵 ${oms.map(x => `${S.esc(x.matName || "耗材")} ${S.fmt(x.grams,1)}g${qty > 1 ? "（单 " + S.fmt(S.num(x.grams)/qty,1) + "g）" : ""}`).join(" · ")}</div>` : ""}
         ${mf ? `<div class="meta">${mf}${o.modelFile.note ? " · " + S.esc(o.modelFile.note) : ""}</div>` : ""}
-        ${(o.payments && o.payments.length > 1) ? `<div class="meta">💰 ${o.payments.map(p => `${S.esc(p.note || "收款")}${S.num(p.count) > 0 ? " " + S.num(p.count) + "件" : ""} ${S.money(p.amount)}`).join(" · ")}</div>` : ""}
+        ${(o.payments && o.payments.length > 1) ? `<div class="meta">💰 ${o.payments.map(p => `${S.esc(p.custName || p.note || "收款")}${S.num(p.count) > 0 ? " " + S.num(p.count) + "件" : ""} ${S.money(p.amount)}`).join(" · ")}</div>` : ""}
         <div class="nums">
           <span>报价 <b>${qty > 1 ? S.money(o.priceEach) + " × " + qty + " = " : ""}${S.money(o.quote)}</b></span>
           <span>已收 <b>${S.money(o.received)}</b></span>
@@ -1575,15 +1593,15 @@ function goto(tab){
     $("cancelOrd").style.display = ""; $("ordFormBody").style.display = "";
     goto("order");
     $("oNo").value = o.orderNo || ""; $("oDate").value = o.date || S.today(); $("oStatus").value = o.status || "quote";
-    $("oWx").value = o.wechat || ""; $("oName").value = o.custName || "";
+    $("oItem").value = o.itemName || ""; $("oWx").value = o.wechat || ""; $("oName").value = o.custName || "";
     const q = Math.max(1, S.num(o.qty) || 1);
     $("oQty").value = String(Math.max(1, S.num(o.batchQty) || q)); // 批次打印件数（成本口径）
     $("oQuote").value = S.num(o.priceEach) || S.num(o.quote) || ""; // 单价（旧单据无单价时回退总额）
     $("oQuote").dataset.auto = ""; // 编辑载入后允许克重报价覆盖
     $("oPayments").innerHTML = "";
     if(o.payments && o.payments.length) o.payments.forEach(p => {
-      const row = payRow(p.date || S.today(), p.count, p.amount, p.note);
-      /* 存储金额与“件数×单价”不符 = 之前手改过（定金/优惠），回填后保持不被自动覆盖 */
+      const row = payRow(p.date || S.today(), p.count, p.amount, p.note, p.custName);
+      /* 存储金额与"件数×单价"不符 = 之前手改过（定金/优惠），回填后保持不被自动覆盖 */
       const unit = S.num(o.priceEach) || S.num(o.quote);
       if(S.num(p.count) > 0 && Math.abs(S.num(p.amount) - Math.round(S.num(p.count) * unit * 100) / 100) > 0.009) row.dataset.amtAuto = "0";
       $("oPayments").appendChild(row);
@@ -1964,16 +1982,16 @@ function goto(tab){
     return COLOR_FALLBACK[up] || "";
   }
   function trayLabel(t){
-    if(t.name) return String(t.name).trim(); // 打印机端自定义名优先（tray_name / tray_id_name）
+    if(t.name) return String(t.name).replace(/@.*$/, "").trim() || String(t.name).trim(); // 打印机端自定义名 / 云端预设名（去掉 @打印机 后缀）
     const parts = [t.brand, t.type, t.color ? (guessColorName(t.color) || t.color) : ""].filter(Boolean);
     if(parts.length >= 2) return parts.join(" "); // 品牌 + 类型 + 颜色（通常 ≥2 项）
     // 云端 brand 为空时至少保留类型+颜色；实在啥都没有才兜底
     return (t.type || t.color ? [t.type, t.color ? (guessColorName(t.color) || t.color) : ""].filter(Boolean).join(" ") : "未知耗材");
   }
-  function matchBambuTray(t, devId, taken){
+  function matchBambuTray(t, devId, taken, isLib){
     const takenIds = taken || new Set();
-    // ① 已绑定：用户手动把托盘绑定到材料库记录（按设备+槽位）
-    if(devId && t.slot){
+    // ① 已绑定：用户手动把托盘绑定到材料库记录（按设备+槽位）；云端库条目不参与设备槽位绑定
+    if(!isLib && devId && t.slot){
       const byBind = S.materials.find(x => x.bambuDevId === devId && x.bambuSlot === t.slot);
       if(byBind){ takenIds.add(byBind.id); return { m: byBind, how:"bind" }; }
     }
@@ -1987,9 +2005,11 @@ function goto(tab){
       const xt = String(x.type || "").toLowerCase().trim();
       return tt && xt && (xt.startsWith(tt) || tt.startsWith(xt));
     };
+    const colorEq = x => !String(x.color || "").trim() || String(x.color || "").toUpperCase() === cc;
     // ② 用户自建耗材优先：同类型自建记录未绑定其它槽位、本轮未占用时优先匹配（无 RFID 时托盘色不可靠）
-    if(tt){
-      const self = S.materials.filter(x => typeNear(x) && !x.bambuSyncedAt
+    //    云端库条目信息精确，跳过此启发式，只走 ③ 精确匹配
+    if(tt && !isLib){
+      const self = S.materials.filter(x => typeNear(x) && colorEq(x) && !x.bambuSyncedAt
         && !(x.bambuDevId && x.bambuSlot) && !takenIds.has(x.id));
       if(self.length === 1){ takenIds.add(self[0].id); return { m: self[0], how:"type" }; }
     }
@@ -2013,12 +2033,14 @@ function goto(tab){
     if(changed){ S.saveMat(); }
     return changed;
   }
-  /* 扁平设备列表（打印机同步用） */
+  /* 扁平设备列表（打印机同步用）：云端耗材库是虚拟来源，不参与打印机同步 */
   function bambuDevices(){
     const snap = bambuState.snap; if(!snap) return [];
     const out = [];
-    snap.sources.forEach(src => (src.devices || []).forEach(d =>
-      out.push(Object.assign({ srcKind: src.kind, srcOk: src.ok }, d))));
+    snap.sources.forEach(src => {
+      if(src.kind === "cloudlib") return;
+      (src.devices || []).forEach(d => out.push(Object.assign({ srcKind: src.kind, srcOk: src.ok }, d)));
+    });
     return out;
   }
   function matchBambuPrinter(d){
@@ -2123,19 +2145,21 @@ function goto(tab){
     if(!snap){ box.innerHTML = ""; return; }
     let total = 0, html = "";
     snap.sources.forEach(src => {
-      html += `<div class="bambu-src"><span class="pill">${src.kind === "lan" ? "局域网" : "拓竹云"}</span> <b>${S.esc(src.name)}</b>` +
+      const srcLabel = src.kind === "lan" ? "局域网" : src.kind === "cloudlib" ? "云端耗材库" : "拓竹云";
+      html += `<div class="bambu-src"><span class="pill">${srcLabel}</span> <b>${S.esc(src.name)}</b>` +
         (src.ok ? "" : `<span class="badge" style="--bc:var(--danger)"><i></i>${S.esc(src.error || "失败")}</span>`) + `</div>`;
       (src.devices || []).forEach(dev => {
         html += `<div class="bambu-dev">${S.esc(dev.devName || dev.devId || "设备")}</div>`;
         if(!(dev.trays || []).length){
-          html += '<div class="empty" style="padding:10px">未读到 AMS 托盘数据</div>';
+          html += `<div class="empty" style="padding:10px">${dev.devId === "__cloudlib__" ? "云端耗材库为空：在拓竹切片软件里保存并云同步过自定义耗材后会显示在这里" : "未读到 AMS 托盘数据"}</div>`;
           return;
         }
 total += dev.trays.length;
         const taken = new Set();
+        const isLib = src.kind === "cloudlib" || dev.devId === "__cloudlib__";
         html += dev.trays.map(t => {
           const devId = dev.devId || "";
-          const { m } = matchBambuTray(t, devId, taken);
+          const { m } = matchBambuTray(t, isLib ? "" : devId, taken, isLib);
           const selId = m ? m.id : "";
           const opts = ['<option value="">新建（不匹配）</option>']
             .concat(S.materials.map(x => `<option value="${x.id}"${x.id === selId ? " selected" : ""}>${S.esc(x.name)}</option>`))
@@ -2169,19 +2193,21 @@ $("bambuTrayCount").textContent = total ? "· " + total + " 卷" : "";
     const snap = bambuState.snap; if(!snap) return;
     const optUpdate = $("bambuOptUpdate").checked, optCreate = $("bambuOptCreate").checked;
     if(!optUpdate && !optCreate){ toast("请至少勾选一种同步方式"); return; }
-    if(optCreate && !(await confirmBox("未匹配的 AMS 料卷将按「品牌 + 类型 + 颜色」新建为耗材（单价需之后手动补充），继续？"))) return;
+    if(optCreate && !(await confirmBox("未匹配的 AMS 料卷将按「品牌 + 类型 + 颜色」新建为耗材（单价需之后手动补充；云端耗材库条目按满卷 1000g 入库），继续？"))) return;
     const now = Date.now();
     let updated = 0, created = 0, skipped = 0;
 snap.sources.forEach(src => (src.devices || []).forEach(dev => {
       const taken = new Set();
+      const isLib = src.kind === "cloudlib" || dev.devId === "__cloudlib__";
       (dev.trays || []).forEach(t => {
-      const devId = dev.devId || "";
-      const { m } = matchBambuTray(t, devId, taken);
+      const devId = isLib ? "" : (dev.devId || "");
+      const { m } = matchBambuTray(t, devId, taken, isLib);
       if(m){
         if(!optUpdate){ skipped++; return; }
         if(t.remaining != null) m.remaining = Math.min(Math.max(0, t.remaining), Math.max(S.num(m.spool), t.weight || 0));
         if(t.uuid) m.bambuUuid = t.uuid;
-        m.bambuDevId = devId; m.bambuSlot = t.slot; m.bambuSyncedAt = now;
+        if(!isLib){ m.bambuDevId = devId; m.bambuSlot = t.slot; } // 云端库条目不绑定设备槽位
+        m.bambuSyncedAt = now;
         // 清理旧同步硬编码的"拓竹"占位：云端 brand 为空时，去掉本地默认 brand
         if(!t.brand && m.brand === "Bambu Lab 拓竹"){ m.brand = ""; }
         // 同步类型/颜色（允许用户在 Bambu Studio 换料后更新）
@@ -2202,8 +2228,9 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
           pricePerKg: 0,
           spool: t.weight > 0 ? t.weight : 1000,
           remaining: t.remaining != null ? Math.max(0, t.remaining) : 0,
-          bambuDevId: devId, bambuSlot: t.slot, bambuSyncedAt: now
+          bambuSyncedAt: now
         };
+        if(!isLib){ m2.bambuDevId = devId; m2.bambuSlot = t.slot; } // 云端库条目不绑定设备槽位
         if(t.uuid) m2.bambuUuid = t.uuid;
         m2.name = S.matLabel(m2);
         S.materials.push(m2);

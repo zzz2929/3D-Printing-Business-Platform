@@ -311,6 +311,7 @@ select::after{
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{padding:9px 8px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
 tbody tr:hover{background:var(--panel2)}
+tbody tr.clickable{cursor:pointer}
 th{color:var(--faint);font-weight:600;font-size:11.5px;letter-spacing:.04em;white-space:nowrap}
 td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
 .tot{color:var(--ok)}
@@ -336,8 +337,10 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
   background:var(--panel2);transition:border-color .15s;
 }
 .ord:hover{border-color:var(--line2)}
+.ord.clickable{cursor:pointer}
 .ord .top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 .ord .no{font-weight:700;font-size:14px;font-family:var(--mono);letter-spacing:.02em}
+.ord .item-name{font-weight:600;font-size:13px;color:var(--sub);margin-left:8px}
 .ord .meta{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--sub);margin:8px 0 0}
 .ord .nums{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);color:var(--sub)}
 .ord .nums b{font-family:var(--mono);font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
