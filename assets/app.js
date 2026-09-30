@@ -404,7 +404,8 @@ function goto(tab){
     document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("on", b.getAttribute("data-tab") === tab));
     $("pageTitle").textContent = PAGE_TITLES[tab];
     if(location.hash !== "#/" + tab) history.replaceState(null, "", "#/" + tab);
-    RENDERERS[tab]();
+    if(tab === "records") renderRecords();
+    else RENDERERS[tab]();
     window.scrollTo({ top:0 });
     /* 页面切换动画：整页淡入上移 + 卡片错落入场（GSAP，未加载时自动跳过） */
     fx(g => {
@@ -921,10 +922,40 @@ function goto(tab){
   let gAnchor = "grams"; // 最后一次用户编辑的克数字段：grams（主耗材）/ gPer / qty
   let gQtyLast = 1; // 上一次打印数量：克数随数量等比缩放的基准
   function gExtraSum(){ const q = Math.max(1, S.num($("rQty").value) || 1); return extraMatsFromDom().reduce((s,x) => s + x.each, 0) * q; }
+  /* 耗材克数填写口径：per=按单个物品用量（主耗材克数按单个填写、随数量联动）；total=按整批总用量（主耗材克数直填整批总量、不随数量变化） */
+  function gModeNow(){ const t = document.querySelector("#gModeTabs button.on"); return (t && ["per","total"].includes(t.dataset.mode)) ? t.dataset.mode : "per"; }
+  function applyGMode(){
+    const isTotal = gModeNow() === "total";
+    if($("rGPer")) $("rGPer").readOnly = isTotal;
+    const mh = $("gModeHint");
+    if(mh) mh.textContent = isTotal ? "主耗材克数按整批总用量填写，数量变化不影响克数" : "主耗材克数按每个打印件填写，随数量联动";
+    const ph = $("gPerHint");
+    if(ph) ph.textContent = isTotal ? "整批均值（自动计算，含附加耗材）" : "每个打印件的耗材总用量";
+  }
+  function setGMode(mode){
+    const m = mode === "total" ? "total" : "per";
+    document.querySelectorAll("#gModeTabs button").forEach(b => {
+      const on = b.dataset.mode === m;
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    applyGMode();
+  }
+  const gModeTabsEl = $("gModeTabs");
+  if(gModeTabsEl) gModeTabsEl.addEventListener("click", e => {
+    const b = e.target.closest("button[data-mode]");
+    if(!b || b.classList.contains("on")) return;
+    setGMode(b.dataset.mode);
+    calc();
+  });
+  applyGMode();
   $("rQty").addEventListener("input", () => {
     const qty = Math.max(1, S.num($("rQty").value) || 1);
     const gPer = S.num($("rGPer").value);
-    if(gAnchor === "gPer" && gPer > 0){ const v = qty * gPer - gExtraSum(); $("rGrams").value = Math.max(0, Math.round(v * 10) / 10); }
+    if(gModeNow() === "total"){
+      /* 整批口径：主耗材克数即整批总用量，不随数量等比缩放；仅刷新“单个克数”展示值（含附加耗材均摊） */
+      if(S.num($("rGrams").value) > 0 || gExtraSum() > 0) $("rGPer").value = Math.round((S.num($("rGrams").value) + gExtraSum()) / qty * 10) / 10;
+    } else if(gAnchor === "gPer" && gPer > 0){ const v = qty * gPer - gExtraSum(); $("rGrams").value = Math.max(0, Math.round(v * 10) / 10); }
     else if(S.num($("rGrams").value) > 0 || gExtraSum() > 0){
       /* 克数按打印数量等比缩放：直填的主耗材克数按“单个”口径随数量增减（成本与报价始终按数量来） */
       const per = S.num($("rGrams").value) / Math.max(1, gQtyLast);
@@ -944,8 +975,11 @@ function goto(tab){
   });
   $("rGPer").addEventListener("input", () => {
     const qty = Math.max(1, S.num($("rQty").value) || 1);
-    if(S.num($("rGPer").value) > 0){ const v = qty * S.num($("rGPer").value) - gExtraSum(); $("rGrams").value = Math.max(0, Math.round(v * 10) / 10); }
-    gAnchor = "gPer";
+    /* 整批口径下“单个克数”为展示值（只读），不折算主耗材克数、也不改写锚点 */
+    if(gModeNow() !== "total"){
+      gAnchor = "gPer";
+      if(S.num($("rGPer").value) > 0){ const v = qty * S.num($("rGPer").value) - gExtraSum(); $("rGrams").value = Math.max(0, Math.round(v * 10) / 10); }
+    }
     calc();
   });
   /* rGrams 由耗材区动态渲染（主耗材行），用 document 级委托绑定输入联动 */
@@ -998,7 +1032,7 @@ function goto(tab){
     try{
       localStorage.setItem(CALC_KEY, JSON.stringify({
         selMat:$("selMat").value, selPri:$("selPri").value,
-        rItem:$("rItem").value, rItemName:$("rItemName").value, rQty:$("rQty").value, rGPer:$("rGPer").value, rGrams:$("rGrams").value,
+        rItemName:$("rItemName").value, rQty:$("rQty").value, rGMode:gModeNow(), rGPer:$("rGPer").value, rGrams:$("rGrams").value,
         rHoursH:$("rHoursH").value, rHoursM:$("rHoursM").value, rTotHoursH:$("rTotHoursH").value, rTotHoursM:$("rTotHoursM").value,
         rMin:$("rMin").value, rNote:$("rNote").value,
         cbFil:$("cbFil").checked, cbElec:$("cbElec").checked, cbMach:$("cbMach").checked, cbLab:$("cbLab").checked,
@@ -1012,7 +1046,6 @@ function goto(tab){
       if(!s || typeof s !== "object") return;
       if(s.selMat) $("selMat").value = s.selMat;
       if(s.selPri) $("selPri").value = s.selPri;
-      if(s.rItem != null) $("rItem").value = s.rItem;
       if(s.rQty){ $("rQty").value = s.rQty; gQtyLast = Math.max(1, S.num(s.rQty) || 1); }
       if(s.rGPer != null) $("rGPer").value = String(s.rGPer);
       if(s.rGrams != null) $("rGrams").value = String(s.rGrams);
@@ -1037,6 +1070,7 @@ function goto(tab){
       if(s.cbLab != null) $("cbLab").checked = !!s.cbLab;
       if(s.gAnchor && ["grams","gPer","qty"].includes(s.gAnchor)) gAnchor = s.gAnchor;
       if(s.hAnchor && ["single","total"].includes(s.hAnchor)) hAnchor = s.hAnchor;
+      if(s.rGMode) setGMode(s.rGMode === "total" ? "total" : "per");
       if(Array.isArray(s.extraRows)) renderMatRows(s.extraRows.map(x => ({ matId:x.matId || "", each:x.each != null ? x.each : (x.grams != null ? x.grams : "") })));
       calc(); // 恢复完成立即重算总克数与成本显示
     }catch(_){}
@@ -1054,11 +1088,13 @@ function goto(tab){
   $("saveBtn").addEventListener("click", () => {
     const { m, p, g, h, sh, min, c, lab, all, incl } = calc();
     const extras = extraMatsFromDom();
+    const qty = Math.max(1, S.num($("rQty").value) || 1); // 数量：多耗材附加行按 qty 折算总克数（旧版缺失导致多耗材保存崩溃）
     if(!m){ $("homeMsg").textContent = "请先选择耗材（必填）"; toast("耗材为必填项"); return; }
     if(g <= 0){ $("homeMsg").textContent = "请填写主耗材克重（必填）"; toast("主耗材克重为必填项"); return; }
     if(all <= 0){ $("homeMsg").textContent = "至少勾选一项成本计入"; toast("请至少勾选一项成本"); return; }
     $("saveBtn").disabled = true; $("saveBtn").textContent = "已保存"; // 防连点：保存成功后禁用，修改表单才恢复
     const note = $("rNote").value.trim();
+    const itemName = $("rItemName").value.trim();
     /* 编辑模式：更新原记录并联动库存（先回补旧克数，再按新材料/新克数扣减） */
     if(editingRecId){
       const i = S.records.findIndex(r => r.id === editingRecId);
@@ -1092,7 +1128,6 @@ function goto(tab){
     const mats = [{ materialId:m.id, matName:m.name, matColor:m.color, grams:g, pricePerKg:S.num(m.pricePerKg) }]
       .concat(extras.map(x => { const mm = S.matById(x.matId); return { materialId:x.matId, matName:mm ? mm.name : null, matColor:mm ? mm.color : null, grams: Math.round(x.each * qty * 10) / 10, pricePerKg:S.num(mm ? mm.pricePerKg : 0) }; }));
     const gTotal2 = mats.reduce((s,x) => s + S.num(x.grams), 0);
-    const itemName = $("rItemName").value.trim();
     const rec0 = { id:S.uid(), date:S.today(), created:Date.now(), mats,
       materialId:m.id, matName:m.name, matType:m.type, matColor:m.color, pricePerKg:S.num(m.pricePerKg),
       printerId:p ? p.id : null, priName:p ? p.name : null, powerW:p ? S.num(p.powerW) : 0, elecPrice:p ? S.num(p.elecPrice) : 0,
@@ -1126,7 +1161,7 @@ function goto(tab){
     $("saveBtn").textContent = "保存为打印记录";
     $("cancelEditBtn").style.display = "none";
     $("selMat").value = ""; $("selPri").value = "";
-    $("rItem").value = ""; $("rItemName").value = ""; $("rGrams").value = ""; $("rQty").value = "1"; $("rGPer").value = ""; $("rHoursH").value = "0"; $("rHoursM").value = "0"; $("rTotHoursH").value = "0"; $("rTotHoursM").value = "0"; $("rMin").value = ""; $("rNote").value = ""; hAnchor = "single"; gQtyLast = 1;
+    $("rItemName").value = ""; $("rGrams").value = ""; $("rQty").value = "1"; $("rGPer").value = ""; $("rHoursH").value = "0"; $("rHoursM").value = "0"; $("rTotHoursH").value = "0"; $("rTotHoursM").value = "0"; $("rMin").value = ""; $("rNote").value = ""; hAnchor = "single"; gQtyLast = 1;
     ["cbFil","cbElec","cbMach","cbLab"].forEach(id => $(id).checked = true);
     $("homeMsg").textContent = "";
     lastCalc = null;
@@ -2346,13 +2381,15 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
 
   function renderRecords(){
     // 填充筛选下拉
-    const fm = $("frMat"), fp = $("frPri");
-    const mv = fm.value, pv = fp.value;
+    const fm = $("frMat"), fp = $("frPri"), fs = $("frSort");
+    if(!fm || !fp || !fs) return; // 页面元素未就绪时直接返回
+    const mv = fm.value, pv = fp.value, sv = fs.value;
     fm.innerHTML = '<option value="all">全部耗材</option>' + S.materials.map(m => `<option value="${m.id}">${S.esc(m.name)}</option>`).join("");
     fp.innerHTML = '<option value="all">全部打印机</option>' + S.printers.map(p => `<option value="${p.id}">${S.esc(p.name)}</option>`).join("");
     fm.value = mv && S.matById(mv) ? mv : "all";
     fp.value = pv && S.priById(pv) ? pv : "all";
-    recFilt.mat = fm.value; recFilt.pri = fp.value;
+    fs.value = sv; // 保持排序选项不变
+    recFilt.mat = fm.value; recFilt.pri = fp.value; recFilt.sort = fs.value;
 
     const rs = S.records;
     const total = rs.reduce((s,r) => s + statsCostOf(r), 0), sumH = rs.reduce((s,r) => s + S.num(r.hours), 0), sumG = rs.reduce((s,r) => s + S.num(r.grams), 0);
