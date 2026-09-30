@@ -29,7 +29,7 @@
     ]},
     { group:"耗材页", items:[["mats_manage","耗材管理（表单）"],["mats_list","我的耗材（列表）"]]},
     { group:"打印机页", items:[["pri_add","添加打印机（表单）"],["pri_list","我的打印机（列表）"]]},
-    { group:"设置页", items:[["set_general","常规"],["set_presets","预设管理"],["set_update","版本与更新"],["set_account","数据与账号"]]}
+    { group:"设置页", items:[["set_general","常规"],["set_presets","预设管理"],["set_bambu","拓竹云"],["set_update","版本与更新"],["set_account","数据与账号"]]}
   ];
   function can(perm){
     if(!perm) return true;
@@ -998,7 +998,7 @@ function goto(tab){
     try{
       localStorage.setItem(CALC_KEY, JSON.stringify({
         selMat:$("selMat").value, selPri:$("selPri").value,
-        rItem:$("rItem").value, rQty:$("rQty").value, rGPer:$("rGPer").value, rGrams:$("rGrams").value,
+        rItem:$("rItem").value, rItemName:$("rItemName").value, rQty:$("rQty").value, rGPer:$("rGPer").value, rGrams:$("rGrams").value,
         rHoursH:$("rHoursH").value, rHoursM:$("rHoursM").value, rTotHoursH:$("rTotHoursH").value, rTotHoursM:$("rTotHoursM").value,
         rMin:$("rMin").value, rNote:$("rNote").value,
         cbFil:$("cbFil").checked, cbElec:$("cbElec").checked, cbMach:$("cbMach").checked, cbLab:$("cbLab").checked,
@@ -1029,6 +1029,7 @@ function goto(tab){
         }
       }
       if(s.rMin) $("rMin").value = s.rMin;
+      if(s.rItemName) $("rItemName").value = s.rItemName;
       if(s.rNote) $("rNote").value = s.rNote;
       if(s.cbFil != null) $("cbFil").checked = !!s.cbFil;
       if(s.cbElec != null) $("cbElec").checked = !!s.cbElec;
@@ -1075,7 +1076,7 @@ function goto(tab){
           printerId:p ? p.id : null, priName:p ? p.name : null, powerW:p ? S.num(p.powerW) : 0, elecPrice:p ? S.num(p.elecPrice) : 0,
           grams:gTotal2, qty:S.num($("rQty").value) || 1, gPer:S.num($("rGPer").value) || 0, singleHours:sh, hours:h, handlingMin:min, cFil:c.cFil, cElec:c.cElec, cMach:c.cMach, cLab:lab, total:all, sug:lastCalc && lastCalc.sug,
           inclFil:incl.fil, inclElec:incl.elec, inclMach:incl.mach, inclLab:incl.lab,
-          consumed:gTotal2, note
+          consumed:gTotal2, itemName, note
         });
         applyMatsStock(S.records[i], -1); // 再按新明细扣减
         S.saveRec(); S.saveMat();
@@ -1091,12 +1092,13 @@ function goto(tab){
     const mats = [{ materialId:m.id, matName:m.name, matColor:m.color, grams:g, pricePerKg:S.num(m.pricePerKg) }]
       .concat(extras.map(x => { const mm = S.matById(x.matId); return { materialId:x.matId, matName:mm ? mm.name : null, matColor:mm ? mm.color : null, grams: Math.round(x.each * qty * 10) / 10, pricePerKg:S.num(mm ? mm.pricePerKg : 0) }; }));
     const gTotal2 = mats.reduce((s,x) => s + S.num(x.grams), 0);
+    const itemName = $("rItemName").value.trim();
     const rec0 = { id:S.uid(), date:S.today(), created:Date.now(), mats,
       materialId:m.id, matName:m.name, matType:m.type, matColor:m.color, pricePerKg:S.num(m.pricePerKg),
       printerId:p ? p.id : null, priName:p ? p.name : null, powerW:p ? S.num(p.powerW) : 0, elecPrice:p ? S.num(p.elecPrice) : 0,
       grams:gTotal2, qty:S.num($("rQty").value) || 1, gPer:S.num($("rGPer").value) || 0, singleHours:sh, hours:h, handlingMin:min, cFil:c.cFil, cElec:c.cElec, cMach:c.cMach, cLab:lab, total:all, sug:lastCalc && lastCalc.sug,
       inclFil:incl.fil, inclElec:incl.elec, inclMach:incl.mach, inclLab:incl.lab,
-      consumed:gTotal2, note };
+      consumed:gTotal2, itemName, note };
     S.records.unshift(rec0);
     applyMatsStock(rec0, -1); // 按明细逐项扣减库存
     S.saveRec(); S.saveMat();
@@ -1110,7 +1112,7 @@ function goto(tab){
     editingRecId = null;
     $("saveBtn").textContent = "保存为打印记录";
     $("cancelEditBtn").style.display = "none";
-    $("rGrams").value = ""; $("rQty").value = "1"; $("rGPer").value = ""; $("rHoursH").value = "0"; $("rHoursM").value = "0"; $("rTotHoursH").value = "0"; $("rTotHoursM").value = "0"; $("rMin").value = ""; $("rNote").value = ""; hAnchor = "single"; gQtyLast = 1;
+    $("rGrams").value = ""; $("rQty").value = "1"; $("rGPer").value = ""; $("rHoursH").value = "0"; $("rHoursM").value = "0"; $("rTotHoursH").value = "0"; $("rTotHoursM").value = "0"; $("rMin").value = ""; $("rItemName").value = ""; $("rNote").value = ""; hAnchor = "single"; gQtyLast = 1;
     $("homeMsg").textContent = "";
     applyDefaultLeadMin(); // 取消编辑后按默认处理耗时回到新打印状态
     enableSaveBtn();
@@ -1124,7 +1126,7 @@ function goto(tab){
     $("saveBtn").textContent = "保存为打印记录";
     $("cancelEditBtn").style.display = "none";
     $("selMat").value = ""; $("selPri").value = "";
-    $("rItem").value = ""; $("rGrams").value = ""; $("rQty").value = "1"; $("rGPer").value = ""; $("rHoursH").value = "0"; $("rHoursM").value = "0"; $("rTotHoursH").value = "0"; $("rTotHoursM").value = "0"; $("rMin").value = ""; $("rNote").value = ""; hAnchor = "single"; gQtyLast = 1;
+    $("rItem").value = ""; $("rItemName").value = ""; $("rGrams").value = ""; $("rQty").value = "1"; $("rGPer").value = ""; $("rHoursH").value = "0"; $("rHoursM").value = "0"; $("rTotHoursH").value = "0"; $("rTotHoursM").value = "0"; $("rMin").value = ""; $("rNote").value = ""; hAnchor = "single"; gQtyLast = 1;
     ["cbFil","cbElec","cbMach","cbLab"].forEach(id => $(id).checked = true);
     $("homeMsg").textContent = "";
     lastCalc = null;
@@ -1762,14 +1764,14 @@ function goto(tab){
       ? "上次抓取 " + new Date(bambuState.cfg.last.fetchedAt).toLocaleString("zh-CN", { month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit" }) : "";
   }
   async function loadBambu(){
-    const card = $("bambuCfgCard");
+    const pane = $("setp-bambu") || $("bambuCfgCard"); // 新结构优先检查独立面板
     if(!canUseBambu()){
-      if(card) card.hidden = true;
+      if(pane) pane.hidden = true;
       return renderBambuStatus();
     }
     try{ bambuState.cfg = await S.bambuGet(); }
     catch(e){ bambuState.cfg = { lan:[], cloud:{} }; }
-    if(card) card.hidden = false;
+    if(pane) pane.hidden = false;
     setBambuMode((bambuState.cfg && bambuState.cfg.mode) === "cloud" ? "cloud" : "lan");
     renderBambuLanRows();
     renderBambuStatus();
@@ -1971,7 +1973,7 @@ function goto(tab){
       renderBambuLanRows(); renderBambuStatus();
       bambuCfgMsg("已清除全部连接配置");
       $("bambuPrinterBox").hidden = true;
-      $("bambuTrayBox").hidden = true;
+      $("bambuMatBox").hidden = true;
       $("bambuReFetch").hidden = true;
     }catch(e){ bambuCfgMsg(e.message, true); }
   });
@@ -2105,20 +2107,22 @@ function goto(tab){
         <span class="muted bt-slot">${S.esc(d.devId || "")}</span>${act}</div>`;
     }).join("");
   }
-  $("bambuApplyPri").addEventListener("click", async () => {
+$("bambuSyncPrinter").addEventListener("click", async () => {
     const devices = bambuDevices();
     if(!devices.length){ toast("请先「获取设备与耗材」"); return; }
-    const optUpdate = $("bambuPriOptUpdate").checked, optCreate = $("bambuPriOptCreate").checked;
+    const optUpdate = $("bambuPriOptUpdate").checked, optCreate = $("bambuPriOptNew").checked;
+    const optPower = $("bambuPriOptPower").checked && bambuState.mode === "lan"; // 仅局域网模式支持填功率
     if(!optUpdate && !optCreate){ toast("请至少勾选一种同步方式"); return; }
-    if(optCreate && !(await confirmBox("未匹配的拓竹设备将新建为打印机：功率为经验预估值，电价 / 购入价等需之后手动补充，继续？"))) return;
+    if(optCreate && !(await confirmBox("未匹配的拓竹设备将新建为打印机" + (optPower ? "：功率为经验预估值" : "（功率留空，需之后手动补充") + "，电价 / 购入价等需之后手动补充，继续？"))) return;
     const now = Date.now();
     let updated = 0, created = 0, skipped = 0;
     devices.forEach(d => {
       const model = d.devModel || "";
       const p = matchBambuPrinter(d);
-      if(p){
+if(p){
         if(!optUpdate){ skipped++; return; }
         if(model && !String(p.model || "").trim()) p.model = model; // 只补空缺，不覆盖用户填写
+        if(optPower && model && !S.num(p.powerW)) p.powerW = BAMBU_POWER_EST[model] || p.powerW; // 勾选填功率时只补空缺
         p.bambuDevId = d.devId || p.bambuDevId || "";
         p.bambuSyncedAt = now;
         updated++;
@@ -2128,7 +2132,7 @@ function goto(tab){
           id: S.uid(),
           brand: "拓竹 Bambu Lab",
           model: model || (d.devName || "拓竹打印机"),
-          powerW: BAMBU_POWER_EST[model] || 100,
+          powerW: optPower ? (BAMBU_POWER_EST[model] || 100) : 0,
           elecPrice: 0,
           price: 0, depYears: 2, maintPerYear: 0, utilization: 50,
           bambuDevId: d.devId || "", bambuSyncedAt: now
@@ -2143,10 +2147,10 @@ function goto(tab){
     toast("打印机同步完成：更新 " + updated + " · 新建 " + created + (skipped ? " · 跳过 " + skipped : ""));
   });
   /* ---- 耗材预览与同步 ---- */
-  function renderBambuTrayPreview(){
-    const box = $("bambuTrayList");
+function renderBambuTrayPreview(){
+    const box = $("bambuMatList");
     const snap = bambuState.snap;
-    $("bambuTrayBox").hidden = !snap;
+    $("bambuMatBox").hidden = !snap;
     if(!snap){ box.innerHTML = ""; return; }
     let total = 0, html = "";
     snap.sources.forEach(src => {
@@ -2181,11 +2185,11 @@ total += dev.trays.length;
         }).join("");
       });
     });
-$("bambuTrayCount").textContent = total ? "· " + total + " 卷" : "";
+$("bambuMatCount").textContent = total ? "· " + total + " 卷" : "";
     box.innerHTML = total ? html : html + '<div class="empty">所有连接都没有读到托盘数据</div>';
   }
-  /* 手动改选：把某托盘绑定到材料库指定记录（或解除绑定 → 新建） */
-  $("bambuTrayList").addEventListener("change", e => {
+/* 手动改选：把某托盘绑定到材料库指定记录（或解除绑定 → 新建） */
+  $("bambuMatList").addEventListener("change", e => {
     const sel = e.target;
     if(!sel || sel.tagName !== "SELECT" || !sel.classList.contains("tray-pick")) return;
     const devId = sel.dataset.dev || "", slot = sel.dataset.slot || "";
@@ -2194,9 +2198,10 @@ $("bambuTrayCount").textContent = total ? "· " + total + " 卷" : "";
     renderBambuTrayPreview();
     toast(mid ? "已绑定该托盘到所选耗材，再次同步将沿用" : "已解除绑定，该托盘同步时将新建耗材");
   });
-  $("bambuApply").addEventListener("click", async () => {
+$("bambuSyncMat").addEventListener("click", async () => {
     const snap = bambuState.snap; if(!snap) return;
-    const optUpdate = $("bambuOptUpdate").checked, optCreate = $("bambuOptCreate").checked;
+    const optUpdate = $("bambuMatOptUpdate").checked, optCreate = $("bambuMatOptNew").checked;
+    const optZero = $("bambuMatOptZero").checked; // 将剩余量为 0 的料卷视为空卷，同步时清零
     if(!optUpdate && !optCreate){ toast("请至少勾选一种同步方式"); return; }
     if(optCreate && !(await confirmBox("未匹配的 AMS 料卷将按「品牌 + 类型 + 颜色」新建为耗材（单价需之后手动补充；云端耗材库条目按满卷 1000g 入库），继续？"))) return;
     const now = Date.now();
@@ -2209,7 +2214,7 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
       const { m } = matchBambuTray(t, devId, taken, isLib);
       if(m){
         if(!optUpdate){ skipped++; return; }
-        if(t.remaining != null) m.remaining = Math.min(Math.max(0, t.remaining), Math.max(S.num(m.spool), t.weight || 0));
+        if(t.remaining != null && (t.remaining > 0 || optZero)) m.remaining = Math.min(Math.max(0, t.remaining), Math.max(S.num(m.spool), t.weight || 0)); // 剩余 0 仅在勾选「视为空卷」时清零，避免误清本地库存
         if(t.uuid) m.bambuUuid = t.uuid;
         if(!isLib){ m.bambuDevId = devId; m.bambuSlot = t.slot; } // 云端库条目不绑定设备槽位
         m.bambuSyncedAt = now;
@@ -2327,14 +2332,14 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
   }
 
   /* ============ 打印记录 ============ */
-  const recFilt = { q:"", mat:"all", pri:"all", from:"", to:"" };
+  const recFilt = { q:"", mat:"all", pri:"all", from:"", to:"", sort:"dateDesc" };
   const frPick = initRangePicker("frRange", "frFrom", "frTo");
-  [["frSearch","q","value"],["frMat","mat","value"],["frPri","pri","value"],["frFrom","from","value"],["frTo","to","value"]]
+  [["frSearch","q","value"],["frMat","mat","value"],["frPri","pri","value"],["frFrom","from","value"],["frTo","to","value"],["frSort","sort","value"]]
     .forEach(([id, key]) => $(id).addEventListener("input", () => { recFilt[key] = $(id).value; renderRecList(); }));
   $("frClear").addEventListener("click", () => {
-    Object.assign(recFilt, { q:"", mat:"all", pri:"all", from:"", to:"" });
+    Object.assign(recFilt, { q:"", mat:"all", pri:"all", from:"", to:"", sort:"dateDesc" });
     $("frSearch").value = ""; $("frMat").value = "all"; $("frPri").value = "all";
-    $("frFrom").value = ""; $("frTo").value = "";
+    $("frFrom").value = ""; $("frTo").value = ""; $("frSort").value = "dateDesc";
     if(frPick) frPick.sync();
     renderRecList();
   });
@@ -2372,8 +2377,21 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
     if(recFilt.from) rs = rs.filter(r => (r.date || "") >= recFilt.from);
     if(recFilt.to) rs = rs.filter(r => (r.date || "") <= recFilt.to);
     if(recFilt.q){
-      rs = rs.filter(r => [matsLabel(recMats(r), false), r.note, r.priName].some(v => String(v || "").toLowerCase().includes(recFilt.q)));
+      rs = rs.filter(r => [matsLabel(recMats(r), false), r.note, r.priName, r.itemName].some(v => String(v || "").toLowerCase().includes(recFilt.q)));
     }
+    // 排序
+    const sortKey = recFilt.sort || "dateDesc";
+    rs.sort((a, b) => {
+      switch(sortKey){
+        case "dateDesc": return (b.date || "").localeCompare(a.date || "") || b.created - a.created;
+        case "dateAsc": return (a.date || "").localeCompare(b.date || "") || a.created - b.created;
+        case "costDesc": return S.num(b.total) - S.num(a.total);
+        case "costAsc": return S.num(a.total) - S.num(b.total);
+        case "gramsDesc": return S.num(b.grams) - S.num(a.grams);
+        case "gramsAsc": return S.num(a.grams) - S.num(b.grams);
+        default: return 0;
+      }
+    });
     const box = $("recList");
     if(!S.records.length){ box.innerHTML = '<div class="empty">还没有打印记录<br><span class="hint">去「计算器」算第一笔</span></div>'; return; }
     if(!rs.length){ box.innerHTML = '<div class="empty">没有符合筛选条件的记录</div>'; return; }
@@ -2403,6 +2421,7 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
             ${ms.length > 1 ? `<span class="m-plus" title="${S.esc(matsLabel(ms, true))}">+${ms.length-1}</span>` : ""}
             ${r.matType ? `<span class="type">${S.esc(r.matType)}</span>` : ""}
             ${r.priName ? `<span class="pri">${S.esc(r.priName)}</span>` : ""}
+            ${r.itemName ? `<span class="item-name">${S.esc(r.itemName)}</span>` : ""}
           </div>
           <div class="total">${S.money(tot)}</div>
         </div>
@@ -2425,6 +2444,11 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
     // 编辑记录：回填计算器表单并进入编辑模式
     box.querySelectorAll("[data-edtr]").forEach(b => b.addEventListener("click", () => {
       const r = S.records.find(x => x.id === b.getAttribute("data-edtr")); if(!r) return;
+      // 重置编辑状态（清除上一条记录可能残留的字段值）
+      editingRecId = null;
+      $("rItemName").value = ""; $("rNote").value = "";
+      $("rGrams").value = ""; $("rQty").value = "1"; $("rGPer").value = "";
+      hAnchor = "single"; gQtyLast = 1;
       editingRecId = r.id;
       goto("calc");
       // 先确保选择器已填充（避免 goto 时 fillSelects 用旧空值覆盖）
@@ -2448,6 +2472,7 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
       $("rTotHoursM").value = String(Math.min(55, Math.round((th0 - Math.floor(th0)) * 60 / 5) * 5));
       hAnchor = "total"; // 编辑记录：以总打印时间为事实，改数量时保持总时间、反推单个时长
       $("rMin").value = r.handlingMin != null ? String(r.handlingMin) : "";
+      $("rItemName").value = r.itemName || "";
       $("rNote").value = r.note || "";
       $("cbFil").checked = r.inclFil !== false;
       $("cbElec").checked = r.inclElec !== false;
@@ -2548,7 +2573,7 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
   /* ============ 设置页 Tab 切换 ============ */
   let activeSetPane = "general";
   let setPaneShown = null; // 上次渲染的面板，用于仅在真正切换时播放动画
-  const SET_PANE_PERM = { general:"set_general", presets:"set_presets", update:"set_update", data:"set_account" };
+  const SET_PANE_PERM = { general:"set_general", presets:"set_presets", bambu:"set_bambu", update:"set_update", data:"set_account" };
   function renderSetTabs(){
     document.querySelectorAll("#setTabs button").forEach(b => {
       b.hidden = !can(SET_PANE_PERM[b.getAttribute("data-p")]); // 无权限的标签直接隐藏
@@ -2576,6 +2601,9 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
     }
     if(activeSetPane === "data"){
       if(typeof loadUserMgmt === "function") loadUserMgmt();
+    }
+    if(activeSetPane === "bambu"){
+      loadBambu();
     }
   }
   $("setTabs").addEventListener("click", e => {

@@ -312,6 +312,7 @@ const Store = (function(){
   async function flush(){
     const cols = Array.from(dirty); dirty.clear();
     saving += cols.length;
+    let authLost = false; // 本轮是否出现 401：会话失效时标记，统一到循环后触发登录门
     for(const col of cols){
       const val = col === "settings" ? settings : col === "achievements" ? Array.from(achKeys) : stateCol(col);
       try{
@@ -328,14 +329,15 @@ const Store = (function(){
         // 检测 401：支持 "HTTP 401" 格式（来自 throw Error("HTTP " + r.status)）
         // 也支持直接返回 401 的 fetch 错误
         if(mode === "server" && e.message && (e.message.indexOf("401") >= 0 || e.status === 401)){
-          // 会话失效：不整页刷新（会清空已填表单），改为弹登录门；重新登录后自动重试保存
-          auth.ok = false;
-          emitAuthChange();
-          return;
+          // 会话失效：当前列已保留在 dirty，不中断同批次剩余列（否则其余列被 clear 后静默丢失），
+          // 循环结束后统一弹登录门；重新登录后按内存最新状态自动重试保存
+          authLost = true;
+          continue;
         }
         console.warn("保存失败", col, e);
       }
     }
+    if(authLost){ auth.ok = false; emitAuthChange(); }
   }
   function pushAll(){ COLS.forEach(c => push(c)); }
   const stateCol = col => ({ materials, printers, records, orders })[col];
@@ -382,6 +384,7 @@ const Store = (function(){
       if(r.handlingMin == null) r.handlingMin = 0;
       if(r.cMach == null) r.cMach = 0;
       if(r.cLab == null) r.cLab = 0;
+      if(r.itemName == null) r.itemName = "";
     });
     // 利润加成迁移：旧数字 markupPct → 分成本项对象；旧 markups → 先转数字再转对象
     const oldNum = typeof settings.markupPct === "number" ? settings.markupPct : (settings.markup != null ? Math.max(0, Math.round((num(settings.markup) - 1) * 100)) : null);
@@ -470,9 +473,11 @@ const Store = (function(){
     auth.ok = true;
     const u = d.user || {};
     auth.role = u.role; auth.userId = u.id; auth.username = u.username; auth.perms = u.perms || null; auth.email = u.email || "";
+    // 先重试会话失效期间未保存成功的数据（此时内存仍是 401 时刻的最新状态，含新记录与库存扣减），
+    // 再 tryLoad 用服务端数据覆盖——若顺序颠倒，未保存的新记录会被旧数据覆盖并永久丢失
+    if(dirty.size) await flush();
     await tryLoad();
     emitAuthChange();
-    if(dirty.size) flush(); // 会话失效期间未保存成功的数据，登录后自动重试
   }
   /* 开放模式下创建第一个管理员（服务端首个注册用户自动为 admin），成功后整站转为密码保护 */
   async function createAdmin(username, pw){
