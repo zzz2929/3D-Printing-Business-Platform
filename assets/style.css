@@ -196,6 +196,8 @@ body{
 .set-fields{display:flex;flex-direction:column;gap:14px}
 .field-row{display:flex;flex-direction:column;gap:4px}
 .field-row label{font-size:12.5px;color:var(--sub);letter-spacing:.02em}
+/* 设置页选项框长度适当：短内容（货币/启动页/字号/字体/主题）不撑满整行 */
+.set-grid .field-row select{max-width:min(100%, 320px);align-self:flex-start}
 .field-row.compact{margin-bottom:-2px}
 .field-row.compact label{font-size:12px;color:var(--faint)}
 .field-group{padding:12px 14px;border:1px dashed var(--line2);border-radius:8px;background:var(--panel);display:flex;flex-direction:column;gap:10px}
@@ -378,8 +380,12 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 .rec .acts{display:flex;gap:6px;margin-top:11px;flex-wrap:wrap}
 @media(max-width:640px){.rec .grid{grid-template-columns:repeat(2,1fr)}}
 
-.filter-bar{display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin-bottom:12px}
-@media(max-width:640px){.filter-bar{grid-template-columns:1fr}}
+/* 筛选栏：flex 换行自适应。搜索框弹性共享剩余宽度；选项框限宽避免短内容（状态/排序）撑满整行，窄屏自动换行单列 */
+.filter-bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center}
+.filter-bar input{flex:1 1 148px;min-width:0}
+.filter-bar select{flex:1 1 148px;max-width:260px;min-width:0}
+#frSearch{flex:2 1 170px}
+@media(max-width:640px){.filter-bar input,.filter-bar select{flex-basis:100%}}
 
 /* ---------- 库存条 ---------- */
 .stock{height:5px;background:var(--line);border-radius:4px;overflow:hidden;margin-top:6px;position:relative}
@@ -726,7 +732,7 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 .em-head{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--sub);font-weight:600;flex-wrap:wrap}
 .em-head .em-tip{font-weight:400;font-size:11px;color:var(--faint)}
 .em-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.em-row .em-mat{flex:1 1 220px;max-width:300px;border-radius:8px}
+.em-row .em-mat{flex:1 1 220px;max-width:360px;border-radius:8px}
 .em-row .em-g{width:100px}
 .em-row .em-unit{font-size:12px;color:var(--faint)}
 .em-row .em-hint{flex:1 1 100%;font-size:11px;color:var(--faint)}
