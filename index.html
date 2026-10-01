@@ -218,17 +218,27 @@
             <div class="sect-label">打印成本 · 耗材 + 电 + 机器折旧 + 人工</div>
             <div class="grid g2">
               <div><label>打印机</label><select id="oPri"></select><div class="hint" id="oPriHint">—</div></div>
+              <div style="grid-column:1/-1">
+                <div class="seg" id="oModeTabs" role="tablist" aria-label="耗材填写口径">
+                  <button type="button" class="on" data-mode="per" role="tab" aria-selected="true">按单个</button>
+                  <button type="button" data-mode="total" role="tab" aria-selected="false">按整体</button>
+                </div>
+                <div class="hint" id="oModeHint">主耗材与附加耗材克数均按每个打印件填写，总克重 = 各耗材之和 × 数量</div>
+              </div>
               <div style="grid-column:1/-1" id="ordMats">
-                <div class="em-row mat-main"><label class="em-lab">耗材<i class="dot"></i></label><select id="oMat" class="em-mat"></select><input id="oG" class="em-g" type="number" min="0" step="0.1" placeholder="总克重"><span class="em-unit">g</span><span class="em-hint" id="oMatHint">—</span></div>
+                <div class="em-row mat-main"><label class="em-lab">耗材<i class="dot"></i></label><select id="oMat" class="em-mat"></select><input id="oG" class="em-g" type="number" min="0" step="0.1" placeholder="单个克数"><span class="em-unit">g</span><span class="em-hint" id="oMatHint">—</span></div>
                 <div id="ordExtraRows"></div>
               </div>
               <div class="grid g3" style="grid-column:1/-1">
                 <div><label>打印数量（件）</label><input id="oQty" type="number" min="1" step="1" value="1" placeholder="本批打印件数" /></div>
-                <div><label>单个克重（g）</label><input id="oGPer" type="number" min="0" step="0.1" placeholder="每个的用量" /><div class="hint">主耗材每个打印件用量</div></div>
+                <div><label>单个克重（g）</label><input id="oGPer" type="text" readonly value="0" placeholder="自动计算" /><div class="hint">每个打印件的耗材总用量（自动计算 = 各耗材合计 ÷ 数量）</div></div>
                 <div><label>总克重（g）</label><input id="oGTotal" type="text" readonly value="0" /><div class="hint">所有耗材合计，自动计算</div></div>
               </div>
-              <div><label>总时长（h）</label><input id="oH" type="number" min="0" step="0.1" placeholder="如 6.5" /></div>
-              <div><label>处理耗时（分钟）</label><input id="oMin" type="number" min="0" step="1" placeholder="接单沟通+交付" /><div class="hint">按人工时薪折算</div></div>
+              <div class="grid g3" style="grid-column:1/-1">
+                <div><label>单个打印时长（h）</label><input id="oSh" type="number" min="0" step="0.1" placeholder="如 2.0" /></div>
+                <div><label>总时长（h）</label><input id="oH" type="number" min="0" step="0.1" placeholder="如 6.5" /><div class="hint">双向联动：编辑哪个以哪个为基准换算</div></div>
+                <div><label>处理耗时（分钟）</label><input id="oMin" type="number" min="0" step="1" placeholder="接单沟通+交付" /><div class="hint">按人工时薪折算</div></div>
+              </div>
             </div>
           </div>
           <div class="sect">
@@ -902,7 +912,7 @@
 <script src="assets/vendor/flatpickr/flatpickr.min.js?v=64"></script>
 <script src="assets/vendor/flatpickr/zh.js?v=64"></script>
 <script src="assets/store.js?v=76"></script>
-<script src="assets/app.js?v=113"></script>
+<script src="assets/app.js?v=116"></script>
 <script>
 /* 保存即刷新：Node 服务端监听到前端文件变更时经 /__reload (SSE) 通知页面自动 reload。
    仅 Node/Docker 宿主提供该通道；Workers/Vercel 或本地 file:// 打开时连接失败即静默停用。 */
