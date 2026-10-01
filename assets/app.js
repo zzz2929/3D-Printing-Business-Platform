@@ -829,14 +829,19 @@ function goto(tab){
 
     $("matHint").textContent = m ? `单价 ${S.money(S.num(m.pricePerKg))}/kg · 剩余 ${S.fmt(m.remaining, 0)}g` : "必选：去「耗材」页添加";
     $("priHint").textContent = p ? `功率 ${S.num(p.powerW)}W · 电价 ${S.num(p.elecPrice)} 元/度 · 机器 ${S.money(S.machineRate(p))}/h` : "可选：不选则只算耗材与人工";
-    /* 附加耗材：同一打印消耗多种耗材时按明细合计耗材成本与总克数（行内单个克数 × 数量） */
+    /* 耗材口径：per=各耗材按单个打印件用量填写；total=各耗材按整批总用量填写
+       单个克重 = 总克重 ÷ 数量（qty=1 时两者均为各耗材之和） */
+    const isTotal = gModeNow() === "total";
     const extras = extraMatsFromDom();
-    const gExtra = extras.reduce((s,x) => s + x.each * qty, 0);
-    const gTotal = g + gExtra;
+    const gMainTotal = isTotal ? g : g * qty; // 主耗材总克数
+    const gExtTotals = extras.map(x => isTotal ? x.each : x.each * qty); // 各附加耗材总克数
+    const gTotal = gMainTotal + gExtTotals.reduce((s, v) => s + v, 0);
+    const gPer = qty > 0 ? gTotal / qty : gTotal; // 单个克重
     const c = S.computePrint(m, p, gTotal, h);
-    c.cFil = (m ? S.num(m.pricePerKg)/1000 * g : 0) + extras.reduce((s,x) => { const mm = S.matById(x.matId); return s + (mm ? S.num(mm.pricePerKg)/1000 * x.each * qty : 0); }, 0);
+    c.cFil = (m ? S.num(m.pricePerKg)/1000 * gMainTotal : 0) + extras.reduce((s, x, i) => { const mm = S.matById(x.matId); return s + (mm ? S.num(mm.pricePerKg)/1000 * gExtTotals[i] : 0); }, 0);
     const et = $("extraTot"); if(et) et.textContent = extras.length ? "耗材成本 " + S.money(c.cFil) : "同一打印消耗多种耗材时在此添加";
     const rt = $("rGTotal"); if(rt) rt.value = gTotal > 0 ? S.fmt(gTotal, 1) : "0";
+    const rp = $("rGPer"); if(rp) rp.value = gPer > 0 ? S.fmt(gPer, 1) : "0";
     const lab = (m || p || min) ? S.laborCost(min) : 0;
     /* 勾选才计入总成本；未勾选项半透明展示，金额仍可见 */
     const incl = { fil:$("cbFil").checked, elec:$("cbElec").checked, mach:$("cbMach").checked, lab:$("cbLab").checked };
@@ -862,9 +867,9 @@ function goto(tab){
     if(incl.mach) sugParts.push(`机器+${S.fmt(mp.mach, 0)}%`);
     if(incl.lab)  sugParts.push(`人工+${S.fmt(mp.lab, 0)}%`);
     $("costSug").textContent = sug > 0 ? S.money(sug) + "（" + sugParts.join(" ") + "）" : "—";
-    lastCalc = { matId:$("selMat").value, priId:$("selPri").value, qty, g:gTotal, gMain:g, h, sh, min, note:$("rNote").value.trim(), sug, incl, mats: extras.map(x => ({ matId:x.matId, grams: Math.round(x.each * qty * 10) / 10 })) };
+    lastCalc = { matId:$("selMat").value, priId:$("selPri").value, qty, g:gTotal, gMain:gMainTotal, gPer, h, sh, min, note:$("rNote").value.trim(), itemName:$("rItemName").value.trim(), gMode:gModeNow(), sug, incl, mats: extras.map((x, i) => ({ matId:x.matId, grams: Math.round(gExtTotals[i] * 10) / 10 })) };
     saveCalcState();
-    return { m, p, qty, g, gMain:g, gTotal, h, sh, min, c, lab, all, sug, incl, extras };
+    return { m, p, qty, g:gMainTotal, gPer, gTotal, h, sh, min, c, lab, all, sug, incl, extras: extras.map((x, i) => ({ matId:x.matId, each:x.each, totalGrams: Math.round(gExtTotals[i] * 10) / 10 })) };
   }
   /* selMat 由 renderMatRows 动态创建，其变更经 #extraMats 事件委托触发 calc，这里只绑静态元素 */
   ["selPri","rMin","cbFil","cbElec","cbMach","cbLab"].forEach(id => $(id).addEventListener("input", calc));
@@ -881,10 +886,14 @@ function goto(tab){
     const prev = { sel: $("selMat") ? $("selMat").value : "", grams: $("rGrams") ? $("rGrams").value : "" };
     const rows = state && Array.isArray(state) ? state : [...box.querySelectorAll(".em-row:not(.mat-main)")].map(row => ({ matId: row.querySelector(".em-mat").value, each: row.querySelector(".em-g").value }));
     if(append) rows.push({ matId:"", each:"" });
+    const isTotal = gModeNow() === "total";
+    const gPh = isTotal ? "整批总克数" : "单个克数"; // 输入口径：total=整批总用量 / per=单件用量
+    const gUnit = isTotal ? "g" : "g/件";
+    const gHint = isTotal ? "必选耗材后填整批总用量" : "必选耗材后填每个的用量";
     box.innerHTML =
       '<div class="em-row mat-main"><label class="em-lab">耗材<i class="dot"></i></label>' +
         '<select id="selMat" class="em-mat">' + matOpts() + '</select>' +
-        '<input id="rGrams" class="em-g" type="number" min="0" step="0.1" placeholder="耗材克数" value="' + S.esc(String(prev.grams)) + '">' +
+        '<input id="rGrams" class="em-g" type="number" min="0" step="0.1" placeholder="' + gPh + '" value="' + S.esc(String(prev.grams)) + '">' +
         '<span class="em-unit">g</span>' +
         '<span class="em-hint" id="matHint">—</span></div>' +
       '<div class="em-head">附加耗材 <span class="em-tip" id="extraTot"></span></div>' +
@@ -892,7 +901,7 @@ function goto(tab){
         const matId = o.matId || "", each = o.each != null ? o.each : "";
         const m = matId ? S.matById(matId) : null;
         const opts = '<option value="">— 选择耗材 —</option>' + S.materials.map(x => `<option value="${x.id}" ${x.id === matId ? "selected" : ""}>${S.esc(S.matLabel(x))} · 剩 ${S.fmt(x.remaining,0)}g</option>`).join("");
-        return `<div class="em-row" data-i="${i}"><select class="em-mat" aria-label="附加耗材">${opts}</select><input class="em-g" type="number" min="0" step="0.1" placeholder="单个克数" value="${S.esc(String(each))}"><span class="em-unit">g/件</span><button class="em-del" type="button" title="移除该耗材">×</button><span class="em-hint">${m ? "单价 " + S.money(S.num(m.pricePerKg)) + "/kg · 剩余 " + S.fmt(m.remaining,0) + "g" : "必选耗材后填每个的用量"}</span></div>`;
+        return `<div class="em-row" data-i="${i}"><select class="em-mat" aria-label="附加耗材">${opts}</select><input class="em-g" type="number" min="0" step="0.1" placeholder="${gPh}" value="${S.esc(String(each))}"><span class="em-unit">${gUnit}</span><button class="em-del" type="button" title="移除该耗材">×</button><span class="em-hint">${m ? "单价 " + S.money(S.num(m.pricePerKg)) + "/kg · 剩余 " + S.fmt(m.remaining,0) + "g" : gHint}</span></div>`;
       }).join("") +
       '<button class="btn ghost sm em-add" type="button">＋ 添加耗材</button>';
     const sm = $("selMat"); if(sm && prev.sel) sm.value = prev.sel;
@@ -903,13 +912,8 @@ function goto(tab){
   if(emBox){
     emBox.addEventListener("change", e => { if(e.target.closest(".em-row")) calc(); });
     emBox.addEventListener("input", e => {
-      const row = e.target.closest(".em-row"); if(!row || e.target.id === "rGrams") return;
-      /* 附加耗材克数变化：按总克数口径联动单个克数（总克数 = 主耗材 + 附加合计） */
-      if(e.target.classList.contains("em-g") && gAnchor !== "gPer"){
-        const qty = Math.max(1, S.num($("rQty").value) || 1);
-        if(S.num($("rGrams").value) > 0 || gExtraSum() > 0) $("rGPer").value = Math.round((S.num($("rGrams").value) + gExtraSum()) / qty * 10) / 10;
-      }
-      calc();
+      const row = e.target.closest(".em-row"); if(!row) return;
+      calc(); /* 克数输入按当前口径直接参与计算（per=单件 / total=整批），单个克重与总克重自动刷新 */
     });
     emBox.addEventListener("click", e => {
       const del = e.target.closest(".em-del");
@@ -918,19 +922,15 @@ function goto(tab){
       if(add){ renderMatRows(null, true); calc(); }
     });
   }
-  /* 打印数量 × 单个克重 ↔ 总克重 联动（以最后编辑的字段为基准，避免互相覆盖） */
-  let gAnchor = "grams"; // 最后一次用户编辑的克数字段：grams（主耗材）/ gPer / qty
-  let gQtyLast = 1; // 上一次打印数量：克数随数量等比缩放的基准
-  function gExtraSum(){ const q = Math.max(1, S.num($("rQty").value) || 1); return extraMatsFromDom().reduce((s,x) => s + x.each, 0) * q; }
-  /* 耗材克数填写口径：per=按单个物品用量（主耗材克数按单个填写、随数量联动）；total=按整批总用量（主耗材克数直填整批总量、不随数量变化） */
+  /* 耗材克数填写口径：per=各耗材按单个打印件用量填写；total=各耗材按整批总用量填写 */
   function gModeNow(){ const t = document.querySelector("#gModeTabs button.on"); return (t && ["per","total"].includes(t.dataset.mode)) ? t.dataset.mode : "per"; }
   function applyGMode(){
     const isTotal = gModeNow() === "total";
-    if($("rGPer")) $("rGPer").readOnly = isTotal;
+    if($("rGPer")) $("rGPer").readOnly = true; // 单个克重为派生展示值（总克重 ÷ 数量），不手动填写
     const mh = $("gModeHint");
-    if(mh) mh.textContent = isTotal ? "主耗材克数按整批总用量填写，数量变化不影响克数" : "主耗材克数按每个打印件填写，随数量联动";
+    if(mh) mh.textContent = isTotal ? "主耗材与附加耗材克数均按整批总用量填写，总克重自动合计" : "主耗材与附加耗材克数均按每个打印件填写，总克重 = 各耗材之和 × 数量";
     const ph = $("gPerHint");
-    if(ph) ph.textContent = isTotal ? "整批均值（自动计算，含附加耗材）" : "每个打印件的耗材总用量";
+    if(ph) ph.textContent = isTotal ? "整批均值（自动计算 = 总克重 ÷ 数量，含附加耗材）" : "每个打印件的耗材总用量（自动计算 = 各耗材之和）";
   }
   function setGMode(mode){
     const m = mode === "total" ? "total" : "per";
@@ -946,25 +946,13 @@ function goto(tab){
     const b = e.target.closest("button[data-mode]");
     if(!b || b.classList.contains("on")) return;
     setGMode(b.dataset.mode);
+    renderMatRows(null); // 重建耗材行以同步 placeholder/单位（输入值保留）
     calc();
   });
   applyGMode();
   $("rQty").addEventListener("input", () => {
     const qty = Math.max(1, S.num($("rQty").value) || 1);
-    const gPer = S.num($("rGPer").value);
-    if(gModeNow() === "total"){
-      /* 整批口径：主耗材克数即整批总用量，不随数量等比缩放；仅刷新“单个克数”展示值（含附加耗材均摊） */
-      if(S.num($("rGrams").value) > 0 || gExtraSum() > 0) $("rGPer").value = Math.round((S.num($("rGrams").value) + gExtraSum()) / qty * 10) / 10;
-    } else if(gAnchor === "gPer" && gPer > 0){ const v = qty * gPer - gExtraSum(); $("rGrams").value = Math.max(0, Math.round(v * 10) / 10); }
-    else if(S.num($("rGrams").value) > 0 || gExtraSum() > 0){
-      /* 克数按打印数量等比缩放：直填的主耗材克数按“单个”口径随数量增减（成本与报价始终按数量来） */
-      const per = S.num($("rGrams").value) / Math.max(1, gQtyLast);
-      $("rGrams").value = Math.max(0, Math.round(per * qty * 10) / 10);
-      $("rGPer").value = Math.round((S.num($("rGrams").value) + gExtraSum()) / qty * 10) / 10;
-    }
-    gAnchor = "qty";
-    gQtyLast = qty;
-    /* 时长联动：单个时长是锚点时总时间=qty×单个；总时间是锚点时保持总时间、反推单个 */
+    /* 数量变化：克数输入保持原口径不变（per=单件 / total=整批），单个克重与总克重由 calc() 自动换算 */
     if(hAnchor !== "total" || !(S.num($("rTotHoursH").value) + S.num($("rTotHoursM").value) / 60 > 0)){
       syncTotalHours();
     }else{
@@ -973,22 +961,10 @@ function goto(tab){
     }
     calc();
   });
-  $("rGPer").addEventListener("input", () => {
-    const qty = Math.max(1, S.num($("rQty").value) || 1);
-    /* 整批口径下“单个克数”为展示值（只读），不折算主耗材克数、也不改写锚点 */
-    if(gModeNow() !== "total"){
-      gAnchor = "gPer";
-      if(S.num($("rGPer").value) > 0){ const v = qty * S.num($("rGPer").value) - gExtraSum(); $("rGrams").value = Math.max(0, Math.round(v * 10) / 10); }
-    }
-    calc();
-  });
+  /* rGPer 为派生展示值（总克重 ÷ 数量），只读，不参与输入联动 */
   /* rGrams 由耗材区动态渲染（主耗材行），用 document 级委托绑定输入联动 */
   document.addEventListener("input", e => {
     if(!e.target || e.target.id !== "rGrams") return;
-    const qty = Math.max(1, S.num($("rQty").value) || 1);
-    const grams = S.num($("rGrams").value);
-    if(grams > 0 || gExtraSum() > 0) $("rGPer").value = Math.round((grams + gExtraSum()) / qty * 10) / 10;
-    gAnchor = "grams";
     calc();
   });
 
@@ -1036,7 +1012,7 @@ function goto(tab){
         rHoursH:$("rHoursH").value, rHoursM:$("rHoursM").value, rTotHoursH:$("rTotHoursH").value, rTotHoursM:$("rTotHoursM").value,
         rMin:$("rMin").value, rNote:$("rNote").value,
         cbFil:$("cbFil").checked, cbElec:$("cbElec").checked, cbMach:$("cbMach").checked, cbLab:$("cbLab").checked,
-        gAnchor, hAnchor, extraRows: extraMatsFromDom().map(x => ({ matId:x.matId, each:x.each }))
+        hAnchor, extraRows: extraMatsFromDom().map(x => ({ matId:x.matId, each:x.each }))
       }));
     }catch(_){}
   }
@@ -1046,7 +1022,7 @@ function goto(tab){
       if(!s || typeof s !== "object") return;
       if(s.selMat) $("selMat").value = s.selMat;
       if(s.selPri) $("selPri").value = s.selPri;
-      if(s.rQty){ $("rQty").value = s.rQty; gQtyLast = Math.max(1, S.num(s.rQty) || 1); }
+      if(s.rQty){ $("rQty").value = s.rQty; }
       if(s.rGPer != null) $("rGPer").value = String(s.rGPer);
       if(s.rGrams != null) $("rGrams").value = String(s.rGrams);
       if(s.rHoursH != null) $("rHoursH").value = String(s.rHoursH);
@@ -1068,7 +1044,6 @@ function goto(tab){
       if(s.cbElec != null) $("cbElec").checked = !!s.cbElec;
       if(s.cbMach != null) $("cbMach").checked = !!s.cbMach;
       if(s.cbLab != null) $("cbLab").checked = !!s.cbLab;
-      if(s.gAnchor && ["grams","gPer","qty"].includes(s.gAnchor)) gAnchor = s.gAnchor;
       if(s.hAnchor && ["single","total"].includes(s.hAnchor)) hAnchor = s.hAnchor;
       if(s.rGMode) setGMode(s.rGMode === "total" ? "total" : "per");
       if(Array.isArray(s.extraRows)) renderMatRows(s.extraRows.map(x => ({ matId:x.matId || "", each:x.each != null ? x.each : (x.grams != null ? x.grams : "") })));
@@ -1086,15 +1061,15 @@ function goto(tab){
     if(e.target && e.target.closest("#page-calc")) enableSaveBtn();
   }, true);
   $("saveBtn").addEventListener("click", () => {
-    const { m, p, g, h, sh, min, c, lab, all, incl } = calc();
-    const extras = extraMatsFromDom();
-    const qty = Math.max(1, S.num($("rQty").value) || 1); // 数量：多耗材附加行按 qty 折算总克数（旧版缺失导致多耗材保存崩溃）
+    const { m, p, g, gPer, h, sh, min, c, lab, all, incl, extras } = calc();
+    const qty = Math.max(1, S.num($("rQty").value) || 1); // 数量：多耗材附加行按口径折算总克数（旧版缺失导致多耗材保存崩溃）
     if(!m){ $("homeMsg").textContent = "请先选择耗材（必填）"; toast("耗材为必填项"); return; }
     if(g <= 0){ $("homeMsg").textContent = "请填写主耗材克重（必填）"; toast("主耗材克重为必填项"); return; }
     if(all <= 0){ $("homeMsg").textContent = "至少勾选一项成本计入"; toast("请至少勾选一项成本"); return; }
     $("saveBtn").disabled = true; $("saveBtn").textContent = "已保存"; // 防连点：保存成功后禁用，修改表单才恢复
     const note = $("rNote").value.trim();
     const itemName = $("rItemName").value.trim();
+    const gMode = gModeNow();
     /* 编辑模式：更新原记录并联动库存（先回补旧克数，再按新材料/新克数扣减） */
     if(editingRecId){
       const i = S.records.findIndex(r => r.id === editingRecId);
@@ -1102,15 +1077,14 @@ function goto(tab){
       else {
         const old = S.records[i];
         applyMatsStock(old, +1); // 先按旧记录明细回补库存（旧单耗材记录自动派生）
-        const qtyNow = Math.max(1, S.num($("rQty").value) || 1);
         const mats = [{ materialId:m.id, matName:m.name, matColor:m.color, grams:g, pricePerKg:S.num(m.pricePerKg) }]
-          .concat(extras.map(x => { const mm = S.matById(x.matId); return { materialId:x.matId, matName:mm ? mm.name : null, matColor:mm ? mm.color : null, grams: Math.round(x.each * qtyNow * 10) / 10, pricePerKg:S.num(mm ? mm.pricePerKg : 0) }; }));
+          .concat(extras.map(x => { const mm = S.matById(x.matId); return { materialId:x.matId, matName:mm ? mm.name : null, matColor:mm ? mm.color : null, grams: Math.round(S.num(x.totalGrams) * 10) / 10, pricePerKg:S.num(mm ? mm.pricePerKg : 0) }; }));
         const gTotal2 = mats.reduce((s,x) => s + S.num(x.grams), 0);
         S.records[i] = Object.assign({}, old, {
           mats,
           materialId:m.id, matName:m.name, matType:m.type, matColor:m.color, pricePerKg:S.num(m.pricePerKg),
           printerId:p ? p.id : null, priName:p ? p.name : null, powerW:p ? S.num(p.powerW) : 0, elecPrice:p ? S.num(p.elecPrice) : 0,
-          grams:gTotal2, qty:S.num($("rQty").value) || 1, gPer:S.num($("rGPer").value) || 0, singleHours:sh, hours:h, handlingMin:min, cFil:c.cFil, cElec:c.cElec, cMach:c.cMach, cLab:lab, total:all, sug:lastCalc && lastCalc.sug,
+          grams:gTotal2, qty, gPer, gMode, singleHours:sh, hours:h, handlingMin:min, cFil:c.cFil, cElec:c.cElec, cMach:c.cMach, cLab:lab, total:all, sug:lastCalc && lastCalc.sug,
           inclFil:incl.fil, inclElec:incl.elec, inclMach:incl.mach, inclLab:incl.lab,
           consumed:gTotal2, itemName, note
         });
@@ -1126,12 +1100,12 @@ function goto(tab){
       }
     }
     const mats = [{ materialId:m.id, matName:m.name, matColor:m.color, grams:g, pricePerKg:S.num(m.pricePerKg) }]
-      .concat(extras.map(x => { const mm = S.matById(x.matId); return { materialId:x.matId, matName:mm ? mm.name : null, matColor:mm ? mm.color : null, grams: Math.round(x.each * qty * 10) / 10, pricePerKg:S.num(mm ? mm.pricePerKg : 0) }; }));
+      .concat(extras.map(x => { const mm = S.matById(x.matId); return { materialId:x.matId, matName:mm ? mm.name : null, matColor:mm ? mm.color : null, grams: Math.round(S.num(x.totalGrams) * 10) / 10, pricePerKg:S.num(mm ? mm.pricePerKg : 0) }; }));
     const gTotal2 = mats.reduce((s,x) => s + S.num(x.grams), 0);
     const rec0 = { id:S.uid(), date:S.today(), created:Date.now(), mats,
       materialId:m.id, matName:m.name, matType:m.type, matColor:m.color, pricePerKg:S.num(m.pricePerKg),
       printerId:p ? p.id : null, priName:p ? p.name : null, powerW:p ? S.num(p.powerW) : 0, elecPrice:p ? S.num(p.elecPrice) : 0,
-      grams:gTotal2, qty:S.num($("rQty").value) || 1, gPer:S.num($("rGPer").value) || 0, singleHours:sh, hours:h, handlingMin:min, cFil:c.cFil, cElec:c.cElec, cMach:c.cMach, cLab:lab, total:all, sug:lastCalc && lastCalc.sug,
+      grams:gTotal2, qty, gPer, gMode, singleHours:sh, hours:h, handlingMin:min, cFil:c.cFil, cElec:c.cElec, cMach:c.cMach, cLab:lab, total:all, sug:lastCalc && lastCalc.sug,
       inclFil:incl.fil, inclElec:incl.elec, inclMach:incl.mach, inclLab:incl.lab,
       consumed:gTotal2, itemName, note };
     S.records.unshift(rec0);
@@ -1147,7 +1121,7 @@ function goto(tab){
     editingRecId = null;
     $("saveBtn").textContent = "保存为打印记录";
     $("cancelEditBtn").style.display = "none";
-    $("rGrams").value = ""; $("rQty").value = "1"; $("rGPer").value = ""; $("rHoursH").value = "0"; $("rHoursM").value = "0"; $("rTotHoursH").value = "0"; $("rTotHoursM").value = "0"; $("rMin").value = ""; $("rItemName").value = ""; $("rNote").value = ""; hAnchor = "single"; gQtyLast = 1;
+    $("rGrams").value = ""; $("rQty").value = "1"; $("rGPer").value = ""; $("rHoursH").value = "0"; $("rHoursM").value = "0"; $("rTotHoursH").value = "0"; $("rTotHoursM").value = "0"; $("rMin").value = ""; $("rItemName").value = ""; $("rNote").value = ""; hAnchor = "single";
     $("homeMsg").textContent = "";
     applyDefaultLeadMin(); // 取消编辑后按默认处理耗时回到新打印状态
     enableSaveBtn();
@@ -1161,7 +1135,7 @@ function goto(tab){
     $("saveBtn").textContent = "保存为打印记录";
     $("cancelEditBtn").style.display = "none";
     $("selMat").value = ""; $("selPri").value = "";
-    $("rItemName").value = ""; $("rGrams").value = ""; $("rQty").value = "1"; $("rGPer").value = ""; $("rHoursH").value = "0"; $("rHoursM").value = "0"; $("rTotHoursH").value = "0"; $("rTotHoursM").value = "0"; $("rMin").value = ""; $("rNote").value = ""; hAnchor = "single"; gQtyLast = 1;
+    $("rItemName").value = ""; $("rGrams").value = ""; $("rQty").value = "1"; $("rGPer").value = ""; $("rHoursH").value = "0"; $("rHoursM").value = "0"; $("rTotHoursH").value = "0"; $("rTotHoursM").value = "0"; $("rMin").value = ""; $("rNote").value = ""; hAnchor = "single";
     ["cbFil","cbElec","cbMach","cbLab"].forEach(id => $(id).checked = true);
     $("homeMsg").textContent = "";
     lastCalc = null;
@@ -2485,19 +2459,21 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
       editingRecId = null;
       $("rItemName").value = ""; $("rNote").value = "";
       $("rGrams").value = ""; $("rQty").value = "1"; $("rGPer").value = "";
-      hAnchor = "single"; gQtyLast = 1;
+      hAnchor = "single";
       editingRecId = r.id;
       goto("calc");
       // 先确保选择器已填充（避免 goto 时 fillSelects 用旧空值覆盖）
       fillSelects();
       const ms = recMats(r);
       const qRec = Math.max(1, S.num(r.qty) || 1);
+      const rMode = r.gMode === "total" ? "total" : "per"; // 记录保存时的耗材口径（旧数据默认按单个）
+      setGMode(rMode);
       $("selMat").value = (ms[0] && ms[0].materialId) || "";
       $("selPri").value = r.printerId || "";
-      $("rGrams").value = ms[0] && ms[0].grams != null ? String(ms[0].grams) : "";
-      renderMatRows(ms.slice(1).map(x => ({ matId:x.materialId || "", each: Math.round(S.num(x.grams) / qRec * 10) / 10 }))); // 耗材区回填（存储为总量，折算单个；主耗材由上方 selMat/rGrams 设置）
+      // 存储为总克数：按记录口径折算回表单输入值（per=单件、total=整批）
+      $("rGrams").value = ms[0] && ms[0].grams != null ? String(rMode === "total" ? Math.round(S.num(ms[0].grams) * 10) / 10 : Math.round(S.num(ms[0].grams) / qRec * 10) / 10) : "";
+      renderMatRows(ms.slice(1).map(x => ({ matId:x.materialId || "", each: rMode === "total" ? Math.round(S.num(x.grams) * 10) / 10 : Math.round(S.num(x.grams) / qRec * 10) / 10 }))); // 附加耗材按记录口径折算回表单输入值
       $("rQty").value = S.num(r.qty) > 0 ? String(r.qty) : "1";
-      gQtyLast = Math.max(1, S.num(r.qty) || 1); // 克数缩放基准与回填数量同步
       $("rGPer").value = S.num(r.grams) > 0 ? String(Math.round(S.num(r.grams) / Math.max(1, S.num(r.qty) || 1) * 10) / 10) : "";
       /* 单个打印时长：优先用记录保存的单个时长，旧数据按 总时长 ÷ 数量 反推 */
       const sh0 = r.singleHours != null ? S.num(r.singleHours) : S.num(r.hours) / Math.max(1, S.num(r.qty) || 1);
