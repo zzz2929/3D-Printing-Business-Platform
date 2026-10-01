@@ -1145,17 +1145,23 @@ function goto(tab){
     toast("已清除本次打印输入");
   });
 
-  /* 去开订单：把计算器数据自动填入新增订单（含数量、单/总克重、多耗材、单个报价） */
+  /* 去开订单：把计算器数据自动填入新增订单（保留原始口径，克数编辑逻辑与计算器一致） */
   $("toOrderBtn").addEventListener("click", () => {
     if(!lastCalc) return;
     resetOrdForm();
     const q = Math.max(1, S.num(lastCalc.qty) || 1);
+    const isTotal = lastCalc.gMode === "total"; // 记录保存了计算器的填写口径
+    setOGMode(isTotal ? "total" : "per");
     $("oQty").value = String(q); // 批次打印件数（成本口径）
     if(lastCalc.matId) $("oMat").value = lastCalc.matId;
     if(lastCalc.priId) $("oPri").value = lastCalc.priId;
-    $("oG").value = lastCalc.gMain != null ? lastCalc.gMain : (lastCalc.g || "");
-    $("oGPer").value = S.num($("oG").value) > 0 ? String(Math.round(S.num($("oG").value) / q * 10) / 10) : "";
+    /* 记录里主耗材存的是总量：per 折算为单件直填，total 直填整批总量 */
+    const gMain = lastCalc.gMain != null ? S.num(lastCalc.gMain) : S.num(lastCalc.g);
+    $("oG").value = isTotal ? (gMain > 0 ? String(Math.round(gMain * 10) / 10) : "") : (gMain > 0 ? String(Math.round(gMain / q * 10) / 10) : "");
     $("oH").value = lastCalc.h ? Math.round(lastCalc.h * 100) / 100 : "";
+    $("oSh").value = lastCalc.sh ? Math.round(S.num(lastCalc.sh) * 100) / 100 : "";
+    oHAnchor = "total";
+    if(!(S.num($("oH").value) > 0) && S.num($("oSh").value) > 0){ oHAnchor = "single"; oSyncTime(); }
     $("oMin").value = lastCalc.min || "";
     /* 同步计算器的成本计入勾选 */
     if(lastCalc.incl){
@@ -1168,8 +1174,8 @@ function goto(tab){
     if(lastCalc.note && !$("oNote").value) $("oNote").value = lastCalc.note;
     if(lastCalc.sug > 0) $("oQuote").value = Math.ceil(lastCalc.sug / q); // 建议报价（总额）折算为单个
     $("oStatus").value = "quote";
-    /* 附加耗材明细回填：记录存的是总量，折算为单个克数 */
-    renderOrdMats((lastCalc.mats || []).map(x => ({ matId:x.matId, each: Math.round(S.num(x.grams) / q * 10) / 10 })));
+    /* 附加耗材明细回填：记录存的是总量，按当前口径折算（per=单件 / total=总量直填） */
+    renderOrdMats((lastCalc.mats || []).map(x => ({ matId:x.matId, each: isTotal ? S.num(x.grams) : Math.round(S.num(x.grams) / q * 10) / 10 })));
     orderCalc();
     toast("已带入计算器数据（数量、多耗材、单价），请确认后保存");
   });
@@ -1219,12 +1225,16 @@ function goto(tab){
   }
   $("addPay").addEventListener("click", () => { $("oPayments").appendChild(payRow(S.today(), "", "", "")); orderCalc(); });
 
-  /* 附加耗材行（开单页）：与计算器同款交互，每个耗材填“单个克数”，随数量换算总量 */
+  /* 附加耗材行（开单页）：与计算器同款交互，克数按当前口径填写（per=单件 / total=整批），随数量换算是派生的总量 */
   function ordMatRowHTML(o){
     const matId = o.matId || "", each = o.each != null ? o.each : "";
     const m = matId ? S.matById(matId) : null;
+    const isTotal = oModeNow() === "total";
+    const gPh = isTotal ? "整批总克数" : "单个克数";
+    const gUnit = isTotal ? "g" : "g/件";
+    const gHint = isTotal ? "选耗材后填整批总用量（随口径合计）" : "选耗材后填每个打印件的用量";
     const opts = '<option value="">— 附加耗材 —</option>' + S.materials.map(x => `<option value="${x.id}" ${x.id === matId ? "selected" : ""}>${S.esc(S.matLabel(x))} · 剩 ${S.fmt(x.remaining,0)}g</option>`).join("");
-    return `<div class="em-row om-row"><select class="em-mat om-mat" aria-label="附加耗材">${opts}</select><input class="em-g om-each" type="number" min="0" step="0.1" placeholder="单个克数" value="${S.esc(String(each))}"><span class="em-unit">g/件</span><button class="em-del" type="button" title="移除该耗材">×</button><span class="em-hint om-hint">${m ? "单价 " + S.money(S.num(m.pricePerKg)) + "/kg" : "选耗材后填每个打印件的用量"}</span></div>`;
+    return `<div class="em-row om-row"><select class="em-mat om-mat" aria-label="附加耗材">${opts}</select><input class="em-g om-each" type="number" min="0" step="0.1" placeholder="${gPh}" value="${S.esc(String(each))}"><span class="em-unit">${gUnit}</span><button class="em-del" type="button" title="移除该耗材">×</button><span class="em-hint om-hint">${m ? "单价 " + S.money(S.num(m.pricePerKg)) + "/kg" : gHint}</span></div>`;
   }
   function ordExtrasFromDom(){
     return [...$("ordMats").querySelectorAll(".om-row")].map(r => ({
@@ -1236,17 +1246,41 @@ function goto(tab){
     const box = $("ordExtraRows"); if(!box) return;
     const rows = state && Array.isArray(state) ? state.slice() : [...box.querySelectorAll(".om-row")].map(r => ({ matId:r.querySelector(".om-mat").value, each:r.querySelector(".om-each").value }));
     if(append) rows.push({ matId:"", each:"" });
-    box.innerHTML = '<div class="em-head"><span>附加耗材</span><span class="em-tip">同一订单多种耗材 · 填每个打印件的用量，随数量换算总量</span></div>' +
+    box.innerHTML = '<div class="em-head"><span>附加耗材</span><span class="em-tip">' + (oModeNow() === "total" ? "同一订单多种耗材 · 填整批总用量，自动合计" : "同一订单多种耗材 · 填每个打印件的用量，随数量换算总量") + '</span></div>' +
       rows.map(ordMatRowHTML).join("") +
       '<button class="btn ghost sm em-add" type="button">＋ 添加耗材</button>';
     box.querySelectorAll("select").forEach(enhanceSelect);
   }
+  /* 耗材填写口径（与计算器 gModeTabs 同款）：per=各耗材按单件填写 / total=按整批填写 */
+  let oMode = "per";
+  function oModeNow(){ return oMode; }
+  function setOGMode(mode){
+    oMode = mode === "total" ? "total" : "per";
+    const tabs = $("oModeTabs");
+    if(tabs) tabs.querySelectorAll("button").forEach(b => {
+      const on = b.dataset.mode === oMode;
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    const mh = $("oModeHint");
+    if(mh) mh.textContent = oMode === "total" ? "主耗材与附加耗材克数均按整批总用量填写，总克重自动合计" : "主耗材与附加耗材克数均按每个打印件填写，总克重 = 各耗材之和 × 数量";
+    const g = $("oG");
+    if(g) g.placeholder = oMode === "total" ? "整批总克数" : "单个克数";
+    renderOrdMats(null); // 重建附加行同步占位/单位（保留已填值）
+  }
+  const oModeTabsEl = $("oModeTabs");
+  if(oModeTabsEl) oModeTabsEl.addEventListener("click", e => {
+    const b = e.target.closest("button[data-mode]");
+    if(!b || b.classList.contains("on")) return;
+    setOGMode(b.dataset.mode);
+    orderCalc();
+  });
   const omBox = $("ordMats");
   if(omBox){
     omBox.addEventListener("input", e => { if(e.target.closest(".om-row")) orderCalc(); });
     omBox.addEventListener("change", e => { if(e.target.closest(".om-row")) orderCalc(); });
     omBox.addEventListener("click", e => {
-      if(e.target.closest(".om-del")){ e.target.closest(".om-row").remove(); renderOrdMats(null); orderCalc(); return; }
+      if(e.target.closest(".em-del")){ e.target.closest(".om-row").remove(); renderOrdMats(null); orderCalc(); return; }
       if(e.target.closest(".em-add")){ renderOrdMats(null, true); orderCalc(); }
     });
   }
@@ -1261,25 +1295,30 @@ function goto(tab){
 
   function orderCalc(){
     const m = S.matById($("oMat").value), p = S.priById($("oPri").value);
-    const gramsMain = S.num($("oG").value); // 主耗材总量（= 单个 × 批次打印件数）
+    const isTotal = oModeNow() === "total"; // 耗材填写口径：per=单件 / total=整批（与计算器一致）
+    const batch = oBatchVal(); // 批次打印件数（成本口径）
+    const gRaw = S.num($("oG").value);
+    const gramsMain = isTotal ? gRaw : Math.round(gRaw * batch * 10) / 10; // 主耗材总量（per=单件×件数 / total=直填整批）
     const c = S.computePrint(m, p, gramsMain, $("oH").value);
     const lab = S.laborCost($("oMin").value);
-    const omExtras = ordExtrasFromDom(); // 附加耗材 [{matId, each}]（每个打印件用量）
+    const omExtras = ordExtrasFromDom(); // 附加耗材 [{matId, each}]（each 按当前口径：单件 or 整批）
     const ec = getExtras().reduce((s,x) => s + x.amount, 0);
-    const batch = oBatchVal(); // 批次打印件数（成本口径）
-    /* 耗材成本 = 主耗材 + 各附加耗材（单个克数 × 批次件数） */
-    const extraMatCost = omExtras.reduce((s,x) => { const mm = S.matById(x.matId); return s + (mm ? S.num(mm.pricePerKg)/1000 * x.each * batch : 0); }, 0);
+    /* 附加耗材总量：per=单件×件数 / total=直填 */
+    const gExtTotals = omExtras.map(x => isTotal ? x.each : Math.round(x.each * batch * 10) / 10);
+    /* 耗材成本 = 主耗材 + 各附加耗材（总量 × 单价） */
+    const extraMatCost = gExtTotals.reduce((s,g2,i) => { const mm = S.matById(omExtras[i].matId); return s + (mm ? S.num(mm.pricePerKg)/1000 * g2 : 0); }, 0);
     c.cFil = (m ? S.num(m.pricePerKg)/1000 * gramsMain : 0) + extraMatCost;
-    /* 每件合计克重（主 + 附加）与多耗材明细数组 */
-    const gEach = gramsMain / batch + omExtras.reduce((s,x) => s + x.each, 0);
+    /* 总耗材克重（主 + 附加）与每件合计克重：只读派生，同计算器 rGPer（= 各耗材合计 ÷ 数量） */
+    const gTotal = gramsMain + gExtTotals.reduce((s,v) => s + v, 0);
+    const gPer = batch > 0 ? gTotal / batch : gTotal;
     const omats = [];
     if(m && gramsMain > 0) omats.push({ materialId:m.id, matName:m.name, matColor:m.color, grams:gramsMain, pricePerKg:S.num(m.pricePerKg) });
-    omExtras.forEach(x => { const mm = S.matById(x.matId); if(mm) omats.push({ materialId:mm.id, matName:mm.name, matColor:mm.color, grams:Math.round(x.each * batch * 10) / 10, pricePerKg:S.num(mm.pricePerKg) }); });
+    omExtras.forEach((x,i) => { const mm = S.matById(x.matId); if(mm) omats.push({ materialId:mm.id, matName:mm.name, matColor:mm.color, grams:gExtTotals[i], pricePerKg:S.num(mm.pricePerKg) }); });
     /* 克重报价：单个报价 = 每克单价 × 每件合计克重；报价框为空或未被手改时写入 */
     const qEl = $("oQuote");
     const qpg = S.num($("oQuotePerGram").value);
-    if(qpg > 0 && gEach > 0 && (qEl.value === "" || qEl.dataset.auto !== "0")){
-      qEl.value = (qpg * gEach).toFixed(2);
+    if(qpg > 0 && gPer > 0 && (qEl.value === "" || qEl.dataset.auto !== "0")){
+      qEl.value = (qpg * gPer).toFixed(2);
       qEl.dataset.auto = "1";
     }
     const priceEach = S.num($("oQuote").value);
@@ -1329,9 +1368,11 @@ function goto(tab){
     /* 打印机提示（与计算器 priHint 同款） */
     const ph = $("oPriHint");
     if(ph) ph.textContent = p ? `功率 ${S.num(p.powerW)}W · 电价 ${S.num(p.elecPrice)} 元/度 · 机器 ${S.money(S.machineRate(p))}/h` : "可选：不选则只算耗材与人工";
-    /* 耗材总克重（只读，主 + 附加合计，与计算器 rGTotal 同口径） */
+    /* 总克重（只读，主 + 附加合计）与单个克重（只读派生，同计算器 rGPer/rGTotal） */
     const gt = $("oGTotal");
-    if(gt) gt.value = gEach * batch > 0 ? S.fmt(gEach * batch, 1) : "0";
+    if(gt) gt.value = gTotal > 0 ? S.fmt(gTotal, 1) : "0";
+    const gp = $("oGPer");
+    if(gp) gp.value = gTotal > 0 ? S.fmt(gPer, 1) : "0";
     /* 主耗材行提示（与计算器 matHint 同款） */
     const mh = $("oMatHint");
     if(mh) mh.textContent = m ? `单价 ${S.money(S.num(m.pricePerKg))}/kg · 剩余 ${S.fmt(m.remaining,0)}g · 主耗材成本 ${S.money(S.num(m.pricePerKg)/1000 * gramsMain)}` : "必选：去「耗材」页添加";
@@ -1340,7 +1381,7 @@ function goto(tab){
     if(mc){
       const lines = [];
       if(m && gramsMain > 0) lines.push({ m, grams:gramsMain, each:gramsMain / batch });
-      omExtras.forEach(x => { const mm = S.matById(x.matId); if(mm) lines.push({ m:mm, grams:x.each * batch, each:x.each }); });
+      omExtras.forEach((x,i) => { const mm = S.matById(x.matId); if(mm) lines.push({ m:mm, grams:gExtTotals[i], each:gExtTotals[i] / batch }); });
       mc.innerHTML = lines.map(l => `<div class="line om-cost-line"><span class="cb-txt">└ ${S.esc(l.m.name || "耗材")} · 总 ${S.fmt(l.grams,1)}g${batch > 1 ? "（单 " + S.fmt(l.each,1) + "g）" : ""}</span><span>${S.money(S.num(l.m.pricePerKg)/1000 * l.grams)}</span></div>`).join("");
     }
     $("oElec").textContent = S.money(c.cElec);
@@ -1358,34 +1399,31 @@ function goto(tab){
     /* 附加耗材行内提示：总量 + 成本 */
     if(omBox) omBox.querySelectorAll(".om-row").forEach(r => {
       const mm = S.matById(r.querySelector(".om-mat").value);
-      const each = S.num(r.querySelector(".om-each").value);
-      r.querySelector(".om-hint").textContent = mm && each > 0 ? `总 ${S.fmt(each * batch, 1)}g · 成本 ${S.money(S.num(mm.pricePerKg)/1000 * each * batch)}` : (mm ? "单价 " + S.money(S.num(mm.pricePerKg)) + "/kg" : "选耗材后填每个打印件的用量");
+      const xeach = S.num(r.querySelector(".om-each").value); // 按当前口径的语义值（per=单件 / total=整批）
+      const ge = isTotal ? xeach : Math.round(xeach * batch * 10) / 10;
+      r.querySelector(".om-hint").textContent = mm && ge > 0 ? `总 ${S.fmt(ge, 1)}g · 成本 ${S.money(S.num(mm.pricePerKg)/1000 * ge)}` : (mm ? "单价 " + S.money(S.num(mm.pricePerKg)) + "/kg" : (isTotal ? "选耗材后填整批总用量" : "选耗材后填每个打印件的用量"));
     });
-    return { pc:c.cFil + c.cElec, fil:c.cFil, elec:c.cElec, mach:c.cMach, lab, incl, ec, ct, rv, priceEach, qty, quote, due, profit, est, extras:getExtras(), pays:pays.map(x => ({ date:x.date, count:x.count, amount:x.amount, note:x.note })), omats, gEach };
+    return { pc:c.cFil + c.cElec, fil:c.cFil, elec:c.cElec, mach:c.cMach, lab, incl, ec, ct, rv, priceEach, qty, quote, due, profit, est, extras:getExtras(), pays:pays.map(x => ({ date:x.date, count:x.count, amount:x.amount, note:x.note })), omats, gEach:gPer, gPer, gTotal, gramsMain, batch, mode:oModeNow() };
   }
   // 报价框手动输入过则停用克重自动覆盖；先于 orderCalc 注册，保证触发顺序
   $("oQuote").addEventListener("input", () => { $("oQuote").dataset.auto = "0"; });
-  /* 单个克重 ↔ 主耗材总克重 联动（基准 = 打印数量，成本口径） */
-  let oGAnchor = "gPer";
-  $("oQty").addEventListener("input", () => {
+  /* 克重输入按当前口径直接参与计算；单个克重/总克重为只读派生值；数量变化只重算派生值，不改写克数输入框（同计算器） */
+  let oHAnchor = "total"; // 打印时长锚点：最后编辑的是 单个(single) 还是 总(total)
+  function oSyncTime(){
     const q = oBatchVal();
-    if(oGAnchor === "gPer"){ if(S.num($("oGPer").value) > 0) $("oG").value = Math.round(S.num($("oGPer").value) * q * 10) / 10; }
-    else if(S.num($("oG").value) > 0) $("oGPer").value = Math.round(S.num($("oG").value) / q * 10) / 10;
-    orderCalc();
-  });
-  $("oGPer").addEventListener("input", () => {
-    oGAnchor = "gPer";
-    const q = oBatchVal();
-    if(S.num($("oGPer").value) > 0) $("oG").value = Math.round(S.num($("oGPer").value) * q * 10) / 10;
-    orderCalc();
-  });
-  $("oG").addEventListener("input", () => {
-    oGAnchor = "gTotal";
-    const q = oBatchVal();
-    if(S.num($("oG").value) > 0) $("oGPer").value = Math.round(S.num($("oG").value) / q * 10) / 10;
-    orderCalc();
-  });
-  ["oMat","oPri","oH","oMin","oQuote","oQuotePerGram","ocbFil","ocbElec","ocbMach","ocbLab"].forEach(id => $(id).addEventListener("input", orderCalc));
+    const sh = S.num($("oSh").value), th = S.num($("oH").value);
+    if(oHAnchor === "single" || !(th > 0)){ // 基准=单个（或总为空）→ 总时长 = 单个 × 数量
+      $("oH").value = sh > 0 ? String(Math.round(sh * q * 100) / 100) : "";
+    } else { // 基准=总时长 → 单个时长 = 总 ÷ 数量
+      $("oSh").value = th > 0 ? String(Math.round(th / q * 100) / 100) : "";
+    }
+  }
+  $("oQty").addEventListener("input", () => { oSyncTime(); orderCalc(); });
+  $("oG").addEventListener("input", orderCalc);
+  /* 单个打印时长 ↔ 总时长 双向联动（编辑哪个以哪个为基准，与计算器同规则） */
+  $("oSh").addEventListener("input", () => { oHAnchor = "single"; oSyncTime(); orderCalc(); });
+  $("oH").addEventListener("input", () => { oHAnchor = "total"; oSyncTime(); orderCalc(); });
+  ["oMat","oPri","oMin","oQuote","oQuotePerGram","ocbFil","ocbElec","ocbMach","ocbLab"].forEach(id => $(id).addEventListener("input", orderCalc));
 
   function nextOrderNo(){
     const d = S.today().replace(/-/g, "");
@@ -1408,8 +1446,10 @@ function goto(tab){
     $("oNo").value = ""; $("oDate").value = S.today(); $("oStatus").value = "quote";
     $("oItem").value = ""; $("oWx").value = ""; $("oName").value = ""; $("oQuote").value = "";
     $("oQuote").dataset.auto = ""; $("oQuotePerGram").value = "";
-    $("oGPer").value = ""; oGAnchor = "gPer"; $("oQty").value = "1";
-    $("oMat").value = ""; $("oPri").value = ""; $("oG").value = ""; $("oH").value = ""; $("oMin").value = "";
+    $("oGPer").value = "0"; $("oQty").value = "1";
+    $("oMat").value = ""; $("oPri").value = ""; $("oG").value = ""; $("oH").value = ""; $("oSh").value = ""; $("oMin").value = "";
+    oHAnchor = "total";
+    setOGMode("per"); // 口径复位（含附加行重建）
     renderOrdMats([]);
     ["ocbFil","ocbElec","ocbMach","ocbLab"].forEach(id => $(id).checked = true);
     $("oExtras").innerHTML = ""; ["建模","运费","包装","其他"].forEach(l => $("oExtras").appendChild(extRow(l, 0)));
@@ -1424,7 +1464,7 @@ function goto(tab){
     if(!$("oDate").value){ toast("请选择订单日期（必填）"); $("oDate").focus(); return; }
     const c = orderCalc();
     if(S.num($("oQuote").value) <= 0){ toast("请填写单个报价（必填，欠款跟踪依赖它）"); $("oQuote").focus(); return; }
-    if(!(c.qty > 0)){ toast("请在收款里填写件数（每笔收款对应几个打印件）"); document.querySelector("#oPayments .pay-count").focus(); return; }
+    /* 收款非必填：可先保存为待报价/待付款订单，后续在收款台账补录（qty/rv 随之为 0） */
     /* 收款驱动的状态推进：待报价/待付款 且已有收款、仍有欠款 → 自动转「部分收款」 */
     let stVal = $("oStatus").value;
     const autoPartial = (stVal === "quote" || stVal === "unpaid") && c.rv > 0 && c.due > 0;
@@ -1439,8 +1479,8 @@ function goto(tab){
       qty:c.qty, priceEach:c.priceEach, quote:c.quote, // 应收总额 = 单价 × 各笔收款件数合计
       materialId:m ? m.id : null, matName:m ? m.name : null, matColor:m ? m.color : null,
       printerId:p ? p.id : null, priName:p ? p.name : null,
-      grams:S.num($("oG").value), gPer:c.gEach, mats:c.omats, // 多耗材明细（总量口径）+ 每件合计克重
-      hours:S.num($("oH").value), handlingMin:S.num($("oMin").value),
+      grams:c.gramsMain, gPer:c.gPer, mats:c.omats, gMode:c.mode, // 多耗材明细（总量口径）+ 每件合计克重 + 填写口径
+      hours:S.num($("oH").value), singleHours:S.num($("oSh").value), handlingMin:S.num($("oMin").value),
       printCost:(c.incl.fil ? c.fil : 0) + (c.incl.elec ? c.elec : 0) + (c.incl.mach ? c.mach : 0) + (c.incl.lab ? c.lab : 0),
       inclFil:c.incl.fil, inclElec:c.incl.elec, inclMach:c.incl.mach, inclLab:c.incl.lab,
       extras:c.extras, extraCost:c.ec, totalCost:c.ct, cFil:c.fil, cElec:c.elec, cMach:c.mach, cLab:c.lab,
@@ -1626,11 +1666,17 @@ function goto(tab){
     else $("oPayments").appendChild(payRow(S.today(), "", "", ""));
     const oms = orderMats(o);
     const oMain = oms[0];
+    const oModeEdit = o.gMode === "total" ? "total" : "per"; // 旧订单无 gMode → 按单个口径折算
+    setOGMode(oModeEdit);
     $("oMat").value = (oMain && oMain.materialId) || o.materialId || ""; $("oPri").value = o.printerId || "";
-    $("oG").value = oMain ? S.num(oMain.grams) : S.num(o.grams); // 主耗材总量
-    $("oGPer").value = S.num($("oG").value) > 0 ? String(Math.round(S.num($("oG").value) / q * 10) / 10) : "";
-    renderOrdMats(oms.slice(1).map(x => ({ matId:x.materialId || "", each: Math.round(S.num(x.grams) / q * 10) / 10 })));
-    $("oH").value = o.hours || ""; $("oMin").value = o.handlingMin || "";
+    const gMain = oMain ? S.num(oMain.grams) : S.num(o.grams); // 主耗材总量（存储口径）
+    const bq = oBatchVal(); // 批次打印件数（成本口径，与保存 batchQty 一致）
+    $("oG").value = oModeEdit === "total" ? (gMain > 0 ? String(Math.round(gMain * 10) / 10) : "") : (gMain > 0 ? String(Math.round(gMain / bq * 10) / 10) : "");
+    renderOrdMats(oms.slice(1).map(x => ({ matId:x.materialId || "", each: oModeEdit === "total" ? S.num(x.grams) : Math.round(S.num(x.grams) / bq * 10) / 10 })));
+    $("oH").value = o.hours || ""; $("oSh").value = S.num(o.singleHours) > 0 ? S.fmt(o.singleHours, 2) : ((S.num(o.hours) > 0 && bq > 0) ? S.fmt(S.num(o.hours) / bq, 2) : ""); // 旧订单无单时长时按 总÷件数 反推（数学等价）
+    oHAnchor = "total";
+    if(!(S.num($("oH").value) > 0) && S.num($("oSh").value) > 0){ oHAnchor = "single"; oSyncTime(); }
+    $("oMin").value = o.handlingMin || "";
     /* 编辑时还原计入勾选（旧数据无标志视为全计入） */
     $("ocbFil").checked = o.inclFil !== false;
     $("ocbElec").checked = o.inclElec !== false;
@@ -2508,13 +2554,18 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
       $("oQty").value = String(q); // 批次打印件数（成本口径）
       const ms = recMats(r);
       const main = ms[0];
+      const rMode = r.gMode === "total" ? "total" : "per"; // 记录保留计算器口径（旧记录默认单个）
+      setOGMode(rMode);
       $("oMat").value = (main && main.materialId) || r.materialId || "";
-      $("oG").value = main ? S.num(main.grams) : S.num(r.grams); // 主耗材总量
-      $("oGPer").value = S.num($("oG").value) > 0 ? String(Math.round(S.num($("oG").value) / q * 10) / 10) : "";
+      const gMain = main ? S.num(main.grams) : S.num(r.grams); // 主耗材总量（记录存储口径）
+      $("oG").value = rMode === "total" ? (gMain > 0 ? String(Math.round(gMain * 10) / 10) : "") : (gMain > 0 ? String(Math.round(gMain / q * 10) / 10) : "");
       $("oPri").value = r.printerId || "";
       $("oH").value = S.fmt(r.hours, 1);
+      $("oSh").value = S.num(r.singleHours) > 0 ? S.fmt(r.singleHours, 2) : "";
+      oHAnchor = "total";
+      if(!(S.num($("oH").value) > 0) && S.num($("oSh").value) > 0){ oHAnchor = "single"; oSyncTime(); }
       $("oMin").value = S.fmt(r.handlingMin, 0);
-      renderOrdMats(ms.slice(1).map(x => ({ matId:x.materialId || "", each: Math.round(S.num(x.grams) / q * 10) / 10 })));
+      renderOrdMats(ms.slice(1).map(x => ({ matId:x.materialId || "", each: rMode === "total" ? S.num(x.grams) : Math.round(S.num(x.grams) / q * 10) / 10 })));
       const sugBatch = S.num(r.sug != null ? r.sug : r.total);
       $("oQuote").value = sugBatch > 0 ? String(Math.round(sugBatch / q * 100) / 100) : ""; // 折算为单个报价
       $("oQuote").dataset.auto = "";
