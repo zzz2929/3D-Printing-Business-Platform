@@ -12,7 +12,7 @@ const ASSETS = [
   "assets/vendor/flatpickr/zh.js?v=64",
   "assets/style.css?v=79",
   "assets/store.js?v=76",
-  "assets/app.js?v=116"
+  "assets/app.js?v=118"
 ];
 
 self.addEventListener("install", (e) => {

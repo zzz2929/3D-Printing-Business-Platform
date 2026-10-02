@@ -1746,9 +1746,14 @@ function goto(tab){
         const rem = S.num(m.remaining), spool = Math.max(1, S.num(m.spool)), pct = Math.min(100, rem / spool * 100);
         const low = S.num(S.settings.lowStock) > 0 && rem <= S.num(S.settings.lowStock);
         const cls = low ? "low" : (pct < 35 ? "mid" : "ok");
+        // 颜色列去重：颜色名/类型已包含在耗材名里时改显示色号，避免重复描述
+        const dupColor = (m.colorName && m.name.indexOf(m.colorName) >= 0) || (!m.colorName && m.type && m.name.indexOf(m.type) >= 0);
+        const colorCell = dupColor
+          ? `<span class="pill" title="色号">${S.esc((m.color || "").toUpperCase() || m.colorName || m.type)}</span>`
+          : `<span class="pill">${S.esc(m.colorName || m.type)}</span>`;
         return `<tr>
           <td><span class="sw" style="background:${S.esc(m.color)}"></span>${S.esc(m.name)}${low ? ' <span class="badge" style="--bc:var(--danger)"><i></i>低库存</span>' : ""}</td>
-          <td><span class="pill">${S.esc(m.colorName || m.type)}</span></td>
+          <td>${colorCell}</td>
           <td class="num">${S.fmt(m.pricePerKg, 2)}</td>
           <td><div class="stock"><i class="${cls}" style="width:${pct.toFixed(1)}%"></i></div><div class="hint">${S.fmt(rem, 0)} / ${S.fmt(spool, 0)} g</div></td>
           <td class="num">${S.fmt(rem, 0)} g</td>
@@ -2235,7 +2240,9 @@ total += dev.trays.length;
             <span class="sw" style="background:${S.esc(t.color || "#666")}"></span>
             <span class="bt-name">${S.esc(trayLabel(t))}</span>
             <select class="tray-pick" data-dev="${S.esc(devId)}" data-slot="${S.esc(t.slot || "")}" title="手动指定该托盘对应哪条耗材记录（点同步前生效并记住）">${opts}</select>
-            <span class="muted bt-slot">${S.esc(t.slot)}${t.remain != null ? " · " + Math.round(t.remain) + "%" : ""}</span>
+            <span class="muted bt-slot">${isLib
+              ? [t.type || "", guessColorName(t.color) || "", t.idx ? "RFID " + t.idx : ""].filter(Boolean).join(" · ")
+              : S.esc(t.slot) + (t.remain != null ? " · " + Math.round(t.remain) + "%" : "")}</span>
             <span class="num bt-rem">${t.remaining != null ? S.fmt(t.remaining, 0) + " g" : "—"}</span>${act}</div>`;
         }).join("");
       });
