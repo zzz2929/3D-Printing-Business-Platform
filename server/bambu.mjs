@@ -507,19 +507,54 @@ function presetBrandType(name, type, baseId){
   if(/^G[A-Z]/.test(String(baseId || ""))) return { brand: "Bambu Lab 拓竹", type: type || n }; // 官方 RFID 前缀
   return { brand: "", type: type || n };
 }
-export async function cloudPresetFilaments({ region = "cn", token, limit = 40 }){
+/* 云端耗材库抓取：默认只取用户自己的私有预设（与 Bambu Studio 云同步数量一致），
+   详情（类型/颜色/RFID 基底）逐条获取——官方限速约 10/s，用全局限速器控制在 ~8/s，条数不设硬上限（保护上限 150）。 */
+export async function cloudPresetFilaments({ region = "cn", token, limit = 150, includePublic = false }){
   const base = regionOf(region).api;
   const H = { authorization: "Bearer " + token, "content-type": "application/json" };
-  const list = await restJson(base + "/v1/iot-service/api/slicer/setting?version=1.0.0.0", { headers: H }, 15000);
-  const entries = (list && (list.settings || list.list)) || (Array.isArray(list) ? list : []) || [];
-  const filaments = entries.filter(e => String((e && e.type) || "") === "filament" && (e.name || e.setting_id));
-  const chosen = Number.isFinite(limit) ? filaments.slice(0, limit) : filaments;
+  const raw = await restJson(base + "/v1/iot-service/api/slicer/setting?version=1.0.0.0", { headers: H }, 15000);
+  // 响应结构（参考 Bambu Studio 云同步）：{ printer:{private:[],public:[]}, process:{...}, filament:{private:[],public:[]} }
+  // private = 用户自己的预设，public = 官方公开预设；兼容平铺数组等其它形状
+  let entries = [], privSet = null;
+  const f = raw && typeof raw === "object" && !Array.isArray(raw) ? raw.filament : null;
+  if(f && typeof f === "object"){
+    const priv = Array.isArray(f.private) ? f.private : [];
+    const pub = Array.isArray(f.public) ? f.public : [];
+    privSet = new Set(priv);
+    entries = includePublic ? priv.concat(pub) : priv.slice(); // 默认只要用户自己的库
+  }else if(raw && Array.isArray(raw.filaments)){
+    entries = raw.filaments;
+  }else if(raw && Array.isArray(raw.settings)){
+    entries = raw.settings;
+  }else if(raw && Array.isArray(raw.list)){
+    entries = raw.list;
+  }else if(Array.isArray(raw)){
+    entries = raw;
+  }else{
+    const keys = raw && typeof raw === "object" ? Object.keys(raw).join(",") : typeof raw;
+    throw new Error("云端耗材库响应格式未识别（顶层字段：" + keys + "）");
+  }
+  const filaments = entries
+    .filter(e => e && String((e && e.type) || "filament") === "filament" && (e.name || e.setting_id));
+  // 用户私有预设优先（includePublic 时），排序稳定
+  const ordered = privSet
+    ? filaments.slice().sort((a, b) => (privSet.has(b) ? 1 : 0) - (privSet.has(a) ? 1 : 0))
+    : filaments;
+  const chosen = Number.isFinite(limit) ? ordered.slice(0, limit) : ordered;
   const results = new Array(chosen.length).fill(null);
-  let failed = 0, cursor = 0;
+  let failed = 0, cursor = 0, lastAt = 0;
+  const throttle = async () => { // 全局限速（多 worker 共享）：预占时间槽，任意两次请求间隔 ≥130ms ≈ 7.7/s < 官方 10/s
+    const now = Date.now();
+    const slot = Math.max(now, lastAt + 130);
+    lastAt = slot;
+    const wait = slot - now;
+    if(wait > 0) await new Promise(r => setTimeout(r, wait));
+  };
   const worker = async () => {
     while(cursor < chosen.length){
       const i = cursor++;
       const e = chosen[i];
+      await throttle();
       try{
         const d = await restJson(base + "/v1/iot-service/api/slicer/setting/" + encodeURIComponent(e.setting_id) + "?version=1.0.0.0", { headers: H }, 15000);
         const content = (d && (d.setting || d.content)) || d || {};
@@ -535,11 +570,11 @@ export async function cloudPresetFilaments({ region = "cn", token, limit = 40 })
           baseId
         };
       }catch(err){ failed++; }
-      await new Promise(r => setTimeout(r, 120)); // 官方限速 ~10/s，留裕量
     }
   };
   await Promise.all([worker(), worker(), worker()]);
-  return { items: results.filter(Boolean), failed, total: chosen.length, skipped: Math.max(0, filaments.length - chosen.length) };
+  const items = results.filter(Boolean);
+  return { items, failed, total: chosen.length, totalAll: filaments.length, skipped: Math.max(0, filaments.length - chosen.length), publicSkipped: privSet ? Math.max(0, ((f && Array.isArray(f.public)) ? f.public.length : 0)) : 0 };
 }
 
 /* ---------- 汇总：根据配置抓取来源 ----------
@@ -547,7 +582,7 @@ export async function cloudPresetFilaments({ region = "cn", token, limit = 40 })
    云连接自愈：存了密码且 token 缺失 → 自动登录补齐；MQTT 认证失败（token 过期）且存有密码 → 自动重登一次并重试。
    cfg = { mode?, lan:[{ name, host, code }], cloud:{ region, email, password?, token } }
    返回 { sources, fetchedAt, newToken? }（重登成功时带 newToken，由调用方持久化） */
-export async function fetchAll(cfg, { lanTimeoutMs = 9000, cloudTimeoutMs = 15000, withLibrary = true, libraryLimit = 40 } = {}){
+export async function fetchAll(cfg, { lanTimeoutMs = 9000, cloudTimeoutMs = 15000, withLibrary = true, libraryLimit = 150 } = {}){
   const sources = [];
   const jobs = [];
   const useLan = cfg.mode !== "cloud", useCloud = cfg.mode !== "lan";
@@ -607,7 +642,10 @@ export async function fetchAll(cfg, { lanTimeoutMs = 9000, cloudTimeoutMs = 1500
           color: f.color || "", weight: 1000, remain: 100, remaining: 1000,
           uuid: "", tagUid: "", idx: f.baseId || "", name: f.name || ""
         }));
-        sources.push({ kind:"cloudlib", name: "云端耗材库" + (lib.items.length ? `（${lib.items.length} 项${lib.failed ? " · " + lib.failed + " 项读取失败" : ""}${lib.skipped ? " · 仅取前 " + lib.items.length + " 项" : ""}）` : ""), ok:true, library: true,
+        const libName = "云端耗材库（" + lib.items.length + " 项"
+          + (lib.failed ? " · " + lib.failed + " 项读取失败" : "")
+          + (lib.skipped ? " · 共 " + lib.totalAll + " 项已取前 " + lib.total : "") + "）";
+        sources.push({ kind:"cloudlib", name: libName, ok:true, library: true,
           devices: lib.items.length ? [{ devId: "__cloudlib__", devName: "拓竹云端耗材库", devModel: "", trays }] : [] });
       })().catch(e => sources.push({ kind:"cloudlib", name: "云端耗材库", ok:false, error: e.message })));
     }
