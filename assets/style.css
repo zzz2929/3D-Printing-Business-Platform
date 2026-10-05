@@ -260,15 +260,16 @@ select::after{
 @media(max-width:760px){.stats{grid-template-columns:repeat(2,1fr)}}
 .stat{
   background:var(--panel);border:1px solid var(--line);border-radius:10px;
-  padding:12px 14px;position:relative;overflow:hidden;
+  padding:12px 14px;position:relative;overflow:hidden;min-width:0;
 }
 .stat::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--line2)}
 .stat.hi::before{background:var(--accent)}
 .stat.up::before{background:var(--ok)}
 .stat.down::before{background:var(--danger)}
 .stat .k{font-size:11.5px;color:var(--sub);letter-spacing:.04em}
-.stat .v{font-family:var(--mono);font-size:19px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums}
+.stat .v{font-family:var(--mono);font-size:19px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .stat .s{font-size:11px;color:var(--faint);margin-top:1px}
+@media(max-width:380px){.stat .v{font-size:16.5px}}
 
 /* ---------- LCD 读数（签名） ---------- */
 .lcd{
@@ -321,6 +322,11 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 .muted{color:var(--sub);font-size:12px}
 .empty{text-align:center;color:var(--faint);padding:30px 10px;line-height:1.9;font-size:13px}
 .empty .hint{font-size:12px}
+/* 多列表格（客户排行/耗材/打印机/用户）窄屏横向滚动：列宽保持可读，不再被挤压 */
+#dashCustomers,#matList,#priList,#userList{overflow-x:auto;-webkit-overflow-scrolling:touch}
+#matList table{min-width:560px}
+#priList table{min-width:640px}
+#userList table{min-width:560px}
 
 /* ---------- 徽章 / 状态 LED ---------- */
 .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11.5px;background:var(--panel2);border:1px solid var(--line);color:var(--sub);font-variant-numeric:tabular-nums}
@@ -437,7 +443,7 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 
 /* ---------- 表单操作按钮：吸底悬浮条（落位融入卡片，悬浮时浮起为独立卡片） ---------- */
 .action-float{
-  position:sticky;bottom:14px;z-index:45;
+  position:sticky;bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:45;
   padding:10px 12px;
   border:1px solid transparent;border-radius:12px;
   background:transparent;
@@ -561,12 +567,14 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 .alarm .unit{color:var(--sub);font-size:12px;flex:0 0 auto}
 
 /* ---------- 新手引导 ---------- */
-.overlay{position:fixed;inset:0;background:rgba(4,8,14,.66);backdrop-filter:blur(5px);display:flex;align-items:center;justify-content:center;z-index:70;animation:fade .2s ease}
+.overlay{position:fixed;inset:0;background:rgba(4,8,14,.66);backdrop-filter:blur(5px);display:flex;align-items:center;justify-content:center;z-index:70;animation:fade .2s ease;padding:14px}
 .overlay[hidden]{display:none}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 .ob-card{
-  width:min(500px,92vw);background:var(--panel);border:1px solid var(--line2);border-radius:14px;
-  padding:30px 30px 24px;text-align:center;position:relative;overflow:hidden;
+  width:min(500px,92vw);max-height:92vh;max-height:calc(100dvh - 28px);
+  overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  background:var(--panel);border:1px solid var(--line2);border-radius:14px;
+  padding:30px 30px 24px;text-align:center;position:relative;
   box-shadow:0 24px 80px rgba(0,0,0,.5);animation:rise .3s ease;
 }
 .ob-card::before{content:"";position:absolute;inset:0;background:var(--layer);pointer-events:none}
@@ -617,7 +625,7 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 
 /* ---------- Toast ---------- */
 .toast{
-  position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(8px);
+  position:fixed;left:50%;bottom:calc(26px + env(safe-area-inset-bottom,0px));transform:translateX(-50%) translateY(8px);
   background:var(--panel);border:1px solid var(--line2);color:var(--ink);
   padding:10px 18px;border-radius:10px;font-size:13px;opacity:0;pointer-events:none;
   transition:.25s;z-index:60;box-shadow:0 8px 28px rgba(0,0,0,.35);max-width:86vw;
@@ -630,22 +638,33 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
   .shell{flex-direction:column}
   .side{
     width:100%;flex:0 0 auto;height:auto;position:sticky;top:0;z-index:40;
-    padding:10px 12px 0;flex-direction:row;align-items:center;gap:8px;
+    padding:calc(10px + env(safe-area-inset-top,0px)) 12px 6px;
+    flex-direction:row;align-items:center;gap:8px;
     border-right:none;border-bottom:1px solid var(--line);
     background:color-mix(in srgb,var(--bg2) 88%,transparent);
     backdrop-filter:blur(10px);
   }
   .brand{padding:0 6px 0 2px;border-bottom:none;margin-bottom:0}
   .brand-name{display:none}
-  .nav{flex-direction:row;overflow-x:auto;gap:2px;scrollbar-width:none;flex:1}
+  .nav{flex-direction:row;overflow-x:auto;gap:2px;scrollbar-width:none;flex:1;-webkit-overflow-scrolling:touch}
   .nav::-webkit-scrollbar{display:none}
   .nav button{padding:8px 11px;white-space:nowrap;font-size:12.5px}
   .nav button.on::before{display:none}
   .nav button .ic{width:15px;height:15px}
   .side-foot{display:none}
-  .main{padding:16px 14px 80px}
+  .main{padding:16px 14px calc(80px + env(safe-area-inset-bottom,0px))}
   .stats{grid-template-columns:repeat(2,1fr)}
   .lcd-big{font-size:27px}
+  /* iOS：表单控件 ≥16px，聚焦时不再自动放大页面 */
+  input,select,textarea{font-size:16px}
+  .ord .acts select{font-size:16px;padding:5px 26px 5px 8px}
+}
+@media(max-width:360px){
+  #headDate{display:none} /* 超窄屏顶栏只留标题，日期让位 */
+}
+/* 触屏：去掉系统点按高亮闪块，交互反馈由自有的 hover/active 状态承担 */
+@media(hover:none){
+  *{-webkit-tap-highlight-color:transparent}
 }
 
 /* ---------- 二级选择器（耗材类型用：左大类 / 右小类 + 灰色说明） ---------- */
@@ -983,6 +1002,7 @@ input.valid{border-color:var(--ok, #3ddc97) !important}
 @media(max-width:520px){
   .setup-card{padding:18px 16px}
   .setup-step{right:12px}
+  .ob-card{padding:22px 16px 18px}
 }
 
 /* ---------- 色块可见性：描边跟随主题文字色混合，深浅主题下都清晰 ---------- */
@@ -1062,3 +1082,32 @@ input.valid{border-color:var(--ok, #3ddc97) !important}
 .cost-pick input[type=checkbox]{width:15px;height:15px;accent-color:var(--ok,#3a8)}
 .cost-pick .cp-foot{margin-top:8px;text-align:right}
 .cost-pick .cp-foot .btn{padding:3px 14px;font-size:12px}
+
+/* ============================================================
+   移动端补充：窄屏细节优化（≤640px）
+   ============================================================ */
+@media(max-width:640px){
+  /* 收款行 5 个输入框改两列网格：日期+客户 / 件数+金额 / 备注整行；删除钮跨行居中 */
+  .pay-row{display:grid;grid-template-columns:1fr 1fr 30px;gap:6px 8px;align-items:center}
+  .pay-row .pd{grid-column:1;grid-row:1}
+  .pay-row .pcn{grid-column:2;grid-row:1}
+  .pay-row .pay-count{grid-column:1;grid-row:2;flex:none}
+  .pay-row .pa{grid-column:2;grid-row:2}
+  .pay-row .pn{grid-column:1 / 3;grid-row:3}
+  .pay-row .row-btn{grid-column:3;grid-row:1 / 3;width:30px;height:30px;justify-self:end;align-self:center}
+  .extras-row .el,.extras-row .ea{min-width:0}
+
+  /* LCD 指标竖排时，分隔线从左侧竖线改为单元格间横线 */
+  .lcd-cell + .lcd-cell{border-left:none;padding-left:0;border-top:1px dashed var(--line2);padding-top:10px}
+
+  /* 设置页顶部 Tab 横向滑动，不换行不溢出 */
+  .set-tabs{overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;margin-bottom:12px}
+  .set-tabs::-webkit-scrollbar{display:none}
+  .set-tabs button{flex:0 0 auto;white-space:nowrap;padding:8px 12px;font-size:13px}
+
+  /* 预设管理：左大类/右小类双列改上下两段，列表限高内部滚动 */
+  .cat-two-col{flex-direction:column;min-height:0}
+  .cat-left-panel{width:auto;flex:none}
+  .cat-list{max-height:220px}
+  .sub-list{max-height:280px}
+}

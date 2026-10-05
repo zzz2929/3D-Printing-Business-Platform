@@ -402,6 +402,11 @@ function goto(tab){
     document.querySelectorAll(".page").forEach(p => p.classList.remove("on"));
     const page = $("page-" + tab); if(page) page.classList.add("on");
     document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("on", b.getAttribute("data-tab") === tab));
+    /* 移动端顶栏：导航横向溢出时，激活项自动滚入可视区（桌面竖排导航无横向溢出，自动跳过） */
+    const navEl = $("nav"), navOn = document.querySelector("#nav button.on");
+    if(navEl && navOn && navEl.scrollWidth > navEl.clientWidth + 1){
+      try{ navOn.scrollIntoView({ behavior:"smooth", inline:"center", block:"nearest" }); }catch(_){}
+    }
     $("pageTitle").textContent = PAGE_TITLES[tab];
     if(location.hash !== "#/" + tab) history.replaceState(null, "", "#/" + tab);
     if(tab === "records") renderRecords();
