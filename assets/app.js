@@ -2250,10 +2250,12 @@ total += dev.trays.length;
           const act = m
             ? `<span class="badge" style="--bc:var(--ok)"><i></i>更新 ${S.esc(m.name)}</span>`
             : `<span class="badge" style="--bc:var(--accent)"><i></i>新建</span>`;
-          return `<div class="bambu-tray">
+return `<div class="bambu-tray">
             <span class="sw" style="background:${S.esc(t.color || "#666")}"></span>
             <span class="bt-name">${S.esc(trayLabel(t))}</span>
-            <select class="tray-pick" data-dev="${S.esc(devId)}" data-slot="${S.esc(t.slot || "")}" title="手动指定该托盘对应哪条耗材记录（点同步前生效并记住）">${opts}</select>
+            ${isLib
+              ? `<span class="muted" style="font-size:12px">云端预设 · 自动匹配</span>`
+              : `<select class="tray-pick" data-dev="${S.esc(devId)}" data-slot="${S.esc(t.slot || "")}" title="手动指定该托盘对应哪条耗材记录（点同步前生效并记住）">${opts}</select>`}
             <span class="muted bt-slot">${isLib
               ? [t.type || "", guessColorName(t.color) || "", t.idx ? "RFID " + t.idx : ""].filter(Boolean).join(" · ")
               : S.esc(t.slot) + (t.remain != null ? " · " + Math.round(t.remain) + "%" : "")}</span>
@@ -2268,7 +2270,8 @@ $("bambuMatCount").textContent = total ? "· " + total + " 卷" : "";
   $("bambuMatList").addEventListener("change", e => {
     const sel = e.target;
     if(!sel || sel.tagName !== "SELECT" || !sel.classList.contains("tray-pick")) return;
-    const devId = sel.dataset.dev || "", slot = sel.dataset.slot || "";
+const devId = sel.dataset.dev || "", slot = sel.dataset.slot || "";
+    if(!devId || devId === "__cloudlib__" || !slot) return; // 云端库条目不参与手动绑定（键与设备槽位冲突且同步时不生效）
     const mid = sel.value || "";
     bambuBindTray(devId, slot, mid);
     renderBambuTrayPreview();
