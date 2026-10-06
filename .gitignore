@@ -4,6 +4,7 @@ data/
 .env.*
 .dev.vars
 *.log
+logs/
 .wrangler/
 .vscode/
 .idea/
@@ -12,3 +13,6 @@ Thumbs.db
 Desktop.ini
 .dumate/
 gui-test-screenshots/
+# 含真实云 token 的联调脚本，禁止提交
+test-*-report.mjs
+test-*sync*.mjs
