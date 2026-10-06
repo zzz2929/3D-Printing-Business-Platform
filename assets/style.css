@@ -153,6 +153,12 @@ body{
 .ic{width:16px;height:16px;flex:0 0 16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .side-foot{margin-top:auto;display:flex;align-items:center;gap:7px;padding:0 8px;font-size:11px}
 .side-foot #modeText{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.side-copy{margin-top:10px;padding:0 8px;font-size:10.5px;line-height:1.7;color:var(--faint)}
+.side-copy a{color:var(--faint);text-decoration:none}
+.side-copy a:hover{color:var(--accent)}
+.about-foot{margin-top:16px;padding-top:12px;border-top:1px dashed var(--line);display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--faint)}
+.about-foot a{color:var(--sub);text-decoration:none}
+.about-foot a:hover{color:var(--accent)}
 /* SMTP 卡片的 TLS 直连复选框：固定尺寸，不被全局 input width:100% 拉伸 */
 #smtpSecure{width:15px;height:15px;flex:0 0 15px;margin:0;accent-color:var(--accent);cursor:pointer}
 
@@ -652,6 +658,7 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
   .nav button.on::before{display:none}
   .nav button .ic{width:15px;height:15px}
   .side-foot{display:none}
+  .side-copy{display:none}
   .main{padding:16px 14px calc(80px + env(safe-area-inset-bottom,0px))}
   .stats{grid-template-columns:repeat(2,1fr)}
   .lcd-big{font-size:27px}

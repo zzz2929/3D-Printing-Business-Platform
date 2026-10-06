@@ -13,6 +13,7 @@ Thumbs.db
 Desktop.ini
 .dumate/
 gui-test-screenshots/
-# 含真实云 token 的联调脚本，禁止提交
-test-*-report.mjs
-test-*sync*.mjs
+# 非部署必需：本地测试、回归与联调脚本，禁止提交
+test-*.mjs
+test/
+.zcodeignore
