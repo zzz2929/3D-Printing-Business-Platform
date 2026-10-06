@@ -3326,7 +3326,7 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
     const el = $("updResult"); el.className = "upd-result " + cls; el.innerHTML = html; el.hidden = false;
   }
   // 默认更新源（可被用户自定义 URL 覆盖）
-  const DEFAULT_UPDATE_URL = "https://raw.githubusercontent.com/zzz12929/3D-Printing-Business-Platform/main/version.json";
+  const DEFAULT_UPDATE_URL = "https://raw.githubusercontent.com/zzz2929/3D-Printing-Business-Platform/main/version.json";
   $("checkUpd").addEventListener("click", async () => {
     const customUrl = ($("setUpdateUrl").value || "").trim();
     const url = customUrl || DEFAULT_UPDATE_URL;

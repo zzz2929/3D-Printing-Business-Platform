@@ -7,5 +7,5 @@
     "访问码 / accessToken 仅保存在服务端，接口脱敏回传",
     "只读取打印机状态，不下发任何控制指令"
   ],
-  "downloadUrl": "https://github.com/zzz12929/3D-Printing-Business-Platform/releases"
+  "downloadUrl": "https://github.com/zzz2929/3D-Printing-Business-Platform/releases"
 }

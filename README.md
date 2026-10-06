@@ -83,7 +83,7 @@ npm start            # 等价于 node server/index.mjs
 
 ### 方式一：Cloudflare Workers
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/zzz12929/3D-Printing-Business-Platform)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/zzz2929/3D-Printing-Business-Platform)
 
 **点击上方按钮即可完成部署：**
 
@@ -101,7 +101,7 @@ npm start            # 等价于 node server/index.mjs
 
 ### 方式二：Vercel
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fzzz12929%2F3D-Printing-Business-Platform)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fzzz2929%2F3D-Printing-Business-Platform)
 
 **点击上方按钮即可完成部署：**
 
@@ -121,10 +121,10 @@ npm start            # 等价于 node server/index.mjs
 ```bash
 docker run -d --name 3d-printing-business --restart unless-stopped \
   -p 12929:12929 -v 3d-printing-business-data:/data \
-  zzz12929/3d-printing-business:latest
+  zzz2929/3d-printing-business:latest
 ```
 
-或在 NAS 的 Docker 界面中搜索镜像 `zzz12929/3d-printing-business` 创建容器。
+或在 NAS 的 Docker 界面中搜索镜像 `zzz2929/3d-printing-business` 创建容器。
 
 **从源码构建运行**：
 
