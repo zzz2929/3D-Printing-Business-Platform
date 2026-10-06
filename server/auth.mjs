@@ -51,7 +51,7 @@ const PERM_KEYS = [
 ];
 
 /* 密码强度验证：至少8位，包含大小写字母和数字 */
-export function validatePassword(pw){
+function validatePassword(pw){
   if(!pw || typeof pw !== "string") return "密码不能为空";
   if(pw.length < 8) return "密码至少8位";
   if(!/[A-Z]/.test(pw)) return "密码必须包含大写字母";
@@ -399,7 +399,7 @@ export function createAuth(store, mailer){
 }
 
 /* Cookie 助手 */
-export function getCookie(req, name){
+function getCookie(req, name){
   const c = req.headers.get("cookie") || "";
   for(const part of c.split(/;\s*/)){
     const i = part.indexOf("=");

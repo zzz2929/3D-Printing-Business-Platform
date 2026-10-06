@@ -301,39 +301,4 @@ export function queryLogs({ level, keyword, startTime, endTime, limit = 100, off
   };
 }
 
-/* 获取日志统计信息 */
-export function logStats() {
-  const stats = {};
-  const today = new Date().toISOString().slice(0, 10);
-
-  for (const level of ["DEBUG", "INFO", "WARN", "ERROR", "FATAL"]) {
-    const filePath = path.join(LOG_DIR, `app-${level.toLowerCase()}-${today}.log`);
-    let count = 0;
-    let size = 0;
-
-    try {
-      if (existsSync(filePath)) {
-        const lines = fs.readFileSync(filePath, "utf8").split("\n").filter(Boolean);
-        count = lines.length;
-        size = fs.statSync(filePath).size;
-      }
-    } catch (e) {}
-
-    stats[level.toLowerCase()] = { count, size, file: path.basename(filePath) };
-  }
-
-  return {
-    ...stats,
-    dir: LOG_DIR,
-    level: LOG_LEVEL,
-    totalFiles: LOG_MAX_FILES,
-    maxSize: LOG_MAX_SIZE
-  };
-}
-
-/* 优雅关闭 */
-export function closeLogger() {
-  writer.close();
-}
-
-export { log, Logger, writer };
+export { log };

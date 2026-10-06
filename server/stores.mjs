@@ -172,43 +172,6 @@ export function fileStore(dir, opts = {}) {
   };
 }
 
-/* ---------- 带 TTL 的文件存储（适合频繁读取少量变化的场景） ---------- */
-export function fileStoreWithTTL(dir, opts = {}) {
-  const store = fileStore(dir, opts);
-  const ttl = opts.ttl || 5000; // 默认 5 秒 TTL
-
-  const origGet = store.get.bind(store);
-  store.get = async function(col) {
-    const cached = cache.get(col);
-    if (cached !== null) return cached;
-    const val = await origGet(col);
-    if (val !== null) cache.set(col, val);
-    return val;
-  };
-
-  // 热数据缓存（更短的 TTL）
-  const hotCache = new LRUCache(20, ttl);
-
-  return {
-    ...store,
-    get: async (col) => {
-      // 热数据优先
-      const hot = hotCache.get(col);
-      if (hot !== null) return hot;
-
-      const val = await origGet(col);
-      if (val !== null) {
-        hotCache.set(col, val);
-      }
-      return val;
-    },
-    set: async (col, val) => {
-      hotCache.delete(col);
-      return store.set(col, val);
-    }
-  };
-}
-
 /* ---------- Cloudflare Workers KV（原始版 + 性能包装） ---------- */
 export function kvStore(ns) {
   if (!ns) return null;
@@ -342,46 +305,6 @@ export function memoryStore() {
     async set(col, val) {
       mem[col] = val;
       cache.set(col, val);
-    }
-  };
-}
-
-/* ---------- 多存储组合：优先高速，后备持久 ---------- */
-export function compositeStore(primary, fallback) {
-  return {
-    async get(col) {
-      try {
-        const val = await primary.get(col);
-        if (val !== null) return val;
-      } catch (e) {}
-
-      // 降级到后备存储
-      if (fallback) {
-        try {
-          const val = await fallback.get(col);
-          // 回填主存储
-          if (val !== null) await primary.set(col, val).catch(() => {});
-          return val;
-        } catch (e) {}
-      }
-      return null;
-    },
-
-    async set(col, val) {
-      // 同时写入主存储和后备存储
-      await Promise.all([
-        primary.set(col, val).catch(e => console.error("Primary store write failed:", e)),
-        fallback ? fallback.set(col, val).catch(e => console.error("Fallback store write failed:", e)) : Promise.resolve()
-      ]);
-    },
-
-    async flush() {
-      if (primary.flush) await primary.flush();
-    },
-
-    async close() {
-      if (primary.close) await primary.close();
-      if (fallback?.close) await fallback.close();
     }
   };
 }

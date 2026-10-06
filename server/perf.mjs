@@ -69,11 +69,6 @@ class PerfMonitor {
     this.slowThreshold = Number(process.env.SLOW_REQUEST_THRESHOLD) || 1000;
   }
 
-  /* 记录请求开始 */
-  startRequest(reqId, method, path) {
-    return Date.now();
-  }
-
   /* 记录请求结束 */
   endRequest(reqId, method, path, status, startTime, userId) {
     const duration = Date.now() - startTime;
@@ -253,17 +248,6 @@ class PerfMonitor {
 /* 全局实例 */
 const perf = new PerfMonitor();
 
-/* 请求追踪包装器 */
-export function wrapRequest(reqId, method, path, userId) {
-  const startTime = perf.startRequest(reqId, method, path);
-
-  return {
-    end: (status) => {
-      return perf.endRequest(reqId, method, path, status, startTime, userId);
-    }
-  };
-}
-
 /* 存储操作追踪包装器 */
 export function traceStore(col) {
   return {
@@ -293,4 +277,4 @@ export function traceStore(col) {
   };
 }
 
-export { perf, PerfMonitor, RingBuffer };
+export { perf };

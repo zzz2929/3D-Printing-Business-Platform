@@ -10,7 +10,7 @@ const ASSETS = [
   "assets/vendor/flatpickr/flatpickr.min.css?v=64",
   "assets/vendor/flatpickr/flatpickr.min.js?v=64",
   "assets/vendor/flatpickr/zh.js?v=64",
-  "assets/style.css?v=80",
+  "assets/style.css?v=81",
   "assets/store.js?v=76",
   "assets/app.js?v=119"
 ];

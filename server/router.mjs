@@ -9,7 +9,7 @@ import { createAuth, tokenCookie, CLEAR_COOKIE } from "./auth.mjs";
 import { appVersion } from "./version.mjs";
 import { cloudLogin, cloudSendCode, fetchAll } from "./bambu.mjs";
 import { log } from "./logger.mjs";
-import { perf, traceStore, wrapRequest } from "./perf.mjs";
+import { traceStore } from "./perf.mjs";
 
 const DATA_COLS = ["materials", "printers", "records", "orders", "settings", "achievements"];
 
