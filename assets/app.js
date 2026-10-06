@@ -2129,9 +2129,9 @@ function goto(tab){
     }
     return null;
   }
-  async function bambuFetchSnap(){
-    const btn = $("bambuBtnSync");
-    btn.disabled = true; const old = btn.textContent; btn.textContent = "获取中…";
+  async function bambuFetchSnap(ev){
+    const btn = (ev && ev.currentTarget) || $("bambuBtnSync");
+    btn.disabled = true; const old = btn.textContent; btn.textContent = "同步中…";
     try{
       bambuState.snap = await S.bambuFetch();
       if(bambuState.cfg) bambuState.cfg.last = { fetchedAt: bambuState.snap.fetchedAt };
@@ -2149,6 +2149,8 @@ function goto(tab){
   }
   $("bambuBtnSync").addEventListener("click", bambuFetchSnap);
   $("bambuReFetch").addEventListener("click", bambuFetchSnap);
+  /* 同步打印机信息：一键触发打印机「同步信息」并拉取全量快照（fetch 内部对每台设备发 pushall） */
+  $("bambuSyncInfo").addEventListener("click", bambuFetchSnap);
   /* ---- 打印机预览与同步 ---- */
   function renderBambuPrinterPreview(){
     const box = $("bambuPrinterList");
@@ -2219,13 +2221,20 @@ function renderBambuTrayPreview(){
     if(!snap){ box.innerHTML = ""; return; }
     let total = 0, html = "";
     snap.sources.forEach(src => {
-      const srcLabel = src.kind === "lan" ? "局域网" : src.kind === "cloudlib" ? "云端耗材库" : "拓竹云";
+      const srcLabel = src.kind === "lan" ? "局域网" : src.kind === "cloudlib" ? "云端预设" : "拓竹云";
       html += `<div class="bambu-src"><span class="pill">${srcLabel}</span> <b>${S.esc(src.name)}</b>` +
-        (src.ok ? "" : `<span class="badge" style="--bc:var(--danger)"><i></i>${S.esc(src.error || "失败")}</span>`) + `</div>`;
+        (src.ok ? "" : `<span class="badge" style="--bc:var(--danger)"><i></i>${S.esc(src.error || "失败")}</span>`) +
+        (src.kind === "cloudlib" && src.ok
+          ? `<div class="muted bambu-hint">来自拓竹切片预设（云同步的耗材记录，非设备 AMS 托盘）。若与 Bambu Handy 不一致：请先在已连电脑的打印机上点「同步信息」，并避免处于多设备管理模式。</div>`
+          : "") +
+        (src.kind === "cloudlib" && src.ok && src.failed > 0
+          ? `<div class="muted bambu-hint bambu-hint-warn">⚠ ${src.failed} 项云端耗材详情读取失败（该耗材已从云端删除或在切片软件中未同步完整，已跳过）${(src.failedNames || []).length
+              ? "：<code>" + S.esc((src.failedNames || []).slice(0, 5).join("、")) + "</code>" + (src.failed > 5 ? " 等" : "") : ""}。可在 Bambu Studio 中删除后重新云同步，或忽略此提示。</div>`
+          : "") + `</div>`;
       (src.devices || []).forEach(dev => {
         html += `<div class="bambu-dev">${S.esc(dev.devName || dev.devId || "设备")}</div>`;
         if(!(dev.trays || []).length){
-          html += `<div class="empty" style="padding:10px">${dev.devId === "__cloudlib__" ? "云端耗材库为空：在拓竹切片软件里保存并云同步过自定义耗材后会显示在这里" : "未读到 AMS 托盘数据"}</div>`;
+          html += `<div class="empty" style="padding:10px">${dev.devId === "__cloudlib__" ? "云端预设为空：在拓竹切片软件里保存并云同步过自定义耗材后会显示在这里" : "未读到 AMS 托盘数据"}</div>`;
           return;
         }
 total += dev.trays.length;

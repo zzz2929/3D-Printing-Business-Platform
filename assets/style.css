@@ -1055,6 +1055,9 @@ input.valid{border-color:var(--ok, #3ddc97) !important}
 .bambu-lan .bl-code{flex:.95}
 .bambu-src,.bambu-dev{display:flex;align-items:center;gap:8px;margin:8px 0 6px;flex-wrap:wrap}
 .bambu-src b{font-size:13px}
+.bambu-hint{margin:2px 0 6px;line-height:1.5;background:var(--panel2);border:1px dashed var(--border);border-radius:8px;padding:6px 9px}
+.bambu-hint code{font-family:inherit;color:var(--danger);background:var(--danger-dim);border-radius:4px;padding:0 4px}
+.bambu-hint-warn{border-color:color-mix(in srgb,var(--danger) 55%,var(--border));background:var(--danger-dim);color:var(--text)}
 .bambu-dev{font-size:12px;color:var(--sub);margin:2px 0 6px;padding-left:2px}
 .bambu-tray{display:flex;align-items:center;gap:8px;padding:7px 10px;margin-bottom:6px;
   border:1px solid var(--border);border-radius:9px;background:var(--panel2);min-width:0}

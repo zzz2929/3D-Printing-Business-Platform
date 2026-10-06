@@ -198,7 +198,10 @@ export function parseReport(payload, devIdFromTopic){
   const normTray = (t, label, ext) => {
     if(!t || typeof t !== "object") return null;
     const type = String(t.tray_type || "").trim();
-    const color = hexColor(t.tray_color);
+    const name = String(t.tray_name || t.tray_id_name || "").trim();
+    // 颜色全 0/缺失时按名称/类型关键字兜底（与云端耗材库 guessColor 一致，缓解 AMS 托盘颜色丢失显示灰块）
+    let color = hexColor(t.tray_color);
+    if(!color) color = guessColor(name, type);
     const weight = Math.max(0, parseFloat(t.tray_weight) || 0);
     // 兼容两种字段：老固件 tray_remain / 新固件 remain（均为 0-100 百分比）
     // X2D 等新机型无 RFID 标签时 remain=-1 → 剩余量未知（不能误算为 0%）
@@ -216,7 +219,7 @@ export function parseReport(payload, devIdFromTopic){
       remaining: remain != null ? Math.round(weight * remain / 100) : null,
       uuid, tagUid,
       idx: String(t.tray_info_idx || "").trim(),
-      name: String(t.tray_name || t.tray_id_name || "").trim()
+      name
     };
   };
   const ams = p.ams;
@@ -490,11 +493,38 @@ export async function fetchCloud({ region = "cn", email, token, timeoutMs = 1200
    GET /v1/iot-service/api/slicer/setting?version=1.0.0.0 列出全部预设（type=filament/printer/process），
    列表项不含类型/颜色 → 逐个取详情（官方限速约 10/s：并发 3 + 间隔 120ms，条数上限防超时）。
    返回 { items:[{ id, name, type, color, baseId }], failed, total } */
+/* 颜色解析：#RRGGBB / #RRGGBBAA（取前 6 位）/ #RGB；全 0 (#000000/#00000000/#000) 视为
+   "未设置颜色"返回空（Bambu 云端自定义耗材常见此值），而非纯黑 —— 纯黑应交由兜底链给合理色 */
 function colorOf(v){
   const s = String(v || "").trim().replace(/^#/, "");
-  if(/^[0-9a-fA-F]{6}$/.test(s)) return "#" + s.toUpperCase();
-  if(/^[0-9a-fA-F]{8}$/.test(s)) return "#" + s.slice(0, 6).toUpperCase();
-  if(/^[0-9a-fA-F]{3}$/.test(s)) return "#" + s.toUpperCase();
+  let hex = "";
+  if(/^[0-9a-fA-F]{6}$/.test(s)) hex = s;
+  else if(/^[0-9a-fA-F]{8}$/.test(s)) hex = s.slice(0, 6);
+  else if(/^[0-9a-fA-F]{3}$/.test(s)) hex = s[0] + s[0] + s[1] + s[1] + s[2] + s[2];
+  if(!hex || /^0{6}$/.test(hex)) return "";
+  return "#" + hex.toUpperCase();
+}
+/* 颜色兜底链：云端 filaament_colour 缺失/全 0 时，按名称/类型中的颜色关键字就近映射预设色，
+   缓解 Bambu 官方已知 bug（自定义耗材云同步后颜色字段丢失）导致的灰色方块。无关键字 → 空。 */
+const COLOR_KEYWORDS = [
+  [/黑(色)?|black/i,      "#333333"],
+  [/白(色)?|white|ivory/i,"#F5F5F5"],
+  [/灰(色)?|grey|gray/i,  "#9E9E9E"],
+  [/红(色)?|red|rose/i,   "#D32F2F"],
+  [/橙(色)?|orange/i,     "#F57C00"],
+  [/黄(色)?|yellow/i,     "#FBC02D"],
+  [/绿(色)?|green/i,      "#388E3C"],
+  [/蓝(色)?|blue|cyan|青/i,"#1976D2"],
+  [/紫(色)?|purple|violet/i,"#7B1FA2"],
+  [/粉(色)?|pink/i,       "#F48FB1"],
+  [/棕(色)?|brown|coffee/i,"#5D4037"],
+  [/金(色)?|gold/i,       "#B8860B"],
+  [/银(色)?|silver/i,     "#B0BEC5"],
+  [/透明|transparent|clear/i,"#E0E0E0"]
+];
+function guessColor(name, type){
+  const text = String(name || "") + " " + String(type || "");
+  for(const [re, c] of COLOR_KEYWORDS) if(re.test(text)) return c;
   return "";
 }
 /* 预设名 → 品牌/类型解析：官方命名 "Bambu PLA Basic @X1C" → 拓竹品牌 + "PLA Basic" */
@@ -507,9 +537,11 @@ function presetBrandType(name, type, baseId){
   if(/^G[A-Z]/.test(String(baseId || ""))) return { brand: "Bambu Lab 拓竹", type: type || n }; // 官方 RFID 前缀
   return { brand: "", type: type || n };
 }
-/* 云端耗材库抓取：默认只取用户自己的私有预设（与 Bambu Studio 云同步数量一致），
-   详情（类型/颜色/RFID 基底）逐条获取——官方限速约 10/s，用全局限速器控制在 ~8/s，条数不设硬上限（保护上限 150）。 */
-export async function cloudPresetFilaments({ region = "cn", token, limit = 150, includePublic = false }){
+/* 云端耗材库抓取：默认同时取用户私有预设 + 官方公开预设（用户的 Bambu Studio 耗材库
+   可引用官方耗材，只取 private 会让官方耗材缺失、与手机端对不上），按 baseId/名称去重后
+   私有项排前；也可传 includePublic=false 只取私有。详情（类型/颜色/RFID 基底）逐条获取——
+   官方限速约 10/s，用全局限速器控制在 ~8/s，条数不设硬上限（保护上限 150）。 */
+export async function cloudPresetFilaments({ region = "cn", token, limit = 150, includePublic = true }){
   const base = regionOf(region).api;
   const H = { authorization: "Bearer " + token, "content-type": "application/json" };
   const raw = await restJson(base + "/v1/iot-service/api/slicer/setting?version=1.0.0.0", { headers: H }, 15000);
@@ -521,7 +553,7 @@ export async function cloudPresetFilaments({ region = "cn", token, limit = 150, 
     const priv = Array.isArray(f.private) ? f.private : [];
     const pub = Array.isArray(f.public) ? f.public : [];
     privSet = new Set(priv);
-    entries = includePublic ? priv.concat(pub) : priv.slice(); // 默认只要用户自己的库
+    entries = includePublic ? priv.concat(pub) : priv.slice();
   }else if(raw && Array.isArray(raw.filaments)){
     entries = raw.filaments;
   }else if(raw && Array.isArray(raw.settings)){
@@ -536,13 +568,28 @@ export async function cloudPresetFilaments({ region = "cn", token, limit = 150, 
   }
   const filaments = entries
     .filter(e => e && String((e && e.type) || "filament") === "filament" && (e.name || e.setting_id));
-  // 用户私有预设优先（includePublic 时），排序稳定
-  const ordered = privSet
-    ? filaments.slice().sort((a, b) => (privSet.has(b) ? 1 : 0) - (privSet.has(a) ? 1 : 0))
-    : filaments;
-  const chosen = Number.isFinite(limit) ? ordered.slice(0, limit) : ordered;
+  // 私有 + 官方合并时去重：同一 baseId（RFID 基底）/setting_id 只保留一份，私有项优先
+  let ordered = filaments, pubSkipped = 0;
+  if(privSet && includePublic){
+    const seen = new Set();
+    ordered = [];
+    filaments.forEach(e => {
+      const key = String(e.base_id || e.setting_id || e.name || "").trim();
+      if(seen.has(key)){ if(!privSet.has(e)) pubSkipped++; return; }
+      seen.add(key);
+      ordered.push(e);
+    });
+  }
+  // 用户私有预设保证全部入选（includePublic 时不受 limit 截断），public 在 limit 剩余额度内截断
+  let chosen = ordered;
+  if(Number.isFinite(limit) && ordered.length > limit){
+    const privPart = privSet ? ordered.filter(e => privSet.has(e)) : [];
+    const pubPart = privSet ? ordered.filter(e => !privSet.has(e)) : ordered;
+    chosen = privPart.concat(pubPart.slice(0, Math.max(0, limit - privPart.length)));
+  }
   const results = new Array(chosen.length).fill(null);
   let failed = 0, cursor = 0, lastAt = 0;
+  const failedNames = [];
   const throttle = async () => { // 全局限速（多 worker 共享）：预占时间槽，任意两次请求间隔 ≥130ms ≈ 7.7/s < 官方 10/s
     const now = Date.now();
     const slot = Math.max(now, lastAt + 130);
@@ -550,31 +597,37 @@ export async function cloudPresetFilaments({ region = "cn", token, limit = 150, 
     const wait = slot - now;
     if(wait > 0) await new Promise(r => setTimeout(r, wait));
   };
+  const fetchDetail = async (e) => { // 单条详情抓取（公网超时卡顿等临时错误由调用方决定是否重试）
+    await throttle();
+    const d = await restJson(base + "/v1/iot-service/api/slicer/setting/" + encodeURIComponent(e.setting_id) + "?version=1.0.0.0", { headers: H }, 15000);
+    const content = (d && (d.setting || d.content)) || d || {};
+    const pick = v => (Array.isArray(v) ? v[0] : v);
+    const baseId = String(pick(content.filament_settings_id) || e.base_id || "").trim();
+    const bt = presetBrandType(e.name, String(pick(content.filament_type) || "").trim(), baseId);
+    return {
+      id: String(e.setting_id || e.id || ""),
+      name: String(e.name || "").trim(),
+      brand: bt.brand,
+      type: bt.type,
+      color: colorOf(pick(content.filament_colour)) || guessColor(e.name, bt.type),
+      baseId
+    };
+  };
   const worker = async () => {
     while(cursor < chosen.length){
       const i = cursor++;
       const e = chosen[i];
-      await throttle();
       try{
-        const d = await restJson(base + "/v1/iot-service/api/slicer/setting/" + encodeURIComponent(e.setting_id) + "?version=1.0.0.0", { headers: H }, 15000);
-        const content = (d && (d.setting || d.content)) || d || {};
-        const pick = v => (Array.isArray(v) ? v[0] : v);
-        const baseId = String(pick(content.filament_settings_id) || e.base_id || "").trim();
-        const bt = presetBrandType(e.name, String(pick(content.filament_type) || "").trim(), baseId);
-        results[i] = {
-          id: String(e.setting_id || e.id || ""),
-          name: String(e.name || "").trim(),
-          brand: bt.brand,
-          type: bt.type,
-          color: colorOf(pick(content.filament_colour)),
-          baseId
-        };
-      }catch(err){ failed++; }
+        results[i] = await fetchDetail(e);
+      }catch(err){
+        try{ results[i] = await fetchDetail(e); } // 失败重试 1 次
+        catch(err2){ failed++; failedNames.push(String(e.name || e.setting_id || "未知耗材")); }
+      }
     }
   };
   await Promise.all([worker(), worker(), worker()]);
   const items = results.filter(Boolean);
-  return { items, failed, total: chosen.length, totalAll: filaments.length, skipped: Math.max(0, filaments.length - chosen.length), publicSkipped: privSet ? Math.max(0, ((f && Array.isArray(f.public)) ? f.public.length : 0)) : 0 };
+  return { items, failed, failedNames, total: chosen.length, totalAll: filaments.length, skipped: Math.max(0, filaments.length - chosen.length), publicSkipped: pubSkipped };
 }
 
 /* ---------- 汇总：根据配置抓取来源 ----------
@@ -645,7 +698,8 @@ export async function fetchAll(cfg, { lanTimeoutMs = 9000, cloudTimeoutMs = 1500
         const libName = "云端耗材库（" + lib.items.length + " 项"
           + (lib.failed ? " · " + lib.failed + " 项读取失败" : "")
           + (lib.skipped ? " · 共 " + lib.totalAll + " 项已取前 " + lib.total : "") + "）";
-        sources.push({ kind:"cloudlib", name: libName, ok:true, library: true,
+        sources.push({ kind:"cloudlib", name: libName, ok:true, library: true, failed: lib.failed || 0,
+          failedNames: lib.failedNames || [],
           devices: lib.items.length ? [{ devId: "__cloudlib__", devName: "拓竹云端耗材库", devModel: "", trays }] : [] });
       })().catch(e => sources.push({ kind:"cloudlib", name: "云端耗材库", ok:false, error: e.message })));
     }

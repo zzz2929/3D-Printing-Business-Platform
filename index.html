@@ -549,10 +549,11 @@
           <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
             <div class="row" style="flex-wrap:wrap;gap:8px">
               <button class="btn sm" id="bambuBtnSync" type="button">获取设备与耗材</button>
+              <button class="btn ghost sm" id="bambuSyncInfo" type="button" title="向已配置的打印机发送同步指令，拉取 AMS 最新全量快照（等效打印机端的「同步信息」）">同步打印机信息</button>
               <button class="btn ghost sm" id="bambuReFetch" type="button" hidden>重新获取</button>
               <span class="muted" id="bambuFetchedAt" style="font-size:12px"></span>
             </div>
-            <div class="hint" style="margin-top:6px">局域网方式读取当前局域网内打印机；拓竹云方式读取账号绑定的全部设备。获取到设备与 AMS 料卷后，可分别同步到打印机库与耗材库。</div>
+            <div class="hint" style="margin-top:6px">局域网方式读取当前局域网内打印机；拓竹云方式读取账号绑定的全部设备。获取到设备与 AMS 料卷后，可分别同步到打印机库与耗材库。「同步打印机信息」一键发送同步指令并按需拉取全量快照（P1/A1 系空闲时只推增量，需主动拉全量），无需守在打印机旁操作。</div>
 
             <!-- 打印机同步预览 -->
             <div id="bambuPrinterBox" hidden style="margin-top:12px">
