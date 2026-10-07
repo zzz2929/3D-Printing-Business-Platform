@@ -17,3 +17,6 @@ gui-test-screenshots/
 test-*.mjs
 test/
 .zcodeignore
+# fnOS 打包产物与工具
+build/
+tools/
