@@ -454,7 +454,12 @@ function goto(tab){
       pop.style.top = (r.bottom + 4) + "px";
       pop.style.left = r.left + "px";
       pop.style.width = r.width + "px";
-      pop.innerHTML = [...sel.options].map(o => `<button type="button" class="sel-opt${o.value === sel.value ? " on" : ""}" data-v="${S.esc(o.value)}">${S.esc(o.textContent)}</button>`).join("");
+      pop.innerHTML = [...sel.options].map(o => {
+      const isMat = sel.id === "selMat" || sel.id === "oMat" || sel.closest("#extraMats");
+      const mat = isMat && o.value ? S.matById(o.value) : null;
+      const colorDot = mat && mat.color ? `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${mat.color};margin-right:6px;vertical-align:middle;flex-shrink:0"></span>` : "";
+      return `<button type="button" class="sel-opt${o.value === sel.value ? " on" : ""}" data-v="${S.esc(o.value)}">${colorDot}${S.esc(o.textContent)}</button>`;
+    }).join("");
       pop.classList.add("open");
     };
     sel.addEventListener("mousedown", e => { // 拦截原生弹层
@@ -481,8 +486,12 @@ function goto(tab){
     window.addEventListener("resize", close);
   }
   /* ---------- 选择器填充 ---------- */
-  function matOpts(){ return '<option value="">— 选择耗材 —</option>' + S.materials.map(m => `<option value="${m.id}">${S.esc(m.name)} · 剩 ${S.fmt(m.remaining, 0)}g</option>`).join(""); }
-  function priOpts(){ return '<option value="">— 选择打印机（可选） —</option>' + S.printers.map(p => `<option value="${p.id}">${S.esc(p.name)}（${S.num(p.powerW)}W）</option>`).join(""); }
+  function matOpts(){ return '<option value="">— 选择耗材 —</option>' + S.materials.map(m => {
+    return `<option value="${m.id}">${S.esc(m.name)} · 剩 ${S.fmt(m.remaining, 0)}g</option>`;
+  }).join(""); }
+  function priOpts(){ return '<option value="">— 选择打印机（可选） —</option>' + S.printers.map(p => {
+    return `<option value="${p.id}">${S.esc(p.name)}（${S.num(p.powerW)}W）</option>`;
+  }).join(""); }
   function fillSelects(){
     const selMatEl = $("selMat"); // 主耗材选择器由耗材区动态渲染
     if(selMatEl){ const v = selMatEl.value; selMatEl.innerHTML = matOpts(); selMatEl.value = v; }
@@ -762,7 +771,7 @@ function goto(tab){
     // 待收款环
     const duePct = st.due > 0 && st.quote > 0 ? Math.min(100, st.due / st.quote * 100) : 0;
     const dueColor = st.due > 0 ? "ring-danger" : "ring-ok";
-    const dueRing = `<div class="ring ${st.due > 0 ? 'pulse-dot' : ''}" style="width:56px;height:56px">
+    const dueRing = `<div class="ring" style="width:56px;height:56px">
       <svg width="56" height="56" viewBox="0 0 56 56">
         <circle class="ring-bg" cx="28" cy="28" r="24"/>
         <circle class="ring-fill ${dueColor}" cx="28" cy="28" r="24"
@@ -784,7 +793,7 @@ function goto(tab){
       `<div class="stat-ring-wrap">
         ${dueRing}
         <div class="stat-info">
-          <div class="k ${st.due > 0 ? 'pulse-dot' : ''}">待收款（全部）</div>
+          <div class="k">待收款（全部）</div>
           <div class="v num-anim" data-target="${st.due.toFixed(0)}">${S.money(st.due)}</div>
           <div class="s">${st.due > 0 ? (prog.filter(o => o.status === "partial").length > 0 ? prog.filter(o => o.status === "partial").length + " 单部分收款" : "有未结订单") : "已结清"}</div>
         </div>
@@ -1699,7 +1708,7 @@ function goto(tab){
       return `<div class="ord ${hasDue ? 'has-due' : ''}">
         <div class="top"><span class="no">${S.esc(o.orderNo)}</span>
           ${o.itemName ? `<span class="item-name">${S.esc(o.itemName)}</span>` : ""}
-          <span class="badge ${hasDue ? 'pulse-badge' : ''}" style="--bc:${st.color}"><i></i>${st.label}</span></div>
+          <span class="badge ${hasDue ? 'glow-badge' : ''}" style="--bc:${st.color}"><i></i>${st.label}</span></div>
         <div class="meta"><span>📅 ${S.esc(o.date)}</span>
           ${qty > 1 ? `<span>📦 × ${qty} 件</span>` : ""}
           ${o.wechat ? `<span>💬 ${S.esc(o.wechat)}</span>` : ""}${o.custName ? `<span>🙋 ${S.esc(o.custName)}</span>` : ""}</div>
@@ -1788,7 +1797,7 @@ function goto(tab){
         </div>
       </div>`,
       `<div class="stat-ring-wrap">
-        <div class="ring ${st.due > 0 ? 'pulse-dot' : ''}" style="width:52px;height:52px">
+        <div class="ring" style="width:52px;height:52px">
           <svg width="52" height="52" viewBox="0 0 52 52">
             <circle class="ring-bg" cx="26" cy="26" r="22"/>
             <circle class="ring-fill ${dueColor}" cx="26" cy="26" r="22"
@@ -1798,7 +1807,7 @@ function goto(tab){
           <span class="ring-text" style="font-size:9px">${duePct > 0 ? duePct.toFixed(0) + '%' : '✓'}</span>
         </div>
         <div class="stat-info">
-          <div class="k ${st.due > 0 ? 'pulse-dot' : ''}">待收款</div>
+          <div class="k">待收款</div>
           <div class="v num-anim" data-target="${st.due.toFixed(0)}">${S.money(st.due)}</div>
           <div class="s">${st.due > 0 ? (S.orders.filter(o => o.status === "partial").length > 0 ? S.orders.filter(o => o.status === "partial").length + " 单部分收款" : "有未结订单") : "已结清"}</div>
         </div>
