@@ -1471,8 +1471,10 @@ function goto(tab){
     if(S.num($("oQuote").value) <= 0){ toast("请填写单个报价（必填，欠款跟踪依赖它）"); $("oQuote").focus(); return; }
     /* 收款非必填：可先保存为待报价/待付款订单，后续在收款台账补录（qty/rv 随之为 0） */
     /* 收款驱动的状态推进：待报价/待付款 且已有收款、仍有欠款 → 自动转「部分收款」 */
+    /* 部分收款也包括：已卖数量 < 打印数量（打印了2个但只卖出1个） */
     let stVal = $("oStatus").value;
-    const autoPartial = (stVal === "quote" || stVal === "unpaid") && c.rv > 0 && c.due > 0;
+    const batchQty = editingOrdId ? (S.orders.find(o => o.id === editingOrdId)?.batchQty || oBatchVal()) : oBatchVal();
+    const autoPartial = (stVal === "quote" || stVal === "unpaid") && ((c.rv > 0 && c.due > 0) || (c.qty > 0 && c.qty < batchQty));
     if(autoPartial) stVal = "partial";
     const no = $("oNo").value.trim() || nextOrderNo();
     const m = S.matById($("oMat").value), p = S.priById($("oPri").value);
