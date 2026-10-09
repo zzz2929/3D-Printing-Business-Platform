@@ -380,6 +380,15 @@
       const r1 = sc.getBoundingClientRect(), r2 = col.getBoundingClientRect();
       sc.scrollLeft += r2.right - r1.right; // 该柱右缘对齐可视区右缘
     }
+    // 柱状入场动画
+    const bars = el.querySelectorAll(".hbar");
+    bars.forEach((bar, idx) => {
+      const targetH = bar.style.height;
+      bar.style.height = "0";
+      gsap.to(bar, {
+        height: targetH, duration: .7, delay: idx * 0.06, ease: "power2.out"
+      });
+    });
   }
 
   /* ---------- 路由 ---------- */
@@ -736,12 +745,83 @@ function goto(tab){
     const doneN = prog.filter(o => o.status === "done").length;
 
     $("dashRangeTitle").textContent = title + "经营";
+
+    // 利润率环
+    const marginPct = rev > 0 ? Math.min(100, Math.max(0, profit / rev * 100)) : 0;
+    const marginColor = profit >= 0 ? "ring-ok" : "ring-danger";
+    const marginRing = `<div class="ring" style="width:56px;height:56px">
+      <svg width="56" height="56" viewBox="0 0 56 56">
+        <circle class="ring-bg" cx="28" cy="28" r="24"/>
+        <circle class="ring-fill ${marginColor}" cx="28" cy="28" r="24"
+          stroke-dasharray="${(2 * Math.PI * 24).toFixed(1)}"
+          stroke-dashoffset="${(2 * Math.PI * 24 * (1 - marginPct / 100)).toFixed(1)}"/>
+      </svg>
+      <span class="ring-text">${marginPct.toFixed(0)}%</span>
+    </div>`;
+
+    // 待收款环
+    const duePct = st.due > 0 && st.quote > 0 ? Math.min(100, st.due / st.quote * 100) : 0;
+    const dueColor = st.due > 0 ? "ring-danger" : "ring-ok";
+    const dueRing = `<div class="ring ${st.due > 0 ? 'pulse-dot' : ''}" style="width:56px;height:56px">
+      <svg width="56" height="56" viewBox="0 0 56 56">
+        <circle class="ring-bg" cx="28" cy="28" r="24"/>
+        <circle class="ring-fill ${dueColor}" cx="28" cy="28" r="24"
+          stroke-dasharray="${(2 * Math.PI * 24).toFixed(1)}"
+          stroke-dashoffset="${(2 * Math.PI * 24 * (1 - duePct / 100)).toFixed(1)}"/>
+      </svg>
+      <span class="ring-text">${duePct > 0 ? duePct.toFixed(0) + '%' : '✓'}</span>
+    </div>`;
+
     $("dashStats").innerHTML = [
-      ["营收 · 利润 " + CPBTN, S.money(rev), `利润 ${S.money(profit)} · 利润率 ${rev > 0 ? (profit / rev * 100).toFixed(1) : 0}% · ${inP.length} 单`, profit >= 0 ? "up" : "down"],
-      ["待收款（全部）", S.money(st.due), st.due > 0 ? (prog.filter(o => o.status === "partial").length > 0 ? prog.filter(o => o.status === "partial").length + " 单部分收款" : "有未结订单") : "已结清", st.due > 0 ? "down" : ""],
-      ["进行中订单", String(active), title + "已完成 " + doneN + " 单", "hi"],
-      ["累计订单", String(st.count), "历史总数 · 已完成 " + S.orders.filter(o => o.status === "done").length + " 单", ""]
-    ].map(([k, v, s, cls]) => `<div class="stat ${cls}"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join("");
+      `<div class="stat-ring-wrap">
+        ${marginRing}
+        <div class="stat-info">
+          <div class="k">营收 · 利润 ${CPBTN}</div>
+          <div class="v num-anim" data-target="${rev.toFixed(0)}">${S.money(rev)}</div>
+          <div class="s">利润 <b class="${profit >= 0 ? 'tot' : 'loss'}">${S.money(profit)}</b> · ${inP.length} 单</div>
+        </div>
+      </div>`,
+      `<div class="stat-ring-wrap">
+        ${dueRing}
+        <div class="stat-info">
+          <div class="k ${st.due > 0 ? 'pulse-dot' : ''}">待收款（全部）</div>
+          <div class="v num-anim" data-target="${st.due.toFixed(0)}">${S.money(st.due)}</div>
+          <div class="s">${st.due > 0 ? (prog.filter(o => o.status === "partial").length > 0 ? prog.filter(o => o.status === "partial").length + " 单部分收款" : "有未结订单") : "已结清"}</div>
+        </div>
+      </div>`,
+      `<div class="stat-ring-wrap">
+        <div class="ring" style="width:56px;height:56px">
+          <svg width="56" height="56" viewBox="0 0 56 56">
+            <circle class="ring-bg" cx="28" cy="28" r="24"/>
+            <circle class="ring-fill ring-accent" cx="28" cy="28" r="24"
+              stroke-dasharray="${(2 * Math.PI * 24).toFixed(1)}"
+              stroke-dashoffset="${(2 * Math.PI * 24 * (1 - Math.min(100, active * 10))).toFixed(1)}"/>
+          </svg>
+          <span class="ring-text">${active}</span>
+        </div>
+        <div class="stat-info">
+          <div class="k">进行中订单</div>
+          <div class="v num-anim" data-target="${active}">${active}</div>
+          <div class="s">${title}已完成 ${doneN} 单</div>
+        </div>
+      </div>`,
+      `<div class="stat-ring-wrap">
+        <div class="ring" style="width:56px;height:56px">
+          <svg width="56" height="56" viewBox="0 0 56 56">
+            <circle class="ring-bg" cx="28" cy="28" r="24"/>
+            <circle class="ring-fill ring-ok" cx="28" cy="28" r="24"
+              stroke-dasharray="${(2 * Math.PI * 24).toFixed(1)}"
+              stroke-dashoffset="${(2 * Math.PI * 24 * (1 - Math.min(100, st.count / 100))).toFixed(1)}"/>
+          </svg>
+          <span class="ring-text">${st.count}</span>
+        </div>
+        <div class="stat-info">
+          <div class="k">累计订单</div>
+          <div class="v num-anim" data-target="${st.count}">${st.count}</div>
+          <div class="s">已完成 ${S.orders.filter(o => o.status === "done").length} 单</div>
+        </div>
+      </div>`
+    ].join("");
 
     // 趋势图
     const series = trendSeries(r.from, r.to);
@@ -788,6 +868,32 @@ function goto(tab){
       goto("olist");
     }));
 
+    // 数字入场动画
+    gsap.from(".stat-ring-wrap", { opacity:0, y:20, duration:.5, stagger:.12, ease:"power2.out" });
+    document.querySelectorAll(".num-anim").forEach(el => {
+      const target = parseFloat(el.dataset.target || el.textContent.replace(/[^0-9.-]/g,""));
+      if(isFinite(target) && target > 0){
+        const obj = { val:0 };
+        gsap.to(obj, {
+          val: target, duration:1.2, ease:"power2.out",
+          onUpdate: () => {
+            const v = obj.val;
+            if(el.dataset.target && el.dataset.target.includes(".")){
+              el.textContent = S.money(v);
+            } else if(el.dataset.target){
+              el.textContent = Math.round(v);
+            }
+          }
+        });
+      }
+    });
+
+    // 环形进度动画
+    gsap.from(".ring-fill", {
+      strokeDashoffset: function(i, el){ return 2 * Math.PI * 24; },
+      duration:1.2, ease:"power2.out", stagger:.08
+    });
+
     renderAch();
   }
 
@@ -797,7 +903,7 @@ function goto(tab){
       const p = Math.max(0, Math.min(1, a.goal(s))), on = p >= 1;
       return `<div class="ach ${on ? "on" : ""}"><div class="ic2">${a.ic}</div>
         <div class="body" style="flex:1"><div class="nm">${a.nm} ${on ? "✓" : ""}</div><div class="ds">${a.ds}</div>
-        <div class="pg"><i style="width:${(p * 100).toFixed(0)}%"></i></div></div></div>`;
+        <div class="pg pg-anim" style="--pg-width:${(p * 100).toFixed(1)}%"><i></i></div></div></div>`;
     }).join("");
   }
 
@@ -1589,10 +1695,11 @@ function goto(tab){
       const qty = Math.max(1, S.num(o.qty) || 1);
       const oms = orderMats(o);
       const mf = o.modelFile && o.modelFile.name ? `📎 ${S.esc(o.modelFile.name)}${o.modelFile.size ? " (" + S.esc(o.modelFile.size) + ")" : ""}` : "";
-      return `<div class="ord">
+      const hasDue = due > 0;
+      return `<div class="ord ${hasDue ? 'has-due' : ''}">
         <div class="top"><span class="no">${S.esc(o.orderNo)}</span>
           ${o.itemName ? `<span class="item-name">${S.esc(o.itemName)}</span>` : ""}
-          <span class="badge" style="--bc:${st.color}"><i></i>${st.label}</span></div>
+          <span class="badge ${hasDue ? 'pulse-badge' : ''}" style="--bc:${st.color}"><i></i>${st.label}</span></div>
         <div class="meta"><span>📅 ${S.esc(o.date)}</span>
           ${qty > 1 ? `<span>📦 × ${qty} 件</span>` : ""}
           ${o.wechat ? `<span>💬 ${S.esc(o.wechat)}</span>` : ""}${o.custName ? `<span>🙋 ${S.esc(o.custName)}</span>` : ""}</div>
@@ -1640,12 +1747,79 @@ function goto(tab){
 
   function renderOrders(){
     const st = S.orderStats();
+    // 利润率环
+    const marginPct = st.rev > 0 ? Math.min(100, Math.max(0, st.profit / st.rev * 100)) : 0;
+    const marginColor = st.profit >= 0 ? "ring-ok" : "ring-danger";
+    // 待收款环
+    const duePct = st.due > 0 && st.quote > 0 ? Math.min(100, st.due / st.quote * 100) : 0;
+    const dueColor = st.due > 0 ? "ring-danger" : "ring-ok";
+
     $("ordStats").innerHTML = [
-      ["订单总数", String(st.count), "已取消不计", "", ""],
-      ["累计营收", S.money(st.rev), "报价 " + S.money(st.quote), "", ""],
-      ["待收款", S.money(st.due), st.due > 0 ? (S.orders.filter(o => o.status === "partial").length > 0 ? S.orders.filter(o => o.status === "partial").length + " 单部分收款" : "有未结订单") : "已结清", st.due > 0 ? "down" : "up", ""],
-      ["累计利润", S.money(st.profit), "利润率 " + (st.margin > 0 ? st.margin.toFixed(1) : 0) + " %", st.profit >= 0 ? "up" : "down", ""]
-    ].map(([k, v, s, cls]) => `<div class="stat ${cls}"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join("");
+      `<div class="stat-ring-wrap">
+        <div class="ring" style="width:52px;height:52px">
+          <svg width="52" height="52" viewBox="0 0 52 52">
+            <circle class="ring-bg" cx="26" cy="26" r="22"/>
+            <circle class="ring-fill ring-accent" cx="26" cy="26" r="22"
+              stroke-dasharray="${(2 * Math.PI * 22).toFixed(1)}"
+              stroke-dashoffset="${(2 * Math.PI * 22 * (1 - Math.min(100, st.count / 50))).toFixed(1)}"/>
+          </svg>
+          <span class="ring-text" style="font-size:10px">${st.count}</span>
+        </div>
+        <div class="stat-info">
+          <div class="k">订单总数</div>
+          <div class="v num-anim" data-target="${st.count}">${st.count}</div>
+          <div class="s">已取消不计</div>
+        </div>
+      </div>`,
+      `<div class="stat-ring-wrap">
+        <div class="ring" style="width:52px;height:52px">
+          <svg width="52" height="52" viewBox="0 0 52 52">
+            <circle class="ring-bg" cx="26" cy="26" r="22"/>
+            <circle class="ring-fill ring-ok" cx="26" cy="26" r="22"
+              stroke-dasharray="${(2 * Math.PI * 22).toFixed(1)}"
+              stroke-dashoffset="${(2 * Math.PI * 22 * (1 - Math.min(100, st.rev / (st.quote || 1) * 100))).toFixed(1)}"/>
+          </svg>
+          <span class="ring-text" style="font-size:9px">${st.quote > 0 ? ((st.rev / st.quote * 100)).toFixed(0) + '%' : '—'}</span>
+        </div>
+        <div class="stat-info">
+          <div class="k">累计营收</div>
+          <div class="v num-anim" data-target="${st.rev.toFixed(0)}">${S.money(st.rev)}</div>
+          <div class="s">报价 ${S.money(st.quote)}</div>
+        </div>
+      </div>`,
+      `<div class="stat-ring-wrap">
+        <div class="ring ${st.due > 0 ? 'pulse-dot' : ''}" style="width:52px;height:52px">
+          <svg width="52" height="52" viewBox="0 0 52 52">
+            <circle class="ring-bg" cx="26" cy="26" r="22"/>
+            <circle class="ring-fill ${dueColor}" cx="26" cy="26" r="22"
+              stroke-dasharray="${(2 * Math.PI * 22).toFixed(1)}"
+              stroke-dashoffset="${(2 * Math.PI * 22 * (1 - duePct / 100)).toFixed(1)}"/>
+          </svg>
+          <span class="ring-text" style="font-size:9px">${duePct > 0 ? duePct.toFixed(0) + '%' : '✓'}</span>
+        </div>
+        <div class="stat-info">
+          <div class="k ${st.due > 0 ? 'pulse-dot' : ''}">待收款</div>
+          <div class="v num-anim" data-target="${st.due.toFixed(0)}">${S.money(st.due)}</div>
+          <div class="s">${st.due > 0 ? (S.orders.filter(o => o.status === "partial").length > 0 ? S.orders.filter(o => o.status === "partial").length + " 单部分收款" : "有未结订单") : "已结清"}</div>
+        </div>
+      </div>`,
+      `<div class="stat-ring-wrap">
+        <div class="ring" style="width:52px;height:52px">
+          <svg width="52" height="52" viewBox="0 0 52 52">
+            <circle class="ring-bg" cx="26" cy="26" r="22"/>
+            <circle class="ring-fill ${marginColor}" cx="26" cy="26" r="22"
+              stroke-dasharray="${(2 * Math.PI * 22).toFixed(1)}"
+              stroke-dashoffset="${(2 * Math.PI * 22 * (1 - marginPct / 100)).toFixed(1)}"/>
+          </svg>
+          <span class="ring-text" style="font-size:9px">${marginPct.toFixed(0)}%</span>
+        </div>
+        <div class="stat-info">
+          <div class="k">累计利润</div>
+          <div class="v num-anim" data-target="${st.profit.toFixed(0)}">${S.money(st.profit)}</div>
+          <div class="s">利润率 ${st.margin > 0 ? st.margin.toFixed(1) : 0}%</div>
+        </div>
+      </div>`
+    ].join("");
     renderOrdList();
   }
 
@@ -2439,12 +2613,72 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
 
     const rs = S.records;
     const total = rs.reduce((s,r) => s + statsCostOf(r), 0), sumH = rs.reduce((s,r) => s + S.num(r.hours), 0), sumG = rs.reduce((s,r) => s + S.num(r.grams), 0);
+    // 单位成本
+    const costPerG = sumG > 0 ? total / sumG : 0;
+    const costPerH = sumH > 0 ? total / sumH : 0;
+
     $("stats").innerHTML = [
-      ["总记录", String(rs.length), "", ""],
-      ["总耗材 / 时长", S.fmt(sumG, 0) + " g · " + S.fmt(sumH, 1) + " h", "", ""],
-      ["总成本 " + CPBTN, S.money(total), "", "hi"],
-      ["单克 / 单时成本", (sumG > 0 ? S.money(total / sumG) : "—") + " · " + (sumH > 0 ? S.money(total / sumH) : "—"), "", ""]
-    ].map(([k, v, s, cls]) => `<div class="stat ${cls}"><div class="k">${k}</div><div class="v" style="font-size:${v.length > 14 ? "16px" : "19px"}">${v}</div></div>`).join("");
+      `<div class="stat-ring-wrap">
+        <div class="ring" style="width:52px;height:52px">
+          <svg width="52" height="52" viewBox="0 0 52 52">
+            <circle class="ring-bg" cx="26" cy="26" r="22"/>
+            <circle class="ring-fill ring-accent" cx="26" cy="26" r="22"
+              stroke-dasharray="${(2 * Math.PI * 22).toFixed(1)}"
+              stroke-dashoffset="${(2 * Math.PI * 22 * (1 - Math.min(100, rs.length / 30))).toFixed(1)}"/>
+          </svg>
+          <span class="ring-text" style="font-size:10px">${rs.length}</span>
+        </div>
+        <div class="stat-info">
+          <div class="k">总记录</div>
+          <div class="v num-anim" data-target="${rs.length}">${rs.length}</div>
+        </div>
+      </div>`,
+      `<div class="stat-ring-wrap">
+        <div class="ring" style="width:52px;height:52px">
+          <svg width="52" height="52" viewBox="0 0 52 52">
+            <circle class="ring-bg" cx="26" cy="26" r="22"/>
+            <circle class="ring-fill ring-ok" cx="26" cy="26" r="22"
+              stroke-dasharray="${(2 * Math.PI * 22).toFixed(1)}"
+              stroke-dashoffset="${(2 * Math.PI * 22 * (1 - Math.min(100, sumG / 5000))).toFixed(1)}"/>
+          </svg>
+          <span class="ring-text" style="font-size:9px">${S.fmt(sumG, 0)}g</span>
+        </div>
+        <div class="stat-info">
+          <div class="k">总耗材 / 时长</div>
+          <div class="v">${S.fmt(sumG, 0)} g · ${S.fmt(sumH, 1)} h</div>
+        </div>
+      </div>`,
+      `<div class="stat-ring-wrap">
+        <div class="ring" style="width:52px;height:52px">
+          <svg width="52" height="52" viewBox="0 0 52 52">
+            <circle class="ring-bg" cx="26" cy="26" r="22"/>
+            <circle class="ring-fill ring-danger" cx="26" cy="26" r="22"
+              stroke-dasharray="${(2 * Math.PI * 22).toFixed(1)}"
+              stroke-dashoffset="${(2 * Math.PI * 22 * (1 - Math.min(100, total / 10000))).toFixed(1)}"/>
+          </svg>
+          <span class="ring-text" style="font-size:9px">¥</span>
+        </div>
+        <div class="stat-info">
+          <div class="k">总成本 ${CPBTN}</div>
+          <div class="v num-anim" data-target="${total.toFixed(0)}">${S.money(total)}</div>
+        </div>
+      </div>`,
+      `<div class="stat-ring-wrap">
+        <div class="ring" style="width:52px;height:52px">
+          <svg width="52" height="52" viewBox="0 0 52 52">
+            <circle class="ring-bg" cx="26" cy="26" r="22"/>
+            <circle class="ring-fill ring-accent" cx="26" cy="26" r="22"
+              stroke-dasharray="${(2 * Math.PI * 22).toFixed(1)}"
+              stroke-dashoffset="${(2 * Math.PI * 22 * 0.3).toFixed(1)}"/>
+          </svg>
+          <span class="ring-text" style="font-size:8px">均</span>
+        </div>
+        <div class="stat-info">
+          <div class="k">单克 / 单时成本</div>
+          <div class="v" style="font-size:14px">${S.money(costPerG)} / ${S.money(costPerH)}</div>
+        </div>
+      </div>`
+    ].join("");
 
     const months = S.monthly(rs.map(r => ({ date:r.date, value:r.total })), "value", 12);
     if(months.every(m => m.value === 0)) $("monthChart").innerHTML = '<div class="empty">还没有月度数据</div>';

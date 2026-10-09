@@ -1121,3 +1121,117 @@ input.valid{border-color:var(--ok, #3ddc97) !important}
   .cat-list{max-height:220px}
   .sub-list{max-height:280px}
 }
+
+/* ============ 图形化增强样式 ============ */
+
+/* 圆形进度环 */
+.ring{position:relative;display:inline-flex;align-items:center;justify-content:center}
+.ring svg{transform:rotate(-90deg)}
+.ring-bg{fill:none;stroke:var(--line);stroke-width:4}
+.ring-fill{fill:none;stroke-width:4;stroke-linecap:round;transition:stroke-dashoffset .8s cubic-bezier(.4,0,.2,1)}
+.ring-ok{stroke:var(--ok)}
+.ring-danger{stroke:var(--danger)}
+.ring-accent{stroke:var(--accent)}
+.ring-text{position:absolute;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--ink)}
+.ring-label{position:absolute;bottom:-14px;font-size:10px;color:var(--sub);white-space:nowrap}
+
+/* 统计卡环形指示器 */
+.stat-ring-wrap{display:flex;align-items:center;gap:10px}
+.stat-ring{flex-shrink:0}
+.stat-info{flex:1;min-width:0}
+.stat-info .k{font-size:11.5px;color:var(--sub);letter-spacing:.04em}
+.stat-info .v{font-family:var(--mono);font-size:19px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums}
+.stat-info .s{font-size:11px;color:var(--faint);margin-top:1px}
+
+/* 脉冲动画 - 用于待办/待收款指示 */
+@keyframes pulse-ring{
+  0%{box-shadow:0 0 0 0 currentColor;opacity:.6}
+  70%{box-shadow:0 0 0 8px currentColor;opacity:0}
+  100%{box-shadow:0 0 0 0 currentColor;opacity:0}
+}
+.pulse-dot{position:relative}
+.pulse-dot::before{
+  content:"";position:absolute;inset:-3px;border-radius:50%;
+  background:currentColor;opacity:.35;
+  animation:pulse-ring 2s ease-out infinite;
+}
+.pulse-badge{
+  position:relative;display:inline-flex;align-items:center;gap:4px;
+}
+.pulse-badge::after{
+  content:"";position:absolute;right:-6px;top:-3px;width:8px;height:8px;
+  border-radius:50%;background:var(--danger);border:2px solid var(--bg);
+  animation:pulse-ring 1.8s ease-out infinite;
+}
+
+/* 进度条增强 */
+.pg{height:3px;background:var(--line);border-radius:3px;margin-top:5px;overflow:hidden}
+.pg>i{display:block;height:100%;background:var(--ok);transition:width 1s cubic-bezier(.4,0,.2,1)}
+.pg.pg-anim>i{width:0!important;animation:pg-fill 1.2s cubic-bezier(.4,0,.2,1) forwards}
+@keyframes pg-fill{to{width:var(--pg-width)!important}}
+
+/* 待收款订单高亮 */
+.ord.has-due{border-left:3px solid var(--danger);background:color-mix(in srgb,var(--danger) 4%,var(--panel))}
+.ord.has-due .loss{color:var(--danger);font-weight:600}
+
+/* 成就卡片入场动画 */
+.ach{opacity:0;transform:translateY(12px);animation:ach-enter .5s cubic-bezier(.4,0,.2,1) forwards}
+.ach:nth-child(1){animation-delay:.05s}
+.ach:nth-child(2){animation-delay:.1s}
+.ach:nth-child(3){animation-delay:.15s}
+.ach:nth-child(4){animation-delay:.2s}
+.ach:nth-child(5){animation-delay:.25s}
+.ach:nth-child(6){animation-delay:.3s}
+@keyframes ach-enter{
+  to{opacity:1;transform:translateY(0)}
+}
+
+/* 统计卡入场动画 */
+.stats{opacity:0;animation:stats-enter .6s cubic-bezier(.4,0,.2,1) forwards}
+@keyframes stats-enter{
+  to{opacity:1}
+}
+.stat{opacity:0;transform:translateY(16px);animation:stat-enter .5s cubic-bezier(.4,0,.2,1) forwards}
+.stat:nth-child(1){animation-delay:.08s}
+.stat:nth-child(2){animation-delay:.16s}
+.stat:nth-child(3){animation-delay:.24s}
+.stat:nth-child(4){animation-delay:.32s}
+@keyframes stat-enter{
+  to{opacity:1;transform:translateY(0)}
+}
+
+/* 卡片入场动画 */
+.card{opacity:0;transform:translateY(20px);animation:card-enter .6s cubic-bezier(.4,0,.2,1) forwards}
+.card:nth-child(1){animation-delay:.1s}
+.card:nth-child(2){animation-delay:.18s}
+.card:nth-child(3){animation-delay=.26s}
+.card:nth-child(4){animation-delay=.34s}
+.card:nth-child(5){animation-delay=.42s}
+@keyframes card-enter{
+  to{opacity:1;transform:translateY(0)}
+}
+
+/* 数字跳动动画 */
+.num-anim{transition:transform .15s}
+.num-bump{animation:num-bump .4s cubic-bezier(.4,0,.2,1)}
+@keyframes num-bump{
+  0%{transform:scale(1)}
+  30%{transform:scale(1.15)}
+  60%{transform:scale(.95)}
+  100%{transform:scale(1)}
+}
+
+/* 图表柱状入场动画 */
+.hbar{height:0!important;animation:hbar-grow .8s cubic-bezier(.4,0,.2,1) forwards}
+@keyframes hbar-grow{
+  to{height:var(--hbar-target)!important}
+}
+
+/* 警告提示入场动画 */
+.alert{opacity:0;transform:translateX(-10px);animation:alert-enter .4s cubic-bezier(.4,0,.2,1) forwards}
+.alert:nth-child(1){animation-delay:.15s}
+.alert:nth-child(2){animation-delay:.25s}
+.alert:nth-child(3){animation-delay:.35s}
+@keyframes alert-enter{
+  to{opacity:1;transform:translateX(0)}
+}
