@@ -50,9 +50,12 @@
 
   /* 常用颜色快选 */
   const PRESET_COLORS = [
-    ["曜石黑","#1a1a1a"],["象牙白","#f5f2ea"],["太空灰","#9aa3ad"],["中国红","#d03a2b"],
-    ["火山橙","#e8590c"],["柠檬黄","#f5b301"],["松涛绿","#2f9e44"],["克莱因蓝","#1971c2"],
-    ["罗兰紫","#7048e8"],["樱花粉","#f783ac"],["咖啡棕","#8d6e4a"],["香槟金","#c9a86a"]
+    ["黑","#1a1a1a"],["白","#f5f2ea"],["灰","#9aa3ad"],["红","#d03a2b"],
+    ["橙","#e8590c"],["黄","#f5b301"],["绿","#2f9e44"],["蓝","#1971c2"],
+    ["紫","#7048e8"],["粉","#f783ac"],["棕","#8d6e4a"],["金","#c9a86a"],
+    ["银","#c0c6cc"],["透明","#dff1f5"],["青","#00b894"],["薄荷","#00cec9"],
+    ["珊瑚","#ff7675"],["香芋紫","#a29bfe"],["天空蓝","#74b9ff"],["奶油黄","#ffeaa7"],
+    ["抹茶绿","#badc58"],["蜜桃粉","#fab1a0"],["活力橙","#fd9644"],["极光蓝","#0984e3"]
   ];
   $("colorPresets").innerHTML = PRESET_COLORS.map(([n,c],i) =>
     `<button type="button" class="sw-p" data-c="${c}" data-n="${n}" title="${n}" style="background:${c}"></button>`).join("");
@@ -60,6 +63,8 @@
     const b = e.target.closest(".sw-p"); if(!b) return;
     $("mColor").value = b.getAttribute("data-c");
     $("mColorName").value = b.getAttribute("data-n");
+    const swatch = $("colorNameSwatch");
+    if(swatch) swatch.style.background = b.getAttribute("data-c");
     document.querySelectorAll(".sw-p").forEach(x => x.classList.toggle("on", x === b));
   });
 
@@ -328,15 +333,44 @@
   /* 打印机品牌：从 <select> 改为 attachCombo 风格，支持输入新品牌 */
   attachCombo($("pBrand"), PRI_BRANDS, { onAdd:v => S.addPriBrand(v) });
 
-  /* 颜色名 → 取色框联动 */
-  const COLOR_HEX = {};
-  PRESET_COLORS.forEach(([n, c]) => COLOR_HEX[n] = c);
-  Object.assign(COLOR_HEX, { "钛银":"#c0c6cc", "透明":"#dff1f5", "荧光绿":"#54e34a", "渐变色":"#b06ab3" });
+  /* 颜色名 → 取色框联动（支持所有预设颜色，自动模糊匹配+实时预览） */
+  function getAllColorMap(){
+    const map = {};
+    // 从快捷颜色表
+    PRESET_COLORS.forEach(([n, c]) => map[n] = c);
+    // 从预设颜色库
+    const ps = S.presets();
+    if(ps.matColorHex){
+      Object.entries(ps.matColorHex).forEach(([n, c]) => map[n] = c);
+    }
+    return map;
+  }
   function syncColorFromName(){
     const n = $("mColorName").value.trim();
-    const hex = S.matColorHexOf(n) || COLOR_HEX[n]; // 优先用预设里编辑过的色值
-    if(hex) $("mColor").value = hex;
+    const allColors = getAllColorMap();
+    let hex = allColors[n]; // 精确匹配
+    if(!hex){
+      // 模糊匹配：输入包含于颜色名即可
+      const lower = n.toLowerCase();
+      for(const [name, color] of Object.entries(allColors)){
+        if(name.toLowerCase().includes(lower) || lower.includes(name.toLowerCase())){
+          hex = color;
+          break;
+        }
+      }
+    }
+    if(hex){
+      $("mColor").value = hex;
+      // 更新色块预览
+      const swatch = $("colorNameSwatch");
+      if(swatch) swatch.style.background = hex;
+    }
   }
+  // 取色器变化时也同步预览
+  $("mColor").addEventListener("input", () => {
+    const swatch = $("colorNameSwatch");
+    if(swatch) swatch.style.background = $("mColor").value;
+  });
   $("mColorName").addEventListener("input", syncColorFromName);
   $("mColorName").addEventListener("change", syncColorFromName);
 
@@ -461,8 +495,33 @@ function goto(tab){
         const pct = mat.spool > 0 ? Math.min(100, mat.remaining / mat.spool * 100) : 0;
         const lowStock = mat.remaining <= S.settings.lowStock;
         const barColor = pct > 50 ? "var(--ok)" : pct > 20 ? "var(--accent)" : "var(--danger)";
+        // 根据小类名称判断材质效果
+        const matType = mat.type || "";
+        const isSilk = /丝绸|Silk|丝绒/i.test(matType);
+        const isTransparent = /Translucent|透明|透亮/i.test(matType);
+        const isMarble = /大理石|Marble|石材/i.test(matType);
+        const isGlow = /荧光|Glow|夜光/i.test(matType);
+        const isWood = /木|Wood|木质/i.test(matType);
+        const isCarbon = /碳纤|Carbon/i.test(matType);
+        // 颜色圆点样式
+        let dotStyle = `width:12px;height:12px;border-radius:50%;flex-shrink:0;`;
+        if(isTransparent){
+          dotStyle += `background:linear-gradient(135deg,${mat.color}cc 0%,${mat.color}44 50%,${mat.color}88 100%);border:1px solid ${mat.color};box-shadow:0 0 6px ${mat.color}60,inset 0 0 4px rgba(255,255,255,0.4);`;
+        } else if(isSilk){
+          dotStyle += `background:linear-gradient(45deg,${mat.color} 0%,${mat.color}88 25%,#fffbe6 50%,${mat.color}88 75%,${mat.color} 100%);box-shadow:0 0 6px ${mat.color}60;`;
+        } else if(isMarble){
+          dotStyle += `background:radial-gradient(ellipse at 30% 30%,${mat.color}cc 0%,#e8e4dc 40%,${mat.color}88 70%,#d4cfc7 100%);border:1px solid ${mat.color}66;`;
+        } else if(isGlow){
+          dotStyle += `background:${mat.color};box-shadow:0 0 8px ${mat.color},0 0 12px ${mat.color}80;`;
+        } else if(isWood){
+          dotStyle += `background:linear-gradient(90deg,${mat.color} 0%,${mat.color}dd 20%,#c4a574 40%,${mat.color}ee 60%,#a08060 80%,${mat.color} 100%);`;
+        } else if(isCarbon){
+          dotStyle += `background:linear-gradient(45deg,#1a1a1a 0%,#2d2d2d 25%,#1a1a1a 50%,#3d3d3d 75%,#1a1a1a 100%);border:1px solid #444;`;
+        } else {
+          dotStyle += `background:${mat.color};box-shadow:0 0 4px ${mat.color}40;`;
+        }
         return `<button type="button" class="sel-opt${o.value === sel.value ? " on" : ""}" data-v="${S.esc(o.value)}" style="display:flex;align-items:center;gap:10px;padding:8px 12px">
-          <span style="width:12px;height:12px;border-radius:50%;background:${mat.color};flex-shrink:0;box-shadow:0 0 4px ${mat.color}40"></span>
+          <span style="${dotStyle}"></span>
           <span style="flex:1;min-width:0;font-size:13px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${S.esc(mat.brand || mat.name)} · ${S.esc(mat.type || "")}</span>
           <span style="width:60px;height:6px;background:var(--line);border-radius:3px;overflow:hidden;flex-shrink:0">
             <span style="display:block;height:100%;width:${pct}%;background:${barColor};border-radius:3px"></span>
@@ -1903,6 +1962,7 @@ function goto(tab){
     $("mColor").value = "#ffb02e";
     $("mSpool").value = "1000"; $("mRemain").value = "1000";
     document.querySelectorAll(".sw-p").forEach(x => x.classList.remove("on"));
+    const sw = $("colorNameSwatch"); if(sw) sw.style.background = "#ffb02e";
   }
   function editMat(id){
     const m = S.matById(id); if(!m) return;
@@ -1912,6 +1972,7 @@ function goto(tab){
     $("cancelEditMat").style.display = "";
     $("mBrand").value = m.brand || ""; $("mType").value = m.type || "";
     $("mColor").value = m.color || "#ffb02e"; $("mColorName").value = m.colorName || "";
+    const sw = $("colorNameSwatch"); if(sw) sw.style.background = m.color || "#ffb02e";
     $("mPrice").value = S.num(m.pricePerKg) || "";
     $("mSpool").value = S.num(m.spool) || 1000; $("mRemain").value = S.num(m.remaining) || 0;
     document.querySelectorAll(".sw-p").forEach(x => x.classList.toggle("on", x.getAttribute("data-c") === (m.color || "").toLowerCase()));
@@ -1948,13 +2009,36 @@ function goto(tab){
         const rem = S.num(m.remaining), spool = Math.max(1, S.num(m.spool)), pct = Math.min(100, rem / spool * 100);
         const low = S.num(S.settings.lowStock) > 0 && rem <= S.num(S.settings.lowStock);
         const cls = low ? "low" : (pct < 35 ? "mid" : "ok");
+        // 根据小类名称判断材质效果
+        const matType = m.type || "";
+        const isSilk = /丝绸|Silk|丝绒/i.test(matType);
+        const isTransparent = /Translucent|透明|透亮/i.test(matType);
+        const isMarble = /大理石|Marble|石材/i.test(matType);
+        const isGlow = /荧光|Glow|夜光/i.test(matType);
+        const isWood = /木|Wood|木质/i.test(matType);
+        const isCarbon = /碳纤|Carbon/i.test(matType);
+        // 颜色圆点样式
+        let swStyle = `background:${S.esc(m.color)};`;
+        if(isTransparent){
+          swStyle = `background:linear-gradient(135deg,${m.color}cc 0%,${m.color}44 50%,${m.color}88 100%);border:1px solid ${m.color};box-shadow:0 0 6px ${m.color}60,inset 0 0 4px rgba(255,255,255,0.4);`;
+        } else if(isSilk){
+          swStyle = `background:linear-gradient(45deg,${m.color} 0%,${m.color}88 25%,#fffbe6 50%,${m.color}88 75%,${m.color} 100%);box-shadow:0 0 6px ${m.color}60;`;
+        } else if(isMarble){
+          swStyle = `background:radial-gradient(ellipse at 30% 30%,${m.color}cc 0%,#e8e4dc 40%,${m.color}88 70%,#d4cfc7 100%);border:1px solid ${m.color}66;`;
+        } else if(isGlow){
+          swStyle = `background:${m.color};box-shadow:0 0 8px ${m.color},0 0 12px ${m.color}80;`;
+        } else if(isWood){
+          swStyle = `background:linear-gradient(90deg,${m.color} 0%,${m.color}dd 20%,#c4a574 40%,${m.color}ee 60%,#a08060 80%,${m.color} 100%);`;
+        } else if(isCarbon){
+          swStyle = `background:linear-gradient(45deg,#1a1a1a 0%,#2d2d2d 25%,#1a1a1a 50%,#3d3d3d 75%,#1a1a1a 100%);border:1px solid #444;`;
+        }
         // 颜色列去重：颜色名/类型已包含在耗材名里时改显示色号，避免重复描述
         const dupColor = (m.colorName && m.name.indexOf(m.colorName) >= 0) || (!m.colorName && m.type && m.name.indexOf(m.type) >= 0);
         const colorCell = dupColor
           ? `<span class="pill" title="色号">${S.esc((m.color || "").toUpperCase() || m.colorName || m.type)}</span>`
           : `<span class="pill">${S.esc(m.colorName || m.type)}</span>`;
         return `<tr>
-          <td><span class="sw" style="background:${S.esc(m.color)}"></span>${S.esc(m.name)}${low ? ' <span class="badge" style="--bc:var(--danger)"><i></i>低库存</span>' : ""}</td>
+          <td><span class="sw" style="${swStyle}"></span>${S.esc(m.name)}${low ? ' <span class="badge" style="--bc:var(--danger)"><i></i>低库存</span>' : ""}</td>
           <td>${colorCell}</td>
           <td class="num">${S.fmt(m.pricePerKg, 2)}</td>
           <td><div class="stock"><i class="${cls}" style="width:${pct.toFixed(1)}%"></i></div><div class="hint">${S.fmt(rem, 0)} / ${S.fmt(spool, 0)} g</div></td>
@@ -2242,7 +2326,7 @@ function goto(tab){
   /* ---- 抓取与同步（打印机 + 耗材） ---- */
   const BAMBU_POWER_EST = { "X1C":130, "X1E":150, "X1":130, "P1S":110, "P1P":100, "A1":110, "A1 MINI":75 }; // 打印功率经验均值，可改
 // 常见色兜底：预设配色里没有的托盘色（纯白/灰/粉等）也能读出颜色名
-  const COLOR_FALLBACK = { "#FFFFFF":"白", "#898989":"太空灰", "#F55A74":"樱花粉", "#FF0F0F":"中国红", "#000000":"曜石黑" };
+  const COLOR_FALLBACK = { "#FFFFFF":"白", "#898989":"灰", "#F55A74":"粉", "#FF0F0F":"红", "#000000":"黑" };
   function guessColorName(hex){
     if(!hex) return "";
     const m = S.presets().matColorHex || {};
