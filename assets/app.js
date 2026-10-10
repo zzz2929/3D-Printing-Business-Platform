@@ -457,8 +457,20 @@ function goto(tab){
       pop.innerHTML = [...sel.options].map(o => {
       const isMat = sel.id === "selMat" || sel.id === "oMat" || sel.closest("#extraMats");
       const mat = isMat && o.value ? S.matById(o.value) : null;
-      const colorDot = mat && mat.color ? `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${mat.color};margin-right:6px;vertical-align:middle;flex-shrink:0"></span>` : "";
-      return `<button type="button" class="sel-opt${o.value === sel.value ? " on" : ""}" data-v="${S.esc(o.value)}">${colorDot}${S.esc(o.textContent)}</button>`;
+      if(mat){
+        const pct = mat.spool > 0 ? Math.min(100, mat.remaining / mat.spool * 100) : 0;
+        const lowStock = mat.remaining <= S.settings.lowStock;
+        const barColor = pct > 50 ? "var(--ok)" : pct > 20 ? "var(--accent)" : "var(--danger)";
+        return `<button type="button" class="sel-opt${o.value === sel.value ? " on" : ""}" data-v="${S.esc(o.value)}" style="display:flex;align-items:center;gap:10px;padding:8px 12px">
+          <span style="width:12px;height:12px;border-radius:50%;background:${mat.color};flex-shrink:0;box-shadow:0 0 4px ${mat.color}40"></span>
+          <span style="flex:1;min-width:0;font-size:13px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${S.esc(mat.brand || mat.name)} · ${S.esc(mat.type || "")}</span>
+          <span style="width:60px;height:6px;background:var(--line);border-radius:3px;overflow:hidden;flex-shrink:0">
+            <span style="display:block;height:100%;width:${pct}%;background:${barColor};border-radius:3px"></span>
+          </span>
+          <span style="width:44px;text-align:right;font-size:12px;font-family:var(--mono);color:${lowStock ? 'var(--danger)' : 'var(--sub)'}">${S.fmt(mat.remaining,0)}g</span>
+        </button>`;
+      }
+      return `<button type="button" class="sel-opt${o.value === sel.value ? " on" : ""}" data-v="${S.esc(o.value)}">${S.esc(o.textContent)}</button>`;
     }).join("");
       pop.classList.add("open");
     };
