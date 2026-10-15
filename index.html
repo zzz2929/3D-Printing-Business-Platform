@@ -27,8 +27,10 @@
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="apple-touch-icon" href="icon.svg" />
 <link rel="icon" href="icon.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="assets/vendor/flatpickr/flatpickr.min.css?v=64" />
-<link rel="stylesheet" href="assets/style.css?v=82" />
+<link rel="stylesheet" href="assets/vendor/flatpickr/flatpickr.min.css?v=126" />
+<link rel="stylesheet" href="assets/vendor/tom-select/tom-select.min.css?v=126" />
+<link rel="stylesheet" href="assets/vendor/driver.js/driver.css?v=126" />
+<link rel="stylesheet" href="assets/style.css?v=126" />
 </head>
 <body>
 
@@ -774,22 +776,6 @@
   </main>
 </div>
 
-<!-- 新手引导 -->
-<div class="overlay" id="onboard" hidden role="dialog" aria-modal="true" aria-label="新手引导">
-  <div class="ob-card">
-    <div class="ob-step" id="obStep">1 / 4</div>
-    <div class="ob-icon" id="obIcon">🖨️</div>
-    <h2 id="obTitle"></h2>
-    <p id="obBody"></p>
-    <div class="ob-dots" id="obDots"></div>
-    <div class="row" style="justify-content:center;margin-top:16px">
-      <button class="btn gray" id="obPrev">上一步</button>
-      <button class="btn" id="obNext">下一步</button>
-      <button class="btn ghost sm" id="obSkip">跳过引导</button>
-    </div>
-  </div>
-</div>
-
 <!-- 首次设置向导：开放模式下引导创建管理员并可选配置 SMTP -->
 <div class="overlay" id="setupWizard" hidden role="dialog" aria-modal="true" aria-label="首次设置">
   <div class="ob-card setup-card">
@@ -907,11 +893,25 @@
 
 <div class="toast" id="toast" role="status"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
-<script src="assets/vendor/flatpickr/flatpickr.min.js?v=64"></script>
-<script src="assets/vendor/flatpickr/zh.js?v=64"></script>
-<script src="assets/store.js?v=76"></script>
-<script src="assets/app.js?v=121"></script>
+<script src="assets/vendor/gsap/gsap.min.js?v=126"></script>
+<script src="assets/vendor/flatpickr/flatpickr.min.js?v=126"></script>
+<script src="assets/vendor/flatpickr/zh.js?v=126"></script>
+<script src="assets/vendor/chart.js/chart.umd.js?v=126"></script>
+<script src="assets/vendor/sweetalert2/sweetalert2.all.min.js?v=126"></script>
+<script src="assets/vendor/tom-select/tom-select.complete.min.js?v=126"></script>
+<script src="assets/vendor/papaparse/papaparse.min.js?v=126"></script>
+<script src="assets/vendor/driver.js/driver.js.iife.js?v=126"></script>
+<script>
+/* driver.js 的 iife 构建将构造函数挂在 window.driver.js.driver 下，统一提升为 window.driver 供标准调用 */
+(function(){
+  try{
+    var d = window.driver;
+    if(d && typeof d === "object" && d.js && typeof d.js.driver === "function"){ window.driver = d.js.driver; }
+  }catch(e){}
+})();
+</script>
+<script src="assets/store.js?v=126"></script>
+<script src="assets/app.js?v=126"></script>
 <script>
 /* 保存即刷新：Node 服务端监听到前端文件变更时经 /__reload (SSE) 通知页面自动 reload。
    仅 Node/Docker 宿主提供该通道；Workers/Vercel 或本地 file:// 打开时连接失败即静默停用。 */

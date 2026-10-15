@@ -98,6 +98,55 @@ const Store = (function(){
       "香芋紫","天空蓝","奶油黄","抹茶绿","蜜桃粉","薰衣草","奶茶色","活力橙",
       "夜幕黑","极光蓝","极光紫","极光绿","银河紫","星空白","月光银","日光金"
     ],
+    /* 自动匹配扩展表：新增颜色名时按名称自动找出十六进制色值（内置 matColorHex 优先，其余常见中英文色名在这里补足） */
+    autoColorHex: {
+      /* 英文色名 */
+      "black":"#000000","white":"#ffffff","gray":"#808080","grey":"#808080",
+      "red":"#e53935","orange":"#fb8c00","yellow":"#fdd835","green":"#43a047",
+      "blue":"#1e88e5","purple":"#8e24aa","pink":"#f48fb1","brown":"#8d6e63",
+      "gold":"#d4af37","silver":"#c0c0c0","cyan":"#00bcd4","teal":"#00897b",
+      "navy":"#1a237e","skyblue":"#87ceeb","lightblue":"#add8e6","darkblue":"#0d47a1",
+      "deepblue":"#1565c0","lightgreen":"#8bc34a","darkgreen":"#1b5e20",
+      "olive":"#6b8e23","mint":"#00cec9","coral":"#ff7f50","salmon":"#fa8072",
+      "beige":"#f5f5dc","ivory":"#fffff0","cream":"#fffdd0","lavender":"#e6e6fa",
+      "peach":"#ffdab9","maroon":"#800000","crimson":"#dc143c","violet":"#ee82ee",
+      "magenta":"#ff00ff","indigo":"#4b0082","turquoise":"#40e0d0","khaki":"#c3b091",
+      "tan":"#d2b48c","chocolate":"#7b3f00","scarlet":"#ff2400","rose":"#ff007f",
+      "snow":"#fffafa","honeydew":"#f0fff0","azure":"#f0ffff","aqua":"#00ffff",
+      "transparent":"#dff1f5",
+      /* 中文基础色 */
+      "黑":"#1a1a1a","白":"#f5f2ea","灰":"#9aa3ad","红":"#d03a2b",
+      "橙":"#e8590c","黄":"#f5b301","绿":"#2f9e44","蓝":"#1971c2",
+      "紫":"#7048e8","粉":"#f783ac","棕":"#8d6e4a","金":"#c9a86a",
+      "银":"#c0c6cc","青":"#00b894","透明":"#dff1f5",
+      /* 深浅与黑白灰 */
+      "深黑":"#0d0d0d","炭黑":"#1a1a1a","纯黑":"#000000",
+      "纯白":"#ffffff","象牙白":"#fffff0","乳白":"#fdf5e6","米白":"#f5f0e6","奶白":"#fff9f0",
+      "深灰":"#555555","浅灰":"#cccccc","银灰":"#b0b0b0","烟灰":"#778899",
+      /* 红色系 */
+      "大红":"#e53935","朱红":"#e64a19","橘红":"#ff7043","绯红":"#dc143c","暗红":"#8e0000",
+      "玫红":"#e84393","玫瑰红":"#e84393","桃红":"#ff7bac","粉红":"#ffb6c1","樱桃红":"#d2042d","珊瑚红":"#ff7675",
+      "酒红":"#9b2c2c","枣红":"#7b2d2d","紫红":"#8b008b",
+      /* 橙黄色系 */
+      "橙黄":"#ffa726","金黄":"#ffd54f","柠檬黄":"#fff44f","杏黄":"#ffb74d","米黄":"#ffe082","鹅黄":"#fff176",
+      "深黄":"#f9a825","姜黄":"#ffc300","芥末黄":"#d4af37",
+      /* 绿色系 */
+      "墨绿":"#004d40","翠绿":"#00c853","草绿":"#8bc34a","嫩绿":"#a5d6a7","浅绿":"#c8e6c9","深绿":"#2e7d32",
+      "青绿":"#00897b","薄荷绿":"#00cec9","抹茶绿":"#badc58","橄榄绿":"#6b8e23","荧光绿":"#54e34a","苹果绿":"#8bc63c","军绿":"#4b5320",
+      /* 蓝色系 */
+      "天蓝":"#4fc3f7","天空蓝":"#74b9ff","浅蓝":"#add8e6","深蓝":"#1565c0","湖蓝":"#00a8c6","海蓝":"#1e90ff",
+      "宝蓝":"#1e88e5","藏青":"#2d3436","靛蓝":"#3f51b5","青蓝":"#00b8d4","蔚蓝":"#2196f3","湛蓝":"#0072ff","雾蓝":"#a9c0d6",
+      /* 紫色系 */
+      "薰衣草":"#dda0dd","丁香紫":"#c8a2c8","香芋紫":"#a29bfe","葡萄紫":"#6f2da8","紫罗兰":"#8b5cf6","浅紫":"#d1c4e9","深紫":"#4a148c",
+      /* 粉色系 */
+      "樱花粉":"#ffb7c5","蜜桃粉":"#fab1a0","珊瑚粉":"#ff8a80","藕粉":"#e6b8c4",
+      /* 棕金与暖色 */
+      "咖啡":"#6f4e37","咖啡色":"#6f4e37","卡其":"#c3b091","驼色":"#a0816c","米色":"#f5f5dc","奶茶色":"#d4a574","奶油色":"#fff8dc","栗色":"#5d3a1a",
+      "古铜":"#b87333","香槟金":"#f7e7ce","玫瑰金":"#b76e79",
+      /* 特殊色 */
+      "薄荷":"#00cec9","珊瑚":"#ff7675","奶油黄":"#ffeaa7","活力橙":"#fd9644",
+      "夜幕黑":"#0d0d0d","极光蓝":"#0984e3","极光紫":"#6c5ce7","极光绿":"#00b894","银河紫":"#8b5cf6","星空白":"#f8f9ff","月光银":"#dfe6e9","日光金":"#fdcb6e","荧光黄":"#d4ff00"
+    },
     /* 内置颜色名 → 十六进制色值（可在预设管理中逐个编辑；缺省项显示为透明色块） */
     matColorHex: {
       /* 基础色 */
@@ -140,7 +189,7 @@ const Store = (function(){
   function num(x){ const n = parseFloat(x); return isFinite(n) ? n : 0; }
   function today(){ const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
   function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
-  function fmt(n, d){ return Number(n).toLocaleString("zh-CN", { maximumFractionDigits: d == null ? 1 : d }); }
+  function fmt(n, d){ const v = Number(n); if(!isFinite(v)) return "0"; return v.toLocaleString("zh-CN", { maximumFractionDigits: d == null ? 1 : d }); }
 
   /* ---------- 状态 ---------- */
   let settings = { currency:"¥", theme:"dark", lowStock:200, laborHourly:65, onboarded:false,
@@ -180,7 +229,15 @@ const Store = (function(){
     return false;
   }
   function addMatColor(name){
-    if(addUnique(presets().matColors, name)){ push("settings"); return true; }
+    if(addUnique(presets().matColors, name)){
+      // 自动匹配十六进制色值：新加入的颜色名若在自动匹配表中能查到，则一并写入色值
+      const hex = matchColorHex(name);
+      if(hex){
+        const m = presets().matColorHex || (presets().matColorHex = {});
+        if(!m[name]) m[name] = hex;
+      }
+      push("settings"); return true;
+    }
     return false;
   }
   /* 颜色名 → 十六进制色值（预设管理中可编辑） */
@@ -188,6 +245,27 @@ const Store = (function(){
     const m = presets().matColorHex;
     if(m && m[name]) return m[name];
     return (DEFAULT_PRESETS.matColorHex || {})[name] || "";
+  }
+  /* 按颜色名自动匹配色值：内置预设 → 自动扩展表（精确） → 自动扩展表（模糊/包含） */
+  function matchColorHex(name){
+    name = String(name == null ? "" : name).trim();
+    if(!name) return "";
+    const presetsHex = presets().matColorHex || {};
+    const lib = (DEFAULT_PRESETS.autoColorHex || {});
+    if(presetsHex[name]) return presetsHex[name];
+    if(lib[name]) return lib[name];
+    // 模糊匹配：去掉常见分隔符/空格后比对，支持“天空蓝”“雾蓝”等包含式输入
+    const norm = s => String(s).toLowerCase().replace(/[\s\-_｜|（）()]/g, "");
+    const key = norm(name);
+    for(const k in lib){
+      if(norm(k) === key) return lib[k];
+    }
+    for(const k in lib){
+      if(k === name) continue;
+      const nk = norm(k);
+      if(nk && (nk.includes(key) || key.includes(nk))) return lib[k];
+    }
+    return "";
   }
   function setMatColorHex(name, hex){
     const m = presets().matColorHex || (presets().matColorHex = {});
@@ -197,6 +275,14 @@ const Store = (function(){
   function renameMatColorHex(oldName, newName){
     const m = presets().matColorHex;
     if(m && m[oldName] !== undefined){ m[newName] = m[oldName]; if(newName !== oldName) delete m[oldName]; push("settings"); }
+    else if(newName !== oldName){
+      // 旧名无色值时，按新颜色名自动匹配色值
+      const hex = matchColorHex(newName);
+      if(hex){
+        const mm = presets().matColorHex || (presets().matColorHex = {});
+        mm[newName] = hex; push("settings");
+      }
+    }
     return true;
   }
   function addPriBrand(name){
@@ -363,6 +449,7 @@ const Store = (function(){
     materials.forEach(m => {
       if(m.spool == null) m.spool = 1000;
       if(m.remaining == null) m.remaining = m.spool;
+      if(m.pricePerKg == null) m.pricePerKg = 0;     // 旧数据：价格未知按 0 处理，避免渲染 NaN
       if(m.brand == null) m.brand = m.name || "";       // 旧数据：名称视为品牌
       if(m.colorName == null) m.colorName = "";
       if(!m.name) m.name = matLabel(m);
@@ -371,6 +458,7 @@ const Store = (function(){
       if(p.brand == null) p.brand = "其他";
       if(p.model == null) p.model = p.name || "";        // 旧数据：名称视为型号
       if(p.price == null) p.price = 0;
+      if(p.powerW == null) p.powerW = 0;               // 旧数据：功率未知按 0（电费不计），避免渲染 NaN
       if(p.depYears == null) p.depYears = 2;
       if(p.maintPerYear == null) p.maintPerYear = 0;
       if(p.utilization == null) p.utilization = 50;
@@ -393,6 +481,7 @@ const Store = (function(){
     });
     records.forEach(r => {
       if(r.consumed == null) r.consumed = num(r.grams);
+      if(r.hours == null) r.hours = 0;                 // 旧数据：时长未知按 0，避免渲染 NaN
       if(r.handlingMin == null) r.handlingMin = 0;
       if(r.cMach == null) r.cMach = 0;
       if(r.cLab == null) r.cLab = 0;
@@ -418,9 +507,33 @@ const Store = (function(){
     if(!settings.presets || typeof settings.presets !== "object"){
       settings.presets = JSON.parse(JSON.stringify(defaultPresets));
     }else{
-      ["matBrands","matCategories","matColors","matColorHex","priBrands"].forEach(k => {
+      ["matBrands","matCategories","priBrands"].forEach(k => {
         if(!settings.presets[k]) settings.presets[k] = JSON.parse(JSON.stringify(defaultPresets[k]));
       });
+      /* 颜色：合并模式，保留现有颜色同时添加缺失的新颜色 */
+      if(!settings.presets.matColors) settings.presets.matColors = JSON.parse(JSON.stringify(defaultPresets.matColors));
+      else {
+        const existing = new Set(settings.presets.matColors);
+        defaultPresets.matColors.forEach(c => { if(!existing.has(c)) settings.presets.matColors.push(c); });
+      }
+      if(!settings.presets.matColorHex) settings.presets.matColorHex = JSON.parse(JSON.stringify(defaultPresets.matColorHex));
+      else {
+        Object.entries(defaultPresets.matColorHex).forEach(([k, v]) => {
+          if(!settings.presets.matColorHex[k]) settings.presets.matColorHex[k] = v;
+        });
+      }
+      /* 耗材小类：合并模式 */
+      if(!settings.presets.matCategories) settings.presets.matCategories = JSON.parse(JSON.stringify(defaultPresets.matCategories));
+      else {
+        const existingCats = new Map(settings.presets.matCategories.map(c => [c.name, c]));
+        defaultPresets.matCategories.forEach(defCat => {
+          if(!existingCats.has(defCat.name)) settings.presets.matCategories.push(defCat);
+          else {
+            const existingSubs = new Set(existingCats.get(defCat.name).subs.map(s => s.name));
+            defCat.subs.forEach(s => { if(!existingSubs.has(s.name)) existingCats.get(defCat.name).subs.push(s); });
+          }
+        });
+      }
     }
   }
 
@@ -588,8 +701,10 @@ const Store = (function(){
     if(!r.ok) throw new Error(d.error || "登录失败");
     return d;
   }
-  async function bambuFetch(){
-    const r = await fetch("/api/bambu", { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify({ action:"fetch" }) });
+  async function bambuFetch(mode){
+    const payload = { action:"fetch" };
+    if(mode) payload.mode = mode; // 用界面当前选择的连接方式抓取（lan/cloud），服务端据此覆盖 cfg.mode
+    const r = await fetch("/api/bambu", { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify(payload) });
     const d = await r.json().catch(() => ({}));
     if(!r.ok) throw new Error(d.error || "抓取失败");
     return d;
@@ -810,7 +925,7 @@ const Store = (function(){
     /* 预设 API */
     presets, flatMatTypes, findSub, findCategory,
     addMatBrand, addMatColor, addPriBrand,
-    matColorHexOf, setMatColorHex, renameMatColorHex,
+    matColorHexOf, setMatColorHex, renameMatColorHex, matchColorHex,
     addCategory, renameCategory, setCategoryNote, removeCategory, moveCategory,
     addSub, updateSub, removeSub, moveSub,
     removeFromList, updateInList, moveInList, resetPresets

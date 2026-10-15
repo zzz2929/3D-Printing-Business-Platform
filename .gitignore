@@ -13,10 +13,19 @@ Thumbs.db
 Desktop.ini
 .dumate/
 gui-test-screenshots/
-# 非部署必需：本地测试、回归与联调脚本，禁止提交
+# 缓存
+.ruff_cache/
+
+# 构建产物 / 打包
+*.zip
+
+# 临时报告
+report-*.html
+
 test-*.mjs
 test/
 .zcodeignore
 # fnOS 打包产物与工具
 build/
 tools/
+.tmp/

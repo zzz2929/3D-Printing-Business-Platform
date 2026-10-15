@@ -1,18 +1,26 @@
 /* 3D打印业务平台 — 离线缓存（应用壳）；/api 一律走网络，不缓存
    抓取策略：网络优先（服务器可达时普通刷新即拿到最新前端，无需强制刷新），离线回退缓存；
    发版时：CACHE 版本号与 index.html 里静态资源的 ?v= 保持一致（换 URL 即换缓存） */
-const CACHE = "3d-printing-business-v120";
+const CACHE = "3d-printing-business-v126";
 const ASSETS = [
   "./",
   "index.html",
   "manifest.webmanifest",
   "icon.svg",
-  "assets/vendor/flatpickr/flatpickr.min.css?v=64",
-  "assets/vendor/flatpickr/flatpickr.min.js?v=64",
-  "assets/vendor/flatpickr/zh.js?v=64",
-  "assets/style.css?v=81",
-  "assets/store.js?v=76",
-  "assets/app.js?v=119"
+  "assets/vendor/flatpickr/flatpickr.min.css?v=126",
+  "assets/vendor/flatpickr/flatpickr.min.js?v=126",
+  "assets/vendor/flatpickr/zh.js?v=126",
+  "assets/vendor/tom-select/tom-select.min.css?v=126",
+  "assets/vendor/tom-select/tom-select.complete.min.js?v=126",
+  "assets/vendor/chart.js/chart.umd.js?v=126",
+  "assets/vendor/sweetalert2/sweetalert2.all.min.js?v=126",
+  "assets/vendor/papaparse/papaparse.min.js?v=126",
+  "assets/vendor/driver.js/driver.css?v=126",
+  "assets/vendor/driver.js/driver.js.iife.js?v=126",
+  "assets/vendor/gsap/gsap.min.js?v=126",
+  "assets/style.css?v=126",
+  "assets/store.js?v=126",
+  "assets/app.js?v=126"
 ];
 
 self.addEventListener("install", (e) => {

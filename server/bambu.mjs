@@ -175,10 +175,16 @@ function pushFullState(sock, sn, getSeq){
   try{ sock.write(encPublishQos1(_pushPktId++, "device/" + sn + "/request", JSON.stringify(payload))); }catch(e){}
 }
 
-/* 品牌规范化：AMS 报告的 tray_sub_brands 官方料为 "Bambu"，统一成平台预设品牌名，匹配与显示更一致 */
-function normBrand(b){
+/* 品牌规范化：AMS 报告的 tray_sub_brands 官方料为 "Bambu"，统一成平台预设品牌名。
+   另外过滤掉被误填为类型名（如 "PLA Basic"）的 brand 字段，避免匹配错误。 */
+function normBrand(b, name, type, baseId){
   const s = String(b || "").trim();
   if(/^bambu$/i.test(s)) return "Bambu Lab 拓竹";
+  if(!s) return "";
+  // brand 字段被误填为耗材类型名时（如 "PLA Basic"），返回空
+  const first = s.split(/\s+/)[0].toLowerCase();
+  const commonTypes = ["pla","abs","petg","tpu","asa","pc","pa","pp","hips","pva","bvoh","cpe","nylon","wood","metal","carbon","glass","flexible","silk","matte","basic","standard","impact","engineering"];
+  if(commonTypes.some(ct => first === ct || first.startsWith(ct + "+"))) return "";
   return s;
 }
 
@@ -530,11 +536,25 @@ function guessColor(name, type){
 /* 预设名 → 品牌/类型解析：官方命名 "Bambu PLA Basic @X1C" → 拓竹品牌 + "PLA Basic" */
 function presetBrandType(name, type, baseId){
   const n = String(name || "").replace(/@.*$/, "").trim();
-  if(/^(bambu\s*(lab)?|拓竹)/i.test(n)){
-    const rest = n.replace(/^(bambu\s*lab|bambu|拓竹)/i, "").trim();
+  // 官方耗材：Bambu / Bambu Lab / 拓竹
+  if(/^(bambu(\s+lab)?)\b/i.test(n) || /^拓竹\s+/i.test(n)){
+    const rest = n.replace(/^(bambu\s+lab\s*|bambu\s*|拓竹\s*)/i, "").trim();
     return { brand: "Bambu Lab 拓竹", type: rest || type || "" };
   }
   if(/^G[A-Z]/.test(String(baseId || ""))) return { brand: "Bambu Lab 拓竹", type: type || n }; // 官方 RFID 前缀
+
+  // 第三方耗材品牌提取：按空格拆分，首词作为品牌候选（排除常见耗材大类开头）
+  const parts = n.split(/\s+/);
+  if(parts.length >= 2){
+    const firstLower = parts[0].toLowerCase();
+    const commonTypes = ["pla","abs","petg","tpu","asa","pc","pa","pp","hips","pva","bvoh","cpe","nylon","wood","metal","carbon","glass","flexible","silk","matte","basic","standard","impact","engineering"];
+    if(commonTypes.some(ct => firstLower === ct || firstLower.startsWith(ct + "+"))){
+      return { brand: "", type: type || n };
+    }
+    const brand = parts[0];
+    const rest = parts.slice(1).join(" ");
+    return { brand, type: type || rest || "" };
+  }
   return { brand: "", type: type || n };
 }
 /* 云端耗材库抓取：默认同时取用户私有预设 + 官方公开预设（用户的 Bambu Studio 耗材库

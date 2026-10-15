@@ -61,116 +61,109 @@
     `<button type="button" class="sw-p" data-c="${c}" data-n="${n}" title="${n}" style="background:${c}"></button>`).join("");
   $("colorPresets").addEventListener("click", e => {
     const b = e.target.closest(".sw-p"); if(!b) return;
-    $("mColor").value = b.getAttribute("data-c");
-    $("mColorName").value = b.getAttribute("data-n");
+$("mColor").value = b.getAttribute("data-c");
+    comboSet("mColorName", b.getAttribute("data-n"));
     const swatch = $("colorNameSwatch");
     if(swatch) swatch.style.background = b.getAttribute("data-c");
     document.querySelectorAll(".sw-p").forEach(x => x.classList.toggle("on", x === b));
   });
 
-  /* ---------- 通用 ---------- */
-  let toastT;
-  function toast(msg){
-    const t = $("toast"); t.textContent = msg; t.classList.add("show");
-    clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 2200);
+/* ---------- 通用弹窗（SweetAlert2 替换自研 dlg/toast） ----------
+     签名与原实现完全兼容：
+       toast(msg)            轻提示，顶部居中 2.2s
+       showDialog(msg, opts) 通用弹窗（opts.input 为输入框；opts.def 默认值；opts.okText 确定文案）
+                             resolves：无输入 → 确定 true / 取消 false；有输入 → 确定输入值 / 取消 null
+       confirmBox(msg)       confirm 确认，resolves true/false
+       promptBox(msg, def)   输入框，resolves 输入值或 null（取消） */
+  function theme(){
+    try{
+      const cs = getComputedStyle(document.documentElement);
+      const v = n => cs.getPropertyValue(n).trim();
+      return { bg:v("--panel")||"#1e2633", fg:v("--ink")||"#e6edf3", sub:v("--faint")||"#8a94a6", ok:v("--ok")||"#2f9e44" };
+    }catch(_){ return { bg:"#1e2633", fg:"#e6edf3", sub:"#8a94a6", ok:"#2f9e44" }; }
   }
-  /* 应用内确认 / 输入弹窗（替代 window.confirm / prompt） */
-  let dlgResolve = null;
-  function showDialog(msg, opts){
-    opts = opts || {};
-    return new Promise(res => {
-      dlgResolve = res;
-      $("dlgMsg").textContent = msg;
-      $("dlgInput").hidden = !opts.input;
-      if(opts.input) $("dlgInput").value = opts.def || "";
-      $("dlgOk").textContent = opts.okText || "确定";
-      const dlg = $("dlg");
-      dlg.hidden = false;
-      dlg.style.opacity = ""; dlg.style.visibility = ""; // 清除 gsap 可能残留的 autoAlpha:0
-      fx(g => {
-        g.from(dlg, { autoAlpha:0, duration:0.18, ease:"power1.out", clearProps:"opacity,visibility" });
-        g.from("#dlg .ob-card", { y:18, scale:0.96, autoAlpha:0, duration:0.3, ease:"power3.out", clearProps:"all" });
-      });
-      (opts.input ? $("dlgInput") : $("dlgOk")).focus();
+  function swHtml(msg){
+    /* 原实现用 textContent 渲染纯文本，这里转义后保留换行语义，避免把消息当 HTML 执行 */
+    return String(msg == null ? "" : msg)
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+      .replace(/\n/g,"<br>");
+  }
+  function toast(msg){
+    if(!window.Swal) return;
+    const T = theme();
+    Swal.fire({ toast:true, position:"top", timer:2200, timerProgressBar:false, showConfirmButton:false, titleText:msg, background:T.bg, color:T.fg });
+  }
+  function swConfirm(msg, withInput, def, okText){
+    const T = theme();
+    return Swal.fire({
+      html: swHtml(msg),
+      icon: withInput ? undefined : "question",
+      input: withInput ? "text" : undefined,
+      inputValue: withInput ? (def == null ? "" : def) : undefined,
+      showCancelButton: true,
+      confirmButtonText: okText || "确定",
+      cancelButtonText: "取消",
+      background: T.bg, color: T.fg, confirmButtonColor: T.ok,
+      inputAttributes: { autocapitalize: "off" }
+    }).then(r => {
+      if(!r.isConfirmed) return withInput ? null : false;
+      return withInput ? r.value : true;
     });
   }
-  function closeDialog(v){
-    if($("dlg").hidden) return;
-    $("dlg").hidden = true;
-    const r = dlgResolve; dlgResolve = null;
-    if(r) r(v);
-  }
-  function confirmBox(msg){ return showDialog(msg); }
-  function promptBox(msg, def){ return showDialog(msg, { input:true, def }); }
-  $("dlgOk").addEventListener("click", () => closeDialog($("dlgInput").hidden ? true : $("dlgInput").value));
-  $("dlgCancel").addEventListener("click", () => closeDialog($("dlgInput").hidden ? false : null));
-  $("dlgInput").addEventListener("keydown", e => { if(e.key === "Enter") $("dlgOk").click(); });
-  document.addEventListener("keydown", e => {
-    if(e.key === "Escape" && !$("dlg").hidden) closeDialog($("dlgInput").hidden ? false : null);
-  });
+  function confirmBox(msg){ return swConfirm(msg, false); }
+  function promptBox(msg, def){ return swConfirm(msg, true, def); }
+  function showDialog(msg, opts){ opts = opts || {}; return swConfirm(msg, !!opts.input, opts.def, opts.okText); }
 
-  /* ---------- 可输可选下拉（combo）：点箭头始终展示全部选项，输入时过滤，支持自由输入 ----------
-     opts.onAdd(v)    当用户输入的内容不在列表里、且触发"保存/失焦"时调用。
-                      返回 true 视为已加入预设并把值显示为已选项；返回 false 视为放弃。
-     opts.onFree(v)   可选：替代 onAdd 的更通用钩子。 */
+/* ---------- 可输可选下拉（combo → tom-select）：搜索过滤 + 自由输入新增预设 ----------
+     保持原 attachCombo 签名：attachCombo(input, getOptions, opts)
+       opts.onAdd(v)   输入新值创建时调用，返回 true 视为已加入预设（toast 提示）；false 取消创建
+       opts.onFree(v)  可选：替代 onAdd 的更通用钩子
+     兼容既有交互：
+       - 选中/创建后把值同步回原 input，后续 $("xxx").value 读取不受影响
+       - 派发 input/change 事件（颜色名→hex 联动、表单校验等监听仍生效）
+       - comboSet(id, v) 供表单重置 / 编辑回填时同步 TomSelect UI */
+  const comboT = {};
+  function comboSet(id, v){
+    v = (v == null ? "" : v);
+    const c = comboT[id];
+    if(c){
+      if(v !== "" && !c.ts.options[v]) c.ts.addOption({ value:v, text:v }); // 回填非预设值时兜底显示
+      c.ts.setValue(v, true); c.input.value = v;
+    }else{
+      const el = $(id); if(el) el.value = v;
+    }
+  }
   function attachCombo(input, getOptions, opts){
     opts = opts || {};
-    const wrap = document.createElement("span"); wrap.className = "combo";
-    input.parentNode.insertBefore(wrap, input); wrap.appendChild(input);
-    const btn = document.createElement("button"); btn.type = "button"; btn.className = "combo-caret"; btn.title = "展开选项";
-    wrap.appendChild(btn);
-    const pop = document.createElement("div"); pop.className = "combo-pop"; wrap.appendChild(pop);
-    let searchVal = "";
-    function renderList(){
-      const ql = searchVal.trim().toLowerCase();
-      const all = getOptions();
-      const list = all.filter(o => !ql || o.toLowerCase().includes(ql));
-      const searchHtml = `<div class="combo-search-row"><input type="text" class="combo-search-input" placeholder="搜索…" value="${S.esc(searchVal)}" /></div>`;
-      const addHtml = (ql && list.length === 0)
-        ? `<button type="button" class="combo-item combo-add" data-add="${S.esc(searchVal.trim())}">＋ 添加为新的预设「<b>${S.esc(searchVal.trim())}</b>」</button>` : "";
-      const itemsHtml = list.map(o => `<button type="button" class="combo-item${o === input.value ? " on" : ""}">${S.esc(o)}</button>`).join("");
-      const emptyHtml = (!ql && list.length === 0) ? '<div class="combo-empty">暂无预设，在上方搜索栏输入名称后添加</div>' : '';
-      pop.innerHTML = searchHtml + addHtml + itemsHtml + emptyHtml;
-      const si = pop.querySelector(".combo-search-input");
-      if(si){
-        si.addEventListener("input", e => {
-          searchVal = e.target.value;
-          const pos = e.target.selectionStart;
-          renderList();
-          const ni = pop.querySelector(".combo-search-input");
-          if(ni){ ni.focus(); ni.setSelectionRange(pos, pos); }
-        });
-        si.addEventListener("keydown", e => {
-          if(e.key === "Enter"){ e.preventDefault(); const ab = pop.querySelector("[data-add]"); if(ab) ab.click(); }
-        });
+    const onAdd = typeof opts.onAdd === "function" ? opts.onAdd : (typeof opts.onFree === "function" ? opts.onFree : null);
+    const ts = new TomSelect(input, {
+      options: getOptions().map(o => ({ value:o, text:o })),
+      maxOptions: 300,
+      create: onAdd ? (txt => {
+        const ok = onAdd(txt);
+        if(ok){ toast("已加入预设：「" + txt + "」"); return { value:txt, text:txt }; }
+        return false; // onAdd 返回 false 视为放弃创建
+      }) : true,
+      createOnBlur: true,
+      createFilter: v => v.trim().length > 0,
+      onChange: value => {
+        /* TomSelect 值变化时会自动同步原 input.value 并派发 input/change 事件，
+           这里仅做冗余同步，保证任何路径下 $("xxx").value 读取一致 */
+        input.value = value || "";
+      },
+      onType: str => {
+        /* 输入过程中实时同步原 input（不触发 change），保持颜色名等监听可用 */
+        input.value = str || "";
+        input.dispatchEvent(new Event("input", { bubbles:true }));
+      },
+      render: {
+        option: (data, escape) => '<div class="ts-option">' + escape(data.text) + '</div>',
+        item:   (data, escape) => '<div class="ts-item">' + escape(data.text) + '</div>',
+        no_results: () => '<div class="ts-no-results">' + (opts.emptyText || "没有匹配项，直接输入后回车或失焦即可新增") + '</div>'
       }
-    }
-    function open(){ searchVal = ""; renderList(); pop.classList.add("open"); btn.classList.add("open"); }
-    function close(){ pop.classList.remove("open"); btn.classList.remove("open"); searchVal = ""; }
-    btn.addEventListener("click", e => { e.stopPropagation(); pop.classList.contains("open") ? close() : open(); });
-    input.addEventListener("focus", () => open());
-    input.addEventListener("input", () => { searchVal = input.value; if(!pop.classList.contains("open")){ pop.classList.add("open"); btn.classList.add("open"); } renderList(); });
-    pop.addEventListener("click", e => {
-      const addBtn = e.target.closest("[data-add]");
-      if(addBtn){
-        const v = addBtn.getAttribute("data-add");
-        let ok = true;
-        if(typeof opts.onAdd === "function") ok = opts.onAdd(v);
-        else if(typeof opts.onFree === "function") ok = opts.onFree(v);
-        if(ok){
-          input.value = v; close();
-          input.dispatchEvent(new Event("input", { bubbles:true }));
-          input.dispatchEvent(new Event("change", { bubbles:true }));
-          toast("已加入预设：「" + v + "」");
-        }else close();
-        return;
-      }
-      const it = e.target.closest(".combo-item"); if(!it) return;
-      input.value = it.textContent; close();
-      input.dispatchEvent(new Event("input", { bubbles:true }));
-      input.dispatchEvent(new Event("change", { bubbles:true }));
     });
-    document.addEventListener("click", e => { if(!wrap.contains(e.target)) close(); });
+    comboT[input.id] = { ts, input };
+    return ts;
   }
 
   /* ---------- 二级选择器（cascader）：点击触发器，弹出"左大类 / 右小类+说明"面板 ----------
@@ -345,10 +338,13 @@
     }
     return map;
   }
-  function syncColorFromName(){
+function syncColorFromName(){
     const n = $("mColorName").value.trim();
+    // 优先走 store 的统一自动匹配（内置预设 + 扩展色名表，支持中英文/包含式模糊匹配）
+    let hex = S.matchColorHex(n);
+    // 兜底：快捷颜色表（与原逻辑一致）
     const allColors = getAllColorMap();
-    let hex = allColors[n]; // 精确匹配
+    if(!hex) hex = allColors[n];
     if(!hex){
       // 模糊匹配：输入包含于颜色名即可
       const lower = n.toLowerCase();
@@ -374,55 +370,99 @@
   $("mColorName").addEventListener("input", syncColorFromName);
   $("mColorName").addEventListener("change", syncColorFromName);
 
-  /* 迷你柱状图（HTML 弹性柱，避免 SVG 拉伸变形）；列数过多时横向滚动，每列保底宽度不挤压标签 */
-  function barChart(data, opts){
-    opts = opts || {};
-    const max = Math.max(...data.map(d => Math.abs(d.value)), 0.0001);
-    const cls = opts.color === "var(--ok)" ? "pos" : "acc";
-    const hasGroup = data.some(d => d.group); // 有月份分组时按月分段，滚动时标签吸附左缘
-    // 按最长标签估算列最小宽度（10px 字号：数字≈7px、中文≈10px + 左右留白）
-    const minCol = Math.max(...data.map(d => d.label.length)) * 7 + 14;
-    const cols = data.map(d => {
-      const h = Math.max(2, Math.abs(d.value) / max * 100);
-      const c = d.value < 0 ? "neg" : cls;
-      return `<div class="hcol"><div class="hbar-wrap"><div class="hbar ${c}" style="height:${h.toFixed(1)}%" title="${S.esc(d.tip || (d.full || d.label) + " · " + S.money(d.value))}"></div></div><div class="hlab">${S.esc(d.label)}</div></div>`;
-    }).join("");
-    let groups = "";
-    if(hasGroup){
-      const months = [];
-      data.forEach(d => {
-        if(d.group) months.push({ label:d.group, days:0 });
-        months[months.length - 1].days++;
-      });
-      // 段宽 flex-grow=天数，与上方柱列的 flex 布局同比例，月界天然对齐（误差亚像素）
-      groups = '<div class="hgroups">' + months.map(m =>
-        `<div class="hmonth" style="flex-grow:${m.days}"><span class="hgroup">${S.esc(m.label)}</span></div>`
-      ).join("") + "</div>";
-    }
-    return '<div class="hchart-scroll" style="height:' + (opts.height || 150) + 'px">'
-      + '<div class="hchart-body"><div class="hchart" style="--hcol-min:' + minCol + 'px">' + cols + '</div>' + groups + '</div></div>';
+/* 迷你柱状图（Chart.js 渲染）；调用签名与原 HTML 弹性柱实现兼容：mountBarChart(el, data, opts)
+     data: [{key,label,value,group?,full?,tip?}] · opts: {color:"var(--ok)", height:150}
+     正负柱色区分、月份分组标注、tooltip 明细、入场动画均保留原交互体验 */
+  const chartInstances = new WeakMap(); // el -> Chart 实例，防止重复渲染累积 canvas
+  function cssColor(name, fallback){
+    try{
+      const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      return v || fallback;
+    }catch(_){ return fallback; }
   }
-  /* 渲染柱状图并自动滚动到最近一根有数据的柱子（列宽富余时保持原样不滚） */
   function mountBarChart(el, data, opts){
-    el.innerHTML = barChart(data, opts);
-    const sc = el.querySelector(".hchart-scroll");
-    if(!sc) return;
-    let i = data.length - 1;
-    while(i > 0 && data[i].value === 0) i--;
-    const col = sc.querySelectorAll(".hcol")[i];
-    if(col){
-      const r1 = sc.getBoundingClientRect(), r2 = col.getBoundingClientRect();
-      sc.scrollLeft += r2.right - r1.right; // 该柱右缘对齐可视区右缘
-    }
-    // 柱状入场动画
-    const bars = el.querySelectorAll(".hbar");
-    bars.forEach((bar, idx) => {
-      const targetH = bar.style.height;
-      bar.style.height = "0";
-      gsap.to(bar, {
-        height: targetH, duration: .7, delay: idx * 0.06, ease: "power2.out"
-      });
+    opts = opts || {};
+    const old = chartInstances.get(el);
+    if(old){ old.destroy(); }
+    el.innerHTML = "";
+    el.style.height = (opts.height || 150) + "px";
+    el.style.position = "relative";
+    const hasGroup = data.some(d => d.group); // 日粒度趋势带月份分组标注
+    const posColor = opts.color === "var(--ok)" ? cssColor("--ok", "#2f9e44") : cssColor("--accent", "#1971c2");
+    const negColor = cssColor("--danger", "#c0392b");
+    const faint = cssColor("--faint", "#8a94a6");
+    const gridLine = cssColor("--line2", "rgba(127,140,160,.25)");
+    const tipBg = cssColor("--panel", "#1e2633");
+    const mono = cssColor("--mono", "Consolas, monospace");
+    let prevGroup = null;
+    const chart = new Chart(el, {
+      type: "bar",
+      data: {
+        labels: data.map(d => d.label),
+        datasets: [{
+          data: data.map(d => d.value),
+          backgroundColor: data.map(d => d.value < 0 ? negColor : posColor),
+          borderRadius: 4,
+          maxBarThickness: 34,
+          categoryPercentage: 0.72,
+          barPercentage: 0.92
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: reduceMotion ? false : { duration: 700, easing: "easeOutQuart" },
+        layout: { padding: { top: 6 } },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            displayColors: false,
+            backgroundColor: tipBg,
+            borderColor: gridLine,
+            borderWidth: 1,
+            titleColor: faint,
+            bodyColor: cssColor("--ink", "#e6edf3"),
+            callbacks: {
+              title: (items) => {
+                const d = data[items[0].dataIndex];
+                return d.tip || d.full || d.label || "";
+              },
+              label: (item) => " " + S.money(item.parsed.y)
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            border: { display: false },
+            ticks: {
+              color: faint,
+              maxRotation: 0,
+              autoSkip: true,
+              maxTicksLimit: 24,
+              font: { size: 10, family: mono },
+              callback: function(val, i){
+                // 日粒度：月初/每月首日优先标记月份分组，其余柱显示日号（与旧版 hgroups 同语义）
+                const d = data[i];
+                if(!d) return "";
+                if(d.group){ prevGroup = d.group; return d.group; }
+                return d.label;
+              }
+            }
+          },
+          y: {
+            grid: { color: gridLine },
+            border: { display: false },
+            ticks: {
+              color: faint,
+              font: { size: 10, family: mono },
+              callback: (v) => S.fmt(v, 0)
+            }
+          }
+        }
+      }
     });
+    chartInstances.set(el, chart);
   }
 
   /* ---------- 路由 ---------- */
@@ -948,30 +988,31 @@ function goto(tab){
       goto("olist");
     }));
 
-    // 数字入场动画
-    gsap.from(".stat-ring-wrap", { opacity:0, y:20, duration:.5, stagger:.12, ease:"power2.out" });
-    document.querySelectorAll(".num-anim").forEach(el => {
-      const target = parseFloat(el.dataset.target || el.textContent.replace(/[^0-9.-]/g,""));
-      if(isFinite(target) && target > 0){
-        const obj = { val:0 };
-        gsap.to(obj, {
-          val: target, duration:1.2, ease:"power2.out",
-          onUpdate: () => {
-            const v = obj.val;
-            if(el.dataset.target && el.dataset.target.includes(".")){
-              el.textContent = S.money(v);
-            } else if(el.dataset.target){
-              el.textContent = Math.round(v);
+    // 数字入场动画（缺 gsap 或系统减弱动画时跳过，不中断仪表盘渲染）
+    fx(g => {
+      g.from(".stat-ring-wrap", { opacity:0, y:20, duration:.5, stagger:.12, ease:"power2.out" });
+      document.querySelectorAll(".num-anim").forEach(el => {
+        const target = parseFloat(el.dataset.target || el.textContent.replace(/[^0-9.-]/g,""));
+        if(isFinite(target) && target > 0){
+          const obj = { val:0 };
+          g.to(obj, {
+            val: target, duration:1.2, ease:"power2.out",
+            onUpdate: () => {
+              const v = obj.val;
+              if(el.dataset.target && el.dataset.target.includes(".")){
+                el.textContent = S.money(v);
+              } else if(el.dataset.target){
+                el.textContent = Math.round(v);
+              }
             }
-          }
-        });
-      }
-    });
-
-    // 环形进度动画
-    gsap.from(".ring-fill", {
-      strokeDashoffset: function(i, el){ return 2 * Math.PI * 24; },
-      duration:1.2, ease:"power2.out", stagger:.08
+          });
+        }
+      });
+      // 环形进度动画
+      g.from(".ring-fill", {
+        strokeDashoffset: function(i, el){ return 2 * Math.PI * 24; },
+        duration:1.2, ease:"power2.out", stagger:.08
+      });
     });
 
     renderAch();
@@ -1958,7 +1999,7 @@ function goto(tab){
     $("matFormTitle").textContent = "添加耗材";
     $("addMat").textContent = "添加耗材";
     $("cancelEditMat").style.display = "none";
-    $("mBrand").value = ""; $("mType").value = ""; $("mColorName").value = ""; $("mPrice").value = "";
+    comboSet("mBrand", ""); $("mType").value = ""; comboSet("mColorName", ""); $("mPrice").value = "";
     $("mColor").value = "#ffb02e";
     $("mSpool").value = "1000"; $("mRemain").value = "1000";
     document.querySelectorAll(".sw-p").forEach(x => x.classList.remove("on"));
@@ -1970,8 +2011,8 @@ function goto(tab){
     $("matFormTitle").textContent = "编辑耗材 · " + m.name;
     $("addMat").textContent = "保存修改";
     $("cancelEditMat").style.display = "";
-    $("mBrand").value = m.brand || ""; $("mType").value = m.type || "";
-    $("mColor").value = m.color || "#ffb02e"; $("mColorName").value = m.colorName || "";
+comboSet("mBrand", m.brand || ""); $("mType").value = m.type || "";
+    $("mColor").value = m.color || "#ffb02e"; comboSet("mColorName", m.colorName || "");
     const sw = $("colorNameSwatch"); if(sw) sw.style.background = m.color || "#ffb02e";
     $("mPrice").value = S.num(m.pricePerKg) || "";
     $("mSpool").value = S.num(m.spool) || 1000; $("mRemain").value = S.num(m.remaining) || 0;
@@ -2193,7 +2234,10 @@ function goto(tab){
     btn.disabled = true;
     try{
       const d = await S.bambuSave(payload);
-      if(d.config) bambuState.cfg = d.config;
+      if(d.config){
+        bambuState.cfg = d.config;
+        if(d.config.mode === "cloud") setBambuMode("cloud");
+      }
       renderBambuLanRows(); renderBambuStatus();
       $("bambuCloudPass").value = ""; $("bambuCloudToken").value = "";
       bambuCfgMsg("连接配置已保存（访问码 / token 只保存在服务端，不会回传浏览器）");
@@ -2300,7 +2344,10 @@ function goto(tab){
         $("bambuCloudCode").focus();
         return;
       }
-      if(d.config) bambuState.cfg = d.config;
+      if(d.config){
+        bambuState.cfg = d.config;
+        if(d.config.mode === "cloud") setBambuMode("cloud");
+      }
       renderBambuLanRows(); renderBambuStatus();
       $("bambuCloudPass").value = ""; $("bambuCloudCode").value = ""; $("bambuTfaKey").value = "";
       $("bambuCodeSend").disabled = false; $("bambuCodeSend").textContent = "获取验证码";
@@ -2414,7 +2461,7 @@ function goto(tab){
     const btn = (ev && ev.currentTarget) || $("bambuBtnSync");
     btn.disabled = true; const old = btn.textContent; btn.textContent = "同步中…";
     try{
-      bambuState.snap = await S.bambuFetch();
+      bambuState.snap = await S.bambuFetch(bambuState.mode);
       if(bambuState.cfg) bambuState.cfg.last = { fetchedAt: bambuState.snap.fetchedAt };
       renderBambuPrinterPreview();
       renderBambuTrayPreview();
@@ -2501,7 +2548,13 @@ function renderBambuTrayPreview(){
     $("bambuMatBox").hidden = !snap;
     if(!snap){ box.innerHTML = ""; return; }
     let total = 0, html = "";
-    snap.sources.forEach(src => {
+    const sources = Array.isArray(snap.sources) ? snap.sources : [];
+    if(!sources.length){
+      box.innerHTML = '<div class="empty">所有连接都没有读到托盘数据</div>';
+      $("bambuMatCount").textContent = "";
+      return;
+    }
+    sources.forEach(src => {
       const srcLabel = src.kind === "lan" ? "局域网" : src.kind === "cloudlib" ? "云端预设" : "拓竹云";
       html += `<div class="bambu-src"><span class="pill">${srcLabel}</span> <b>${S.esc(src.name)}</b>` +
         (src.ok ? "" : `<span class="badge" style="--bc:var(--danger)"><i></i>${S.esc(src.error || "失败")}</span>`) +
@@ -2633,7 +2686,7 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
     $("priFormTitle").textContent = "编辑打印机 · " + p.name;
     $("addPri").textContent = "保存修改";
     $("cancelEditPri").style.display = "";
-    $("pBrand").value = S.printers.some(x => x.brand === p.brand) ? p.brand : "其他 / 自制";
+    comboSet("pBrand", S.printers.some(x => x.brand === p.brand) ? p.brand : "其他 / 自制");
     $("pModel").value = p.model || p.name || "";
     $("pPow").value = S.num(p.powerW) || "";
     $("pElec").value = S.num(p.elecPrice) || "";
@@ -2939,6 +2992,7 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
       $("ocbMach").checked = r.inclMach !== false;
       $("ocbLab").checked = r.inclLab !== false;
       $("oNote").value = r.note ? "来自打印记录：" + r.note : "";
+      $("oItem").value = r.itemName || ""; // 物品名称随记录一并带入
       orderCalc();
       toast("已载入打印记录（数量、多耗材），请确认单价后保存订单");
     }));
@@ -2966,7 +3020,8 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
     const rows = S.records.map(r => { const ms = recMats(r); return [r.date, ms.length > 1 ? matsLabel(ms, false) : r.matName, r.matType, r.priName, S.num(r.grams), S.num(r.hours),
       S.num(r.handlingMin), (S.num(r.cFil) + S.num(r.cElec)).toFixed(2), S.num(r.cMach).toFixed(2),
       S.num(r.cLab).toFixed(2), S.num(r.total).toFixed(2), r.note || ""]; });
-    const csv = "\uFEFF" + [head].concat(rows).map(r => r.map(c => '"' + String(c == null ? "" : c).replace(/"/g, '""') + '"').join(",")).join("\r\n");
+    // PapaParse 序列化 CSV（自动处理逗号/引号/换行转义），保留 BOM 供 Excel 正确识别中文
+    const csv = "\uFEFF" + Papa.unparse({ fields: head, data: rows });
     download("3d-printing-business_records_" + S.today() + ".csv", csv, "text/csv;charset=utf-8");
     toast("CSV 已导出");
   });
@@ -3557,37 +3612,36 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
     return unlocked;
   }
 
-  /* ---------- 新手引导 ---------- */
-  const OB_STEPS = [
-    { ic:"🖨️", t:"欢迎使用 3D打印业务平台", b:"这是你的 3D 打印接单经营台：成本核算、订单利润、耗材库存、打印记录一站式管理。数据存在你部署的服务端，多设备打开同一地址即可共享同一份数据。" },
-    { ic:"🧵", t:"第一步：建耗材与打印机", b:"在「耗材」页添加品牌、类型（PLA / 丝绸 / 碳纤维…，可自由输入）、颜色与单价；在「打印机」页添加品牌、型号、功率电价，填上购入价与使用率，机器折旧会自动摊到每小时。" },
-    { ic:"🧮", t:"第二步：算成本、开订单", b:"「计算器」输入克数、打印时长和处理耗时，自动算出耗材 + 电费 + 机器折旧 + 人工的全成本与建议报价；点「去开订单」一键带入，报价取整后自动填好。" },
-    { ic:"📦", t:"第三步：跟踪订单与利润", b:"订单支持定金/尾款分期收款、自动算欠款与利润率；「订单列表」可按状态与日期区间筛选；「仪表盘」支持按日 / 月 / 年查看经营情况。左下角指示灯实时显示数据同步状态。" }
-  ];
-  let obIdx = 0;
-  function obRender(){
-    const s = OB_STEPS[obIdx];
-    $("obStep").textContent = (obIdx + 1) + " / " + OB_STEPS.length;
-    $("obIcon").textContent = s.ic;
-    $("obTitle").textContent = s.t;
-    $("obBody").textContent = s.b;
-    $("obPrev").style.visibility = obIdx > 0 ? "visible" : "hidden";
-    $("obNext").textContent = obIdx === OB_STEPS.length - 1 ? "开始使用" : "下一步";
-    $("obDots").innerHTML = OB_STEPS.map((_, i) => `<i class="${i === obIdx ? "on" : ""}"></i>`).join("");
-  }
-  function obShow(){ obIdx = 0; obRender(); $("onboard").hidden = false;
-    fx(g => {
-      g.from("#onboard", { autoAlpha:0, duration:0.2, ease:"power1.out" });
-      g.from("#onboard .ob-card", { y:24, scale:0.96, autoAlpha:0, duration:0.36, ease:"power3.out", clearProps:"all" });
+/* ---------- 新手引导（driver.js） ---------- */
+  let driverObj = null; // 当前引导实例，供登录门等场景主动销毁
+  function obShow(){
+    if(!window.driver){ toast("引导组件未加载"); return; }
+    if(driverObj){ try{ driverObj.destroy(); }catch(_){} driverObj = null; }
+    const steps = [
+      { popover: { title: "欢迎使用 3D打印业务平台", description: "这是你的 3D 打印接单经营台：成本核算、订单利润、耗材库存、打印记录一站式管理。数据存在你部署的服务端，多设备打开同一地址即可共享同一份数据。" } },
+      { element: '#nav button[data-tab="mats"]', popover: { title: "第一步：建耗材与打印机", description: "在「耗材」页添加品牌、类型（PLA / 丝绸 / 碳纤维…，可自由输入）、颜色与单价；在「打印机」页添加品牌、型号、功率电价，填上购入价与使用率，机器折旧会自动摊到每小时。", side: "right", align: "start" } },
+      { element: '#nav button[data-tab="calc"]', popover: { title: "第二步：算成本、开订单", description: "「计算器」输入克数、打印时长和处理耗时，自动算出耗材 + 电费 + 机器折旧 + 人工的全成本与建议报价；点「去开订单」一键带入，报价取整后自动填好。", side: "right", align: "start" } },
+      { element: '#nav button[data-tab="olist"]', popover: { title: "第三步：跟踪订单与利润", description: "订单支持定金/尾款分期收款、自动算欠款与利润率；「订单列表」可按状态与日期区间筛选；「仪表盘」支持按日 / 月 / 年查看经营情况。左下角指示灯实时显示数据同步状态。", side: "right", align: "start" } }
+    ];
+    driverObj = window.driver({
+      animate: !reduceMotion,
+      showProgress: true,
+      progressText: "{{current}} / {{total}}",
+      prevBtnText: "上一步",
+      nextBtnText: "下一步",
+      doneBtnText: "开始使用",
+      allowClose: true,
+      overlayClickNext: false,
+      steps,
+      onDestroyStarted: () => {
+        const finished = driverObj ? driverObj.isLastStep() : false;
+        S.setSettings({ onboarded: true });
+        driverObj = null;
+        if(finished) toast("开始接单吧 " + randFace());
+      }
     });
+    driverObj.drive();
   }
-  function obClose(){ $("onboard").hidden = true; }
-  $("obPrev").addEventListener("click", () => { if(obIdx > 0){ obIdx--; obRender(); } });
-  $("obNext").addEventListener("click", () => {
-    if(obIdx < OB_STEPS.length - 1){ obIdx++; obRender(); }
-    else { obClose(); S.setSettings({ onboarded:true }); toast("开始接单吧 " + randFace()); }
-  });
-  $("obSkip").addEventListener("click", () => { obClose(); S.setSettings({ onboarded:true }); });
   $("showOnboard").addEventListener("click", obShow);
 
   /* ---------- 初始化 ---------- */
@@ -3740,8 +3794,8 @@ snap.sources.forEach(src => (src.devices || []).forEach(dev => {
     const ok = S.auth.ok;
     if(required && !ok){
       // 已登出或首次登录：收起其它 overlay，弹登录门
-      const w = $("setupWizard"); if(w) w.hidden = true;
-      const o = $("onboard"); if(o) o.hidden = true;
+const w = $("setupWizard"); if(w) w.hidden = true;
+      if(driverObj){ try{ driverObj.destroy(); }catch(_){} driverObj = null; } // 登录门弹出时收起引导
       appStarted = false; // 允许后续登录后重新 appStart
       if(manualLogout){ manualLogout = false; } else { showLoginGate(); }
     }else if(required && ok){

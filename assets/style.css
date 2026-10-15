@@ -1226,3 +1226,54 @@ input.valid{border-color:var(--ok, #3ddc97) !important}
 @keyframes alert-enter{
   to{opacity:1;transform:translateX(0)}
 }
+
+
+/* tom-select 组合框主题适配 */
+.ts-wrapper{width:100%}
+.ts-wrapper .ts-control{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:8px;min-height:42px;padding:4px 10px;box-shadow:none;font-size:14px;font-family:inherit;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.ts-wrapper.focus .ts-control{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+.ts-wrapper .ts-control .item{color:var(--ink);font-size:14px;margin:0;padding:4px 2px}
+.ts-wrapper .ts-control input{color:var(--ink);font-size:14px;border:none;box-shadow:none;background:transparent;padding:4px 0;min-height:0}
+.ts-wrapper .ts-control input::placeholder{color:var(--faint)}
+.ts-wrapper .ts-dropdown{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.25);z-index:60;font-size:13px;margin:4px 0 0;max-height:280px}
+.ts-wrapper .ts-dropdown .option{color:var(--ink);cursor:pointer;padding:8px 10px}
+.ts-wrapper .ts-dropdown .option:hover{background:var(--panel2)}
+.ts-wrapper .ts-dropdown .option.active{background:var(--accent-dim);color:var(--accent)}
+.ts-wrapper .ts-dropdown .no-results{padding:8px 10px;color:var(--faint);white-space:normal;word-break:break-all}
+.ts-wrapper .ts-dropdown .optgroup-header{color:var(--sub)}
+
+/* ---------- driver.js 新手引导主题适配 ---------- */
+.driver-overlay{backdrop-filter:blur(2px)}
+.driver-popover{
+  background:var(--panel);
+  color:var(--ink);
+  border:1px solid var(--line2);
+  border-radius:var(--radius);
+  box-shadow:0 18px 50px rgba(0,0,0,.35);
+  font-family:var(--sans);
+}
+.driver-popover .driver-popover-title{color:var(--ink);font-weight:700}
+.driver-popover .driver-popover-description{color:var(--sub)}
+.driver-popover .driver-popover-progress-text{color:var(--faint)}
+.driver-popover .driver-popover-close-btn{color:var(--faint)}
+.driver-popover .driver-popover-close-btn:hover{color:var(--danger)}
+.driver-popover .driver-popover-navigation-btns button{
+  background:var(--panel2);
+  color:var(--ink);
+  border:1px solid var(--line);
+  border-radius:8px;
+  text-shadow:none;
+  padding:6px 14px;
+  font-size:13px;
+}
+.driver-popover .driver-popover-navigation-btns button:hover:not(.driver-popover-btn-disabled){border-color:var(--accent)}
+.driver-popover .driver-popover-navigation-btns button.driver-popover-btn-disabled{opacity:.45}
+.driver-popover .driver-popover-navigation-btns button.driver-popover-btn-done{
+  background:var(--accent);
+  border-color:var(--accent);
+  color:#fff;
+}
+.driver-popover .driver-popover-arrow-side-left.driver-popover-arrow{border-left-color:var(--panel)}
+.driver-popover .driver-popover-arrow-side-right.driver-popover-arrow{border-right-color:var(--panel)}
+.driver-popover .driver-popover-arrow-side-top.driver-popover-arrow{border-top-color:var(--panel)}
+.driver-popover .driver-popover-arrow-side-bottom.driver-popover-arrow{border-bottom-color:var(--panel)}

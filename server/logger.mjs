@@ -1,49 +1,60 @@
-/* 3D打印业务平台 · 日志模块
+/* 3D打印业务平台 · 日志模块（pino 驱动）
    分级日志：DEBUG / INFO / WARN / ERROR / FATAL
-   输出：控制台（彩色）+ 文件（JSON Lines 格式，支持日志轮转）
+   输出：控制台（彩色）+ 文件（JSON Lines 格式，按级别按天分文件，支持轮转）
    支持环境变量：LOG_LEVEL（默认 INFO）、LOG_DIR（默认 ./logs）、LOG_MAX_FILES（默认 7）、LOG_MAX_SIZE（默认 10MB）
-   API：log.debug/info/warn/error(msg, data?) / log.child({ reqId, userId }) / log.middleware() */
+   API（保持不变）：log.debug/info/warn/error/fatal(msg, data?) / log.child({ reqId, userId }) / log.middleware()
+   说明：核心序列化交给 pino（多宿主兼容、child 上下文、级别过滤），文件落盘保留旧实现语义 */
 
 import fs from "node:fs";
 import path from "node:path";
-import { createWriteStream, existsSync, mkdirSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import crypto from "node:crypto";
+import pino from "pino";
 
 const ROOT = path.resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const LOG_DIR = process.env.LOG_DIR || path.join(ROOT, "logs");
-const LOG_LEVEL = process.env.LOG_LEVEL || "INFO";
+const LOG_LEVEL = (process.env.LOG_LEVEL || "INFO").toLowerCase();
 const LOG_MAX_FILES = Number(process.env.LOG_MAX_FILES) || 7;
 const LOG_MAX_SIZE = Number(process.env.LOG_MAX_SIZE) || 10 * 1024 * 1024; // 10MB
-
-const LEVELS = { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3, FATAL: 4 };
-const currentLevel = LEVELS[LOG_LEVEL] ?? LEVELS.INFO;
 
 /* ANSI 彩色控制台输出 */
 const colors = {
   DEBUG: "\x1b[36m", INFO: "\x1b[32m", WARN: "\x1b[33m", ERROR: "\x1b[31m", FATAL: "\x1b[35m", RESET: "\x1b[0m"
 };
-
 function colorLevel(level) {
   return `${colors[level] || ""}[${level}]${colors.RESET || ""}`;
 }
 
-/* 日志文件写入器（延迟初始化，支持轮转） */
+/* 敏感字段过滤（与旧实现一致）：password/passwd/secret/token/key/auth/credential */
+const SENSITIVE = /password|passwd|secret|token|key|auth|credential/i;
+function sanitize(data){
+  if(data instanceof Error){
+    return { error: { message: data.message, name: data.name, stack: data.stack } };
+  }
+  if(data !== null && typeof data === "object"){
+    const safe = {};
+    for(const [k, v] of Object.entries(data)){
+      if(SENSITIVE.test(k)) safe[k] = "[FILTERED]";
+      else safe[k] = sanitize(v);
+    }
+    return safe;
+  }
+  return data;
+}
+
+/* 日志文件写入器（延迟初始化，按级别按天分文件，支持大小/日期轮转 + 旧文件清理） */
 class FileWriter {
   constructor() {
     this.streams = new Map(); // level -> writeStream
-    this.currentFile = { DEBUG: "", INFO: "", WARN: "", ERROR: "", FATAL: "" };
-    this.counters = { DEBUG: 0, INFO: 0, WARN: 0, ERROR: 0, FATAL: 0 };
-    this.lastRotate = { DEBUG: Date.now(), INFO: Date.now(), WARN: Date.now(), ERROR: Date.now(), FATAL: Date.now() };
+    this.currentFile = new Map(); // level -> 当前文件名
     this.init();
   }
 
   init() {
     try {
-      if (!existsSync(LOG_DIR)) {
-        mkdirSync(LOG_DIR, { recursive: true });
-      }
+      if (!existsSync(LOG_DIR)) mkdirSync(LOG_DIR, { recursive: true });
     } catch (e) {
       console.error("[logger] 无法创建日志目录:", e.message);
     }
@@ -57,20 +68,19 @@ class FileWriter {
   shouldRotate(filePath, level) {
     try {
       if (existsSync(filePath)) {
-        const stats = fs.statSync(filePath);
-        return stats.size >= LOG_MAX_SIZE || Date.now() - this.lastRotate[level] > 86400000;
+        const stats = statSync(filePath);
+        return stats.size >= LOG_MAX_SIZE;
       }
     } catch (e) {}
     return false;
   }
 
-  write(level, entry) {
-    if (currentLevel > LEVELS[level]) return;
-
+  write(entry) {
+    const level = (entry.level || "INFO").toUpperCase();
     const filePath = this.getFilePath(level);
 
-    // 初始化或轮转
-    if (this.currentFile[level] !== filePath || this.shouldRotate(filePath, level)) {
+    // 跨天或超限时轮转
+    if (this.currentFile.get(level) !== filePath || this.shouldRotate(filePath, level)) {
       this.rotate(level, filePath);
     }
 
@@ -79,8 +89,7 @@ class FileWriter {
       try {
         stream = createWriteStream(filePath, { flags: "a", encoding: "utf8" });
         this.streams.set(level, stream);
-        this.currentFile[level] = filePath;
-        this.lastRotate[level] = Date.now();
+        this.currentFile.set(level, filePath);
       } catch (e) {
         console.error("[logger] 无法写入日志文件:", e.message);
         return;
@@ -88,7 +97,6 @@ class FileWriter {
     }
 
     stream.write(JSON.stringify(entry) + "\n");
-    this.counters[level]++;
   }
 
   rotate(level, newPath) {
@@ -97,38 +105,29 @@ class FileWriter {
       try { old.end(); } catch (e) {}
       this.streams.delete(level);
     }
-    // 清理旧文件
     this.cleanOldFiles(level);
-    this.currentFile[level] = "";
-    this.counters[level] = 0;
-    this.lastRotate[level] = Date.now();
+    this.currentFile.delete(level);
   }
 
   cleanOldFiles(level) {
     try {
       if (!existsSync(LOG_DIR)) return;
       const prefix = `app-${level.toLowerCase()}-`;
-      const files = fs.readdirSync(LOG_DIR)
+      const files = readdirSync(LOG_DIR)
         .filter(f => f.startsWith(prefix) && f.endsWith(".log"))
-        .map(f => ({
-          name: f,
-          time: fs.statSync(path.join(LOG_DIR, f)).mtime.getTime()
-        }))
+        .map(f => ({ name: f, time: statSync(path.join(LOG_DIR, f)).mtime.getTime() }))
         .sort((a, b) => b.time - a.time);
 
-      // 保留最新的 LOG_MAX_FILES 个
       if (files.length >= LOG_MAX_FILES) {
         for (let i = LOG_MAX_FILES; i < files.length; i++) {
-          try {
-            fs.unlinkSync(path.join(LOG_DIR, files[i].name));
-          } catch (e) {}
+          try { unlinkSync(path.join(LOG_DIR, files[i].name)); } catch (e) {}
         }
       }
     } catch (e) {}
   }
 
   close() {
-    for (const [level, stream] of this.streams) {
+    for (const stream of this.streams.values()) {
       try { stream.end(); } catch (e) {}
     }
     this.streams.clear();
@@ -142,157 +141,167 @@ function genReqId() {
   return crypto.randomBytes(4).toString("hex");
 }
 
-/* 格式化日志条目 */
-function formatEntry(level, msg, data, ctx) {
-  const entry = {
-    time: new Date().toISOString(),
-    level,
-    message: msg,
-    pid: process.pid,
-    ...ctx
-  };
-  if (data !== undefined) {
-    if (data instanceof Error) {
-      entry.error = {
-        message: data.message,
-        name: data.name,
-        stack: data.stack
-      };
-    } else if (typeof data === "object") {
-      // 过滤敏感字段
-      const safe = {};
-      const sensitive = /password|passwd|secret|token|key|auth|credential/i;
-      for (const [k, v] of Object.entries(data)) {
-        if (!sensitive.test(k)) {
-          safe[k] = v;
-        } else {
-          safe[k] = "[FILTERED]";
-        }
-      }
-      entry.data = safe;
+/* 控制台/文件 sink：把 pino 序列化的 JSON 行解析后按旧语义呈现 */
+function parseChunk(chunk){
+  try { return JSON.parse(String(chunk).trim()); } catch (e) { return null; }
+}
+
+const consoleSink = {
+  write(chunk){
+    const entry = parseChunk(chunk);
+    if(!entry) return true;
+    const ts = String(entry.time || "").slice(11, 23);
+    const ctx = entry.reqId ? `[${entry.reqId}]` : "";
+    const user = entry.userId ? `<${entry.userId}>` : "";
+    const meta = [ctx, user].filter(Boolean).join("");
+    const level = String(entry.level || "INFO").toUpperCase();
+    const msg = entry.msg || "";
+    const prefix = `[${ts}] ${colorLevel(level)} ${level.padEnd(5)}`;
+
+    if (level === "WARN") {
+      console.warn(`${prefix}${colors.RESET} ${msg}${meta}`);
+    } else if (level === "ERROR" || level === "FATAL") {
+      console.error(`${prefix}${colors.RESET} ${msg}${meta}`);
+      const stack = entry.err?.stack || (entry.error && entry.error.stack);
+      if (stack) console.error(colors.ERROR + stack + colors.RESET);
     } else {
-      entry.data = data;
+      console.log(`${prefix}${colors.RESET} ${msg}${meta}`);
+    }
+    return true;
+  }
+};
+
+const fileSink = {
+  write(chunk){
+    const entry = parseChunk(chunk);
+    if(!entry) return true;
+    writer.write(entry);
+    return true;
+  }
+};
+
+const PLATFORM = typeof process !== "undefined" && process.platform ? process.platform : "web";
+const APP_NAME = "3d-printing-business";
+const APP_VERSION = "1.0.3";
+
+/* pino 核心实例：自定义 base（含 pid）、ISO 时间、level 转大写字符串，双流输出 */
+const core = pino({
+  level: LOG_LEVEL,
+  base: { app: APP_NAME, version: APP_VERSION, env: process.env.NODE_ENV || "development", platform: PLATFORM, pid: typeof process !== "undefined" ? process.pid : undefined },
+  timestamp: pino.stdTimeFunctions.isoTime,
+  formatters: {
+    level(label){ return { level: label.toUpperCase() }; },
+    bindings(bindings){
+      const out = { ...bindings };
+      if(out.pid === undefined) delete out.pid;
+      return out;
     }
   }
-  return entry;
-}
+}, pino.multistream([
+  { stream: consoleSink },
+  { stream: fileSink }
+]));
 
-/* 打印到控制台 */
-function consolePrint(entry) {
-  const ts = entry.time.slice(11, 23); // HH:mm:ss.SSS
-  const ctx = entry.reqId ? `[${entry.reqId}]` : "";
-  const user = entry.userId ? `<${entry.userId}>` : "";
-  const meta = [ctx, user].filter(Boolean).join("");
-
-  const levelPad = entry.level.padEnd(5);
-  const prefix = `[${ts}] ${colorLevel(entry.level)} ${levelPad}`;
-
-  if (entry.level === "DEBUG") {
-    console.log(`${prefix}${colors.RESET} ${entry.message}${meta}`);
-  } else if (entry.level === "INFO") {
-    console.log(`${prefix}${colors.RESET} ${entry.message}${meta}`);
-  } else if (entry.level === "WARN") {
-    console.warn(`${prefix}${colors.RESET} ${entry.message}${meta}`);
-  } else if (entry.level === "ERROR" || entry.level === "FATAL") {
-    console.error(`${prefix}${colors.RESET} ${entry.message}${meta}`);
-    if (entry.error?.stack) {
-      console.error(colors.ERROR + entry.error.stack + colors.RESET);
-    }
-  }
-}
-
+/* 对外 Logger：保持旧签名 log.info(msg, data?) */
 class Logger {
-  constructor(ctx = {}) {
-    this.ctx = ctx;
+  constructor(inst = core) {
+    this.inst = inst;
   }
 
   _log(level, msg, data) {
-    if (LEVELS[level] === undefined || LEVELS[level] < currentLevel) return;
-    const entry = formatEntry(level, msg, data, this.ctx);
-    consolePrint(entry);
-    writer.write(level, entry);
+    if (data === undefined) {
+      this.inst[level](msg);
+    } else if (data instanceof Error) {
+      // 交给 pino 标准 err 序列化器：{type, message, stack}
+      this.inst[level]({ err: data }, msg);
+    } else if (data !== null && typeof data === "object" && !Array.isArray(data)) {
+      // 递归敏感字段过滤后作为 data 字段落盘（保持旧 entry.data 语义）
+      this.inst[level]({ data: sanitize(data) }, msg);
+    } else {
+      this.inst[level]({ data }, msg);
+    }
   }
 
-  debug(msg, data) { this._log("DEBUG", msg, data); }
-  info(msg, data) { this._log("INFO", msg, data); }
-  warn(msg, data) { this._log("WARN", msg, data); }
-  error(msg, data) { this._log("ERROR", msg, data); }
-  fatal(msg, data) { this._log("FATAL", msg, data); }
+  debug(msg, data) { this._log("debug", msg, data); }
+  info(msg, data) { this._log("info", msg, data); }
+  warn(msg, data) { this._log("warn", msg, data); }
+  error(msg, data) { this._log("error", msg, data); }
+  fatal(msg, data) { this._log("fatal", msg, data); }
 
   child(extraCtx) {
-    return new Logger({ ...this.ctx, ...extraCtx });
+    return new Logger(this.inst.child(extraCtx));
   }
 
-  /* Express/Koa 风格的中间件（用于 http.createServer） */
+  /* 兼容中间件（http.createServer），与旧实现等价 */
   middleware() {
     return (req, res, next) => {
       const reqId = genReqId();
       const startTime = Date.now();
-
-      // 给 req 对象附加日志上下文
-      req._logCtx = { ...this.ctx, reqId, startTime };
+      req._logCtx = { reqId, startTime };
       req.id = reqId;
 
       const log = this.child({ reqId });
-
       log.info(`--> ${req.method} ${req.url}`);
 
-      // 拦截 res.end 以记录响应
       const origEnd = res.end.bind(res);
       res.end = function(...args) {
         const duration = Date.now() - startTime;
         const status = res.statusCode || 200;
-
         log.info(`<-- ${req.method} ${req.url} ${status} ${duration}ms`);
-
         if (duration > 1000) {
           log.warn(`Slow request: ${req.method} ${req.url} took ${duration}ms`);
         }
-
         return origEnd(...args);
       };
 
-      // 捕获未处理的 Promise 错误
       req.on("error", err => log.error("Request error", err));
-
       next();
     };
   }
 }
 
 /* 全局日志实例 */
-const log = new Logger({
-  app: "3d-printing-business",
-  version: "1.0.3",
-  env: process.env.NODE_ENV || "development"
-});
+const log = new Logger();
 
-/* 日志查询 API（供 /api/logs 端点使用） */
+/* 日志查询 API（供 /api/logs 端点使用）：扫描按天分文件，兼容 pino 字段 */
 export function queryLogs({ level, keyword, startTime, endTime, limit = 100, offset = 0 }) {
   const results = [];
-  const targetLevels = level ? [level.toUpperCase()] : ["DEBUG", "INFO", "WARN", "ERROR", "FATAL"];
+  const targetLevels = level ? [String(level).toUpperCase()] : ["DEBUG", "INFO", "WARN", "ERROR", "FATAL"];
   const start = startTime ? new Date(startTime).getTime() : 0;
   const end = endTime ? new Date(endTime).getTime() : Date.now();
 
   for (const lvl of targetLevels) {
     try {
-      const filePath = path.join(LOG_DIR, `app-${lvl.toLowerCase()}.log`);
-      if (!existsSync(filePath)) continue;
+      if (!existsSync(LOG_DIR)) continue;
+      const files = readdirSync(LOG_DIR)
+        .filter(f => f.startsWith(`app-${lvl.toLowerCase()}-`) && f.endsWith(".log"))
+        .sort();
 
-      const lines = fs.readFileSync(filePath, "utf8").split("\n").filter(Boolean);
-      for (const line of lines) {
-        try {
-          const entry = JSON.parse(line);
-          const entryTime = new Date(entry.time).getTime();
-          if (entryTime < start || entryTime > end) continue;
-          if (keyword && !entry.message.toLowerCase().includes(keyword.toLowerCase())) continue;
-          results.push(entry);
-        } catch (e) {}
+      for (const fileName of files) {
+        const lines = fs.readFileSync(path.join(LOG_DIR, fileName), "utf8").split("\n").filter(Boolean);
+        for (const line of lines) {
+          try {
+            const entry = JSON.parse(line);
+            const entryTime = new Date(entry.time).getTime();
+            if (entryTime < start || entryTime > end) continue;
+            const message = entry.msg || entry.message || "";
+            if (keyword && !message.toLowerCase().includes(keyword.toLowerCase())) continue;
+            results.push({
+              time: entry.time,
+              level: (entry.level || "INFO").toString().toUpperCase(),
+              message,
+              pid: entry.pid,
+              reqId: entry.reqId,
+              userId: entry.userId,
+              data: entry.data,
+              err: entry.err
+            });
+          } catch (e) {}
+        }
       }
     } catch (e) {}
   }
 
-  // 按时间排序
   results.sort((a, b) => new Date(b.time) - new Date(a.time));
 
   return {
